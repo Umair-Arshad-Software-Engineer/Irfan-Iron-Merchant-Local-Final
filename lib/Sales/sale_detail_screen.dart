@@ -971,6 +971,7 @@ class _SaleDetailScreenState extends State<SaleDetailScreen> {
                     amountPaid: _sale!.amountPaid,
                     dueDate: _sale!.dueDate,
                     notes: _sale!.notes,
+                    previousBalance: (_sale!.outstandingBalance - _sale!.grandTotal), // ✅ Pass the customer's balance BEFORE this invoice
                   );
 
                   if (mounted) Navigator.pop(context);

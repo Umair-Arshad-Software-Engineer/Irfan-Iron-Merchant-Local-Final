@@ -2214,18 +2214,64 @@ class _SaleScreenState extends State<SaleScreen>
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text(
-                            _selectedCustomer?.name ?? 'Select Customer *',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: _selectedCustomer != null
-                                  ? FontWeight.w600
-                                  : FontWeight.w400,
-                              color: _selectedCustomer != null
-                                  ? const Color(0xFF7C3AED)
-                                  : const Color(0xFFEF4444),
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _selectedCustomer?.name ?? 'Select Customer *',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: _selectedCustomer != null
+                                      ? FontWeight.w600
+                                      : FontWeight.w400,
+                                  color: _selectedCustomer != null
+                                      ? const Color(0xFF7C3AED)
+                                      : const Color(0xFFEF4444),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              // ✅ ADD BALANCE DISPLAY HERE
+                              if (_selectedCustomer != null && _selectedCustomer!.balance != null) ...[
+                                const SizedBox(height: 2),
+                                Row(
+                                  children: [
+                                    Icon(Icons.account_balance_wallet,
+                                        size: 10, color: _selectedCustomer!.balance! > 0
+                                            ? const Color(0xFF10B981)
+                                            : const Color(0xFFEF4444)),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Balance: Rs ${_selectedCustomer!.balance!.toStringAsFixed(2)}',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w500,
+                                        color: _selectedCustomer!.balance! > 0
+                                            ? const Color(0xFF10B981)
+                                            : const Color(0xFFEF4444),
+                                      ),
+                                    ),
+                                    if (_selectedCustomer!.balance! > 0) ...[
+                                      const SizedBox(width: 4),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFEF3C7),
+                                          borderRadius: BorderRadius.circular(3),
+                                        ),
+                                        child: const Text(
+                                          'Credit',
+                                          style: TextStyle(
+                                            fontSize: 8,
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(0xFF92400E),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ],
+                            ],
                           ),
                         ),
                         if (_selectedCustomer != null)
@@ -2306,363 +2352,6 @@ class _SaleScreenState extends State<SaleScreen>
       ),
     );
   }
-
-  // ── CART ITEM — now shows length chips ────────
-
-  // Widget _buildCartItem(int index) {
-  //   final item = _cartItems[index];
-  //   final showCustomBadge =
-  //       item.usingCustomerPrice && item.hasPriceDifference;
-  //   final hasLengths = item.product.lengthCombinations?.isNotEmpty ?? false;
-  //
-  //   return Container(
-  //     margin: const EdgeInsets.only(bottom: 8),
-  //     padding: const EdgeInsets.all(10),
-  //     decoration: BoxDecoration(
-  //       color: item.usingCustomerPrice
-  //           ? const Color(0xFFF0FDF4)
-  //           : const Color(0xFFF9FAFB),
-  //       borderRadius: BorderRadius.circular(10),
-  //       border: Border.all(
-  //         color: item.usingCustomerPrice
-  //             ? const Color(0xFF10B981).withOpacity(0.25)
-  //             : const Color(0xFFF0F0F8),
-  //       ),
-  //     ),
-  //     child: Column(
-  //       crossAxisAlignment: CrossAxisAlignment.start,
-  //       children: [
-  //         // ── Title row ──
-  //         Row(
-  //           children: [
-  //             Expanded(
-  //               child: Row(
-  //                 children: [
-  //                   Flexible(
-  //                     child: Text(
-  //                       item.product.itemName,
-  //                       style: const TextStyle(
-  //                           fontSize: 13, fontWeight: FontWeight.w600),
-  //                       maxLines: 1,
-  //                       overflow: TextOverflow.ellipsis,
-  //                     ),
-  //                   ),
-  //                   if (showCustomBadge) ...[
-  //                     const SizedBox(width: 6),
-  //                     Container(
-  //                       padding: const EdgeInsets.symmetric(
-  //                           horizontal: 5, vertical: 2),
-  //                       decoration: BoxDecoration(
-  //                         color: const Color(0xFF10B981),
-  //                         borderRadius: BorderRadius.circular(4),
-  //                       ),
-  //                       child: const Text('Custom ₹',
-  //                           style: TextStyle(
-  //                               fontSize: 9,
-  //                               color: Colors.white,
-  //                               fontWeight: FontWeight.bold)),
-  //                     ),
-  //                   ],
-  //                 ],
-  //               ),
-  //             ),
-  //             IconButton(
-  //               icon: const Icon(Icons.close,
-  //                   size: 14, color: Color(0xFFEF4444)),
-  //               padding: EdgeInsets.zero,
-  //               constraints:
-  //               const BoxConstraints(minWidth: 24, minHeight: 24),
-  //               onPressed: () => _removeFromCart(index),
-  //             ),
-  //           ],
-  //         ),
-  //
-  //         const SizedBox(height: 6),
-  //
-  //         // ── Price + Qty row ──
-  //         Row(
-  //           children: [
-  //             Column(
-  //               crossAxisAlignment: CrossAxisAlignment.start,
-  //               children: [
-  //                 SizedBox(
-  //                   width: 84,
-  //                   child: TextFormField(
-  //                     key: ValueKey('price_${index}_${item.unitPrice}'),
-  //                     initialValue: item.unitPrice.toStringAsFixed(2),
-  //                     style: TextStyle(
-  //                       fontSize: 12,
-  //                       color: item.usingCustomerPrice
-  //                           ? const Color(0xFF065F46)
-  //                           : null,
-  //                       fontWeight: item.usingCustomerPrice
-  //                           ? FontWeight.w600
-  //                           : FontWeight.normal,
-  //                     ),
-  //                     decoration: InputDecoration(
-  //                       prefix: const Text('Rs ',
-  //                           style: TextStyle(fontSize: 11)),
-  //                       isDense: true,
-  //                       contentPadding: const EdgeInsets.symmetric(
-  //                           horizontal: 8, vertical: 6),
-  //                       border: OutlineInputBorder(
-  //                         borderRadius: BorderRadius.circular(6),
-  //                       ),
-  //                       enabledBorder: OutlineInputBorder(
-  //                         borderRadius: BorderRadius.circular(6),
-  //                         borderSide: BorderSide(
-  //                           color: item.usingCustomerPrice
-  //                               ? const Color(0xFF10B981).withOpacity(0.5)
-  //                               : const Color(0xFFD1D5DB),
-  //                         ),
-  //                       ),
-  //                     ),
-  //                     keyboardType: TextInputType.number,
-  //                     onChanged: (v) {
-  //                       final parsed = double.tryParse(v);
-  //                       if (parsed != null) {
-  //                         setState(
-  //                                 () => _cartItems[index].unitPrice = parsed);
-  //                       }
-  //                     },
-  //                   ),
-  //                 ),
-  //                 if (showCustomBadge)
-  //                   Padding(
-  //                     padding: const EdgeInsets.only(top: 2),
-  //                     child: Text(
-  //                       'Std: Rs ${item.standardPrice.toStringAsFixed(2)}',
-  //                       style: const TextStyle(
-  //                           fontSize: 9,
-  //                           color: Color(0xFF9CA3AF),
-  //                           decoration: TextDecoration.lineThrough),
-  //                     ),
-  //                   ),
-  //               ],
-  //             ),
-  //             const SizedBox(width: 8),
-  //             const Spacer(),
-  //             // Row(
-  //             //   children: [
-  //             //     _qtyBtn(Icons.remove, () => _updateQty(index, -1)),
-  //             //     Container(
-  //             //       width: 36,
-  //             //       alignment: Alignment.center,
-  //             //       child: Text(item.quantity.toString(),
-  //             //           style: const TextStyle(
-  //             //               fontWeight: FontWeight.bold, fontSize: 14)),
-  //             //     ),
-  //             //     _qtyBtn(Icons.add, () => _updateQty(index, 1)),
-  //             //   ],
-  //             // ),
-  //             Row(
-  //               children: [
-  //                 _qtyBtn(Icons.remove, () => _updateQty(index, -1)),
-  //                 SizedBox(
-  //                   width: 48,
-  //                   child: TextField(
-  //                     key: ValueKey('qty_$index'),
-  //                     controller: TextEditingController(
-  //                       text: item.quantity.toString(),
-  //                     )..selection = TextSelection.collapsed(
-  //                         offset: item.quantity.toString().length),
-  //                     keyboardType: TextInputType.number,
-  //                     textAlign: TextAlign.center,
-  //                     style: const TextStyle(
-  //                       fontWeight: FontWeight.bold,
-  //                       fontSize: 14,
-  //                     ),
-  //                     decoration: InputDecoration(
-  //                       isDense: true,
-  //                       contentPadding: const EdgeInsets.symmetric(
-  //                         horizontal: 4,
-  //                         vertical: 6,
-  //                       ),
-  //                       border: OutlineInputBorder(
-  //                         borderRadius: BorderRadius.circular(6),
-  //                         borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-  //                       ),
-  //                       enabledBorder: OutlineInputBorder(
-  //                         borderRadius: BorderRadius.circular(6),
-  //                         borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-  //                       ),
-  //                       focusedBorder: OutlineInputBorder(
-  //                         borderRadius: BorderRadius.circular(6),
-  //                         borderSide: const BorderSide(color: Color(0xFF7C3AED)),
-  //                       ),
-  //                     ),
-  //                     onChanged: (v) {
-  //                       final parsed = int.tryParse(v);
-  //                       if (parsed != null && parsed >= 1) {
-  //                         setState(() => _cartItems[index].quantity = parsed.clamp(1, 9999));
-  //                       }
-  //                     },
-  //                     onSubmitted: (v) {
-  //                       final parsed = int.tryParse(v);
-  //                       if (parsed == null || parsed < 1) {
-  //                         setState(() => _cartItems[index].quantity = 1);
-  //                       }
-  //                     },
-  //                   ),
-  //                 ),
-  //                 _qtyBtn(Icons.add, () => _updateQty(index, 1)),
-  //               ],
-  //             ),
-  //             const SizedBox(width: 8),
-  //             SizedBox(
-  //               width: 72,
-  //               child: Text(
-  //                 'Rs ${item.total.toStringAsFixed(2)}',
-  //                 textAlign: TextAlign.right,
-  //                 style: TextStyle(
-  //                     fontSize: 13,
-  //                     fontWeight: FontWeight.bold,
-  //                     color: item.usingCustomerPrice
-  //                         ? const Color(0xFF10B981)
-  //                         : const Color(0xFF7C3AED)),
-  //               ),
-  //             ),
-  //           ],
-  //         ),
-  //
-  //         // ── Weight field (shown when item has lengths OR any time) ──
-  //         const SizedBox(height: 6),
-  //         Row(
-  //           children: [
-  //             Expanded(
-  //               child: SizedBox(
-  //                 height: 32,
-  //                 child: TextFormField(
-  //                   key: ValueKey('weight_${index}_${item.weight}'),
-  //                   initialValue:
-  //                   item.weight > 0 ? item.weight.toStringAsFixed(2) : '',
-  //                   style: const TextStyle(fontSize: 12),
-  //                   decoration: InputDecoration(
-  //                     labelText: 'Weight (Kg)',
-  //                     labelStyle: const TextStyle(fontSize: 11),
-  //                     isDense: true,
-  //                     contentPadding: const EdgeInsets.symmetric(
-  //                         horizontal: 8, vertical: 6),
-  //                     border: OutlineInputBorder(
-  //                         borderRadius: BorderRadius.circular(6)),
-  //                     prefixIcon:
-  //                     const Icon(Icons.scale, size: 14),
-  //                   ),
-  //                   keyboardType: const TextInputType.numberWithOptions(
-  //                       decimal: true),
-  //                   onChanged: (v) {
-  //                     final w = double.tryParse(v) ?? 0.0;
-  //                     setState(() {
-  //                       final old = _cartItems[index];
-  //                       _cartItems[index] = SaleItem(
-  //                         product: old.product,
-  //                         quantity: old.quantity,
-  //                         unitPrice: old.unitPrice,
-  //                         customerSpecificPrice: old.customerSpecificPrice,
-  //                         usingCustomerPrice: old.usingCustomerPrice,
-  //                         selectedLengths: old.selectedLengths,
-  //                         lengthQuantities: old.lengthQuantities,
-  //                         lengthsDisplay: old.lengthsDisplay,
-  //                         weight: w,
-  //                       );
-  //                     });
-  //                   },
-  //                 ),
-  //               ),
-  //             ),
-  //             // ── "Select Lengths" button (only when product has combinations) ──
-  //             if (hasLengths) ...[
-  //               const SizedBox(width: 8),
-  //               ElevatedButton.icon(
-  //                 onPressed: () => _showLengthSelectionDialog(index),
-  //                 icon: const Icon(Icons.straighten, size: 14),
-  //                 label: Text(
-  //                   item.hasLengthCombinations
-  //                       ? 'Edit Lengths'
-  //                       : 'Select Lengths',
-  //                   style: const TextStyle(fontSize: 11),
-  //                 ),
-  //                 style: ElevatedButton.styleFrom(
-  //                   backgroundColor: item.hasLengthCombinations
-  //                       ? const Color(0xFF10B981)
-  //                       : const Color(0xFF7C3AED),
-  //                   foregroundColor: Colors.white,
-  //                   padding:
-  //                   const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-  //                   minimumSize: const Size(0, 32),
-  //                   shape: RoundedRectangleBorder(
-  //                       borderRadius: BorderRadius.circular(8)),
-  //                 ),
-  //               ),
-  //             ],
-  //           ],
-  //         ),
-  //
-  //         // ── Length chips (shown when lengths are selected) ──
-  //         if (item.hasLengthCombinations) ...[
-  //           const SizedBox(height: 8),
-  //           Container(
-  //             padding: const EdgeInsets.all(8),
-  //             decoration: BoxDecoration(
-  //               color: const Color(0xFFF0FDF4),
-  //               borderRadius: BorderRadius.circular(8),
-  //               border: Border.all(
-  //                   color: const Color(0xFF10B981).withOpacity(0.3)),
-  //             ),
-  //             child: Column(
-  //               crossAxisAlignment: CrossAxisAlignment.start,
-  //               children: [
-  //                 Row(
-  //                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-  //                   children: [
-  //                     Text(
-  //                       'Selected Lengths & Quantities:',
-  //                       style: TextStyle(
-  //                           fontSize: 11,
-  //                           fontWeight: FontWeight.w600,
-  //                           color: Colors.teal[700]),
-  //                     ),
-  //                     Text(
-  //                       '${item.totalPieces} pcs total',
-  //                       style: TextStyle(
-  //                           fontSize: 11,
-  //                           fontWeight: FontWeight.bold,
-  //                           color: Colors.teal[700]),
-  //                     ),
-  //                   ],
-  //                 ),
-  //                 const SizedBox(height: 6),
-  //                 Wrap(
-  //                   spacing: 6,
-  //                   runSpacing: 4,
-  //                   children: item.selectedLengths.map((length) {
-  //                     final qty = item.lengthQuantities[length] ?? 1.0;
-  //                     return Chip(
-  //                       label: Text(
-  //                         _safeLengthLabel(length, qty),
-  //                         style: const TextStyle(fontSize: 11),
-  //                       ),
-  //                       backgroundColor: const Color(0xFFD1FAE5),
-  //                       side: const BorderSide(color: Color(0xFF10B981)),
-  //                       deleteIcon: const Icon(Icons.close, size: 14),
-  //                       onDeleted: () =>
-  //                           _removeLengthFromCartItem(index, length),
-  //                       visualDensity: VisualDensity.compact,
-  //                       materialTapTargetSize:
-  //                       MaterialTapTargetSize.shrinkWrap,
-  //                     );
-  //                   }).toList(),
-  //                 ),
-  //               ],
-  //             ),
-  //           ),
-  //         ],
-  //       ],
-  //     ),
-  //   );
-  // }
-  // Update _buildCartItem method to show appropriate quantity input
-
   Widget _buildCartItem(int index) {
     final item = _cartItems[index];
     final showCustomBadge = item.usingCustomerPrice && item.hasPriceDifference;
@@ -4379,6 +4068,7 @@ class _SaleScreenState extends State<SaleScreen>
         amountPaid: _grandTotal,
         dueDate: null,
         notes: _invoiceNoteController.text,
+        previousBalance: _selectedCustomer?.balance ?? 0.0, // ✅ ADD THIS LINE
       );
 
       if (mounted) Navigator.pop(context);
@@ -4548,6 +4238,7 @@ class _SaleScreenState extends State<SaleScreen>
               ? _creditDueDate
               : _dueDate,
           notes: _buildNotes(paymentMethod, paymentDetails),
+          previousBalance: _selectedCustomer?.balance ?? 0.0, // ✅ ADD THIS LINE
         );
 
         if (mounted) {
@@ -4710,25 +4401,57 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
               itemCount: _filtered.length,
               itemBuilder: (ctx, i) {
                 final c = _filtered[i];
-                final sel =
-                    widget.selectedCustomer?.id == c.id;
+                final sel = widget.selectedCustomer?.id == c.id;
+                final hasPositiveBalance = (c.balance ?? 0) > 0;
+
                 return ListTile(
                   leading: CircleAvatar(
-                    backgroundColor:
-                    const Color(0xFFF3F0FF),
+                    backgroundColor: hasPositiveBalance
+                        ? const Color(0xFFFEF3C7)
+                        : const Color(0xFFF3F0FF),
                     child: Text(
                       c.name.isNotEmpty
                           ? c.name[0].toUpperCase()
                           : '?',
-                      style: const TextStyle(
-                          color: Color(0xFF7C3AED),
+                      style: TextStyle(
+                          color: hasPositiveBalance
+                              ? const Color(0xFF92400E)
+                              : const Color(0xFF7C3AED),
                           fontWeight: FontWeight.bold),
                     ),
                   ),
                   title: Text(c.name,
                       style: const TextStyle(
                           fontWeight: FontWeight.w600)),
-                  subtitle: Text(c.contact),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(c.contact),
+                      if (c.balance != null) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(Icons.account_balance_wallet,
+                                size: 10,
+                                color: hasPositiveBalance
+                                    ? const Color(0xFF10B981)
+                                    : const Color(0xFF9CA3AF)),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Balance: Rs ${c.balance!.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: hasPositiveBalance
+                                    ? const Color(0xFF10B981)
+                                    : const Color(0xFF9CA3AF),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
                   trailing: sel
                       ? const Icon(Icons.check_circle,
                       color: Color(0xFF7C3AED))

@@ -23,6 +23,7 @@ class SalePdfGenerator {
     required double amountPaid,
     DateTime? dueDate,
     String? notes,
+    double? previousBalance,  // ✅ ADD THIS PARAMETER
   }) async {
     final pdf = pw.Document();
 
@@ -57,8 +58,10 @@ class SalePdfGenerator {
     // Calculate amounts
     double paidAmount = amountPaid;
     double remainingAmount = grandTotal - paidAmount;
-    double previousBalance = 0.0; // You can fetch this if needed
-    double newBalance = previousBalance + grandTotal;
+    // double previousBalance = 0.0; // You can fetch this if needed
+    // double newBalance = previousBalance + grandTotal;
+    final double previousBalanceValue = previousBalance ?? 0.0;
+    final double newBalance = previousBalanceValue + grandTotal;
 
     // Format date
     final now = DateTime.now();
@@ -234,7 +237,7 @@ class SalePdfGenerator {
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Image(previousAmountImage, width: 50, height: 40, dpi: 1000),
-                  pw.Text(previousBalance.toStringAsFixed(2), style: const pw.TextStyle(fontSize: 15)),
+                  pw.Text(previousBalanceValue.toStringAsFixed(2), style: const pw.TextStyle(fontSize: 15)),
                 ],
               ),
               pw.Row(
@@ -306,51 +309,6 @@ class SalePdfGenerator {
     return pw.MemoryImage(buffer);
   }
 
-  // static Future<pw.MemoryImage> _createTextImage(String text) async {
-  //   final String displayText = text.isEmpty ? "N/A" : text;
-  //   const double scaleFactor = 2;
-  //
-  //   final recorder = ui.PictureRecorder();
-  //   final canvas = Canvas(
-  //     recorder,
-  //     Rect.fromPoints(
-  //       const Offset(0, 0),
-  //       const Offset(500 * scaleFactor, 50 * scaleFactor),
-  //     ),
-  //   );
-  //
-  //   final textStyle = const TextStyle(
-  //     fontSize: 10 * scaleFactor,
-  //     fontFamily: 'JameelNoori',
-  //     color: Colors.black,
-  //     fontWeight: FontWeight.bold,
-  //   );
-  //
-  //   final textSpan = TextSpan(text: displayText, style: textStyle);
-  //   final textPainter = TextPainter(
-  //     text: textSpan,
-  //     textAlign: ui.TextAlign.left,
-  //     textDirection: ui.TextDirection.rtl,
-  //   );
-  //
-  //   textPainter.layout();
-  //
-  //   final double width = textPainter.width * scaleFactor;
-  //   final double height = textPainter.height * scaleFactor;
-  //
-  //   if (width <= 0 || height <= 0) {
-  //     throw Exception("Invalid text dimensions: width=$width, height=$height");
-  //   }
-  //
-  //   textPainter.paint(canvas, const Offset(0, 0));
-  //
-  //   final picture = recorder.endRecording();
-  //   final img = await picture.toImage(width.toInt(), height.toInt());
-  //   final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
-  //   final buffer = byteData!.buffer.asUint8List();
-  //
-  //   return pw.MemoryImage(buffer);
-  // }
   static Future<pw.MemoryImage> _createTextImage(String text) async {
     final String displayText = text.isEmpty ? "N/A" : text;
     const double scaleFactor = 1.5;
