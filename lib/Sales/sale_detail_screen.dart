@@ -1,5 +1,6 @@
 // lib/screens/sales/sale_detail_screen.dart
 import 'package:flutter/material.dart';
+import 'package:irfan_iron_merchant_local/Sales/sale_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import '../../providers/sale_provider.dart';
@@ -994,6 +995,21 @@ class _SaleDetailScreenState extends State<SaleDetailScreen> {
               icon: const Icon(Icons.delete_outline, color: Colors.red),
               onPressed: _voidSale,
               tooltip: 'Void Sale',
+            ),
+          if (_sale!.paymentStatus != 'paid')
+            IconButton(
+              icon: const Icon(Icons.edit_outlined, color: Color(0xFF7C3AED)),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SaleScreen(existingSale: _sale!),
+                  ),
+                ).then((refreshed) {
+                  if (refreshed == true) _loadSale();
+                });
+              },
+              tooltip: 'Edit Sale',
             ),
         ],
       ),

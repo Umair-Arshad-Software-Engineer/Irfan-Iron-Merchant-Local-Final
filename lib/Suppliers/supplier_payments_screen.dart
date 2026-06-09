@@ -8,12 +8,16 @@ import '../../config/api_config.dart';
 import '../../models/supplier.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/supplier_ledger_provider.dart';
+import '../providers/lanprovider.dart';
+import '../providers/supplier_provider.dart';
 import '../services/supplierpaymenthistory.dart';
 import 'supplier_payment_dialog.dart';
 
 class SupplierPaymentsScreen extends StatefulWidget {
   final Supplier supplier;
-  const SupplierPaymentsScreen({super.key, required this.supplier});
+  final LanguageProvider languageProvider;
+
+  const SupplierPaymentsScreen({super.key, required this.supplier, required this.languageProvider});
 
   @override
   State<SupplierPaymentsScreen> createState() => _SupplierPaymentsScreenState();
@@ -36,15 +40,6 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen>
 
   late AnimationController _animCtrl;
 
-  // ── Method meta ──────────────────────────────────────────────────────────
-  static const Map<String, Map<String, dynamic>> _methodMeta = {
-    'all':    {'label': 'All',    'icon': Icons.list_alt_outlined,        'color': Color(0xFF6B7280)},
-    'cash':   {'label': 'Cash',   'icon': Icons.payments_outlined,         'color': Color(0xFF10B981)},
-    'bank':   {'label': 'Bank',   'icon': Icons.account_balance_outlined,  'color': Color(0xFF3B82F6)},
-    'cheque': {'label': 'Cheque', 'icon': Icons.receipt_long_outlined,     'color': Color(0xFFF59E0B)},
-    'slip':   {'label': 'Slip',   'icon': Icons.receipt_outlined,          'color': Color(0xFF8B5CF6)},
-  };
-
   @override
   void initState() {
     super.initState();
@@ -61,6 +56,15 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen>
   String? _getToken() {
     try { return Provider.of<AuthProvider>(context, listen: false).user?.token; } catch (_) { return null; }
   }
+
+  // ── Method meta with bilingual labels ──────────────────────────────────────────
+  Map<String, Map<String, dynamic>> _getMethodMeta(LanguageProvider lp) => {
+    'all':    {'label': lp.isEnglish ? 'All' : 'سب',    'icon': Icons.list_alt_outlined,        'color': const Color(0xFF6B7280)},
+    'cash':   {'label': lp.isEnglish ? 'Cash' : 'نقد',   'icon': Icons.payments_outlined,         'color': const Color(0xFF10B981)},
+    'bank':   {'label': lp.isEnglish ? 'Bank' : 'بینک',   'icon': Icons.account_balance_outlined,  'color': const Color(0xFF3B82F6)},
+    'cheque': {'label': lp.isEnglish ? 'Cheque' : 'چیک', 'icon': Icons.receipt_long_outlined,     'color': const Color(0xFFF59E0B)},
+    'slip':   {'label': lp.isEnglish ? 'Slip' : 'سلیپ',   'icon': Icons.receipt_outlined,          'color': const Color(0xFF8B5CF6)},
+  };
 
   Future<void> _fetchPayments() async {
     setState(() { _isLoading = true; _error = null; });
@@ -98,12 +102,14 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen>
     }
   }
 
-  Future<void> _deletePayment(Map<String, dynamic> payment) async {
+  Future<void> _deletePayment(Map<String, dynamic> payment, LanguageProvider lp) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => _DeleteDialog(payment: payment, df: _df, cf: _cf),
+      builder: (_) => _DeleteDialog(payment: payment, df: _df, cf: _cf, languageProvider: lp),
     );
     if (confirmed != true) return;
+
+    setState(() => _isLoading = true);
 
     try {
       final res = await http.delete(
@@ -116,20 +122,36 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen>
       final data = json.decode(res.body);
       if (res.statusCode == 200 && data['success'] == true) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Payment deleted successfully'),
-          backgroundColor: Color(0xFF10B981),
-        ));
-        Provider.of<SupplierLedgerProvider>(context, listen: false)
+
+        // Refresh all relevant data
+        await _fetchPayments();
+
+        // Refresh supplier ledger provider
+        await Provider.of<SupplierLedgerProvider>(context, listen: false)
             .fetchLedger(context: context, supplierId: widget.supplier.id, page: 1);
-        _fetchPayments();
+
+        // Refresh supplier details to update balance - FIX: Pass context as second argument
+        final supplierProvider = Provider.of<SupplierProvider>(context, listen: false);
+        await supplierProvider.fetchSupplierById(widget.supplier.id, context);  // ← Added context
+
+        // Refresh supplier list if needed
+        await supplierProvider.fetchSuppliers(context: context);  // ← Added context parameter
+
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(lp.isEnglish ? 'Payment deleted successfully' : 'ادائیگی کامیابی سے حذف ہوگئی'),
+          backgroundColor: const Color(0xFF10B981),
+        ));
       } else {
-        _showErr(data['message'] ?? 'Delete failed');
+        _showErr(data['message'] ?? (lp.isEnglish ? 'Delete failed' : 'حذف کرنے میں ناکامی'), lp);
       }
-    } catch (e) { _showErr('Error: $e'); }
+    } catch (e) {
+      _showErr('${lp.isEnglish ? 'Error' : 'خرابی'}: $e', lp);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
-  void _showErr(String msg) => ScaffoldMessenger.of(context)
+  void _showErr(String msg, LanguageProvider lp) => ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
 
   Future<void> _pickDateRange() async {
@@ -150,35 +172,42 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF0FDF4),
-      appBar: _buildAppBar(),
-      body: Column(
-        children: [
-          _buildStatsBar(),
-          _buildFilters(),
-          Expanded(child: _buildBody()),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final result = await showDialog<bool>(
-            context: context,
-            builder: (_) => SupplierPaymentDialog(supplier: widget.supplier),
-          );
-          if (result == true) _fetchPayments();
-        },
-        backgroundColor: const Color(0xFF10B981),
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: const Text('New Payment', style: TextStyle(fontWeight: FontWeight.w600)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        final methodMeta = _getMethodMeta(languageProvider);
+
+        return Scaffold(
+          backgroundColor: const Color(0xFFF0FDF4),
+          appBar: _buildAppBar(languageProvider),
+          body: Column(
+            children: [
+              _buildStatsBar(languageProvider),
+              _buildFilters(languageProvider, methodMeta),
+              Expanded(child: _buildBody(languageProvider, methodMeta)),
+            ],
+          ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () async {
+              final result = await showDialog<bool>(
+                context: context,
+                builder: (_) => SupplierPaymentDialog(supplier: widget.supplier, languageProvider: languageProvider),
+              );
+              if (result == true) _fetchPayments();
+            },
+            backgroundColor: const Color(0xFF10B981),
+            foregroundColor: Colors.white,
+            icon: const Icon(Icons.add),
+            label: Text(languageProvider.isEnglish ? 'New Payment' : 'نئی ادائیگی',
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+        );
+      },
     );
   }
-  Future<void> _generatePdf() async {
+
+  Future<void> _generatePdf(LanguageProvider lp) async {
     try {
-      // Show loading indicator
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -193,29 +222,31 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen>
         totalPaid: _totalPaid,
         filterMethod: _filterMethod,
         dateRange: _dateRange,
+        languageProvider: lp,
       );
 
       if (!mounted) return;
-      Navigator.pop(context); // Close loading dialog
+      Navigator.pop(context);
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('PDF generated successfully'),
-          backgroundColor: Color(0xFF10B981),
+        SnackBar(
+          content: Text(lp.isEnglish ? 'PDF generated successfully' : 'PDF کامیابی سے تیار ہوگیا'),
+          backgroundColor: const Color(0xFF10B981),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      Navigator.pop(context); // Close loading dialog
+      Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error generating PDF: $e'),
+          content: Text('${lp.isEnglish ? 'Error generating PDF' : 'PDF بنانے میں خرابی'}: $e'),
           backgroundColor: Colors.red,
         ),
       );
     }
   }
-  PreferredSizeWidget _buildAppBar() {
+
+  PreferredSizeWidget _buildAppBar(LanguageProvider lp) {
     return AppBar(
       backgroundColor: const Color(0xFF10B981),
       foregroundColor: Colors.white,
@@ -227,11 +258,10 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen>
       title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(widget.supplier.name,
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-        const Text('Payment History', style: TextStyle(fontSize: 11, color: Colors.white70)),
+        Text(lp.isEnglish ? 'Payment History' : 'ادائیگی کی تاریخ',
+            style: const TextStyle(fontSize: 11, color: Colors.white70)),
       ]),
       actions: [
-        // PDF Generation Button
-        // In your AppBar actions, replace the PDF button with this:
         PopupMenuButton<String>(
           icon: const Icon(Icons.picture_as_pdf_outlined),
           onSelected: (value) {
@@ -243,17 +273,18 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen>
                 totalPaid: _totalPaid,
                 filterMethod: _filterMethod,
                 dateRange: _dateRange,
+                languageProvider: lp,
               );
             }
           },
           itemBuilder: (context) => [
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'options',
               child: Row(
                 children: [
-                  Icon(Icons.picture_as_pdf, size: 18),
-                  SizedBox(width: 8),
-                  Text('Export PDF'),
+                  const Icon(Icons.picture_as_pdf, size: 18),
+                  const SizedBox(width: 8),
+                  Text(lp.isEnglish ? 'Export PDF' : 'PDF ایکسپورٹ کریں'),
                 ],
               ),
             ),
@@ -269,11 +300,13 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen>
               )),
           ]),
           onPressed: _pickDateRange,
+          tooltip: lp.isEnglish ? 'Select date range' : 'تاریخ کی حد منتخب کریں',
         ),
         if (_dateRange != null)
           IconButton(
             icon: const Icon(Icons.clear, size: 20),
             onPressed: () { setState(() => _dateRange = null); _fetchPayments(); },
+            tooltip: lp.isEnglish ? 'Clear filter' : 'فلٹر صاف کریں',
           ),
         const SizedBox(width: 4),
       ],
@@ -284,7 +317,7 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen>
     );
   }
 
-  Widget _buildStatsBar() {
+  Widget _buildStatsBar(LanguageProvider lp) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: const BoxDecoration(
@@ -294,22 +327,37 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen>
         ),
       ),
       child: Row(children: [
-        _statChip(icon: Icons.receipt_long_outlined, label: 'Total Payments',
-            value: '${_payments.length}', bg: Colors.white12),
+        _statChip(
+          icon: Icons.receipt_long_outlined,
+          label: lp.isEnglish ? 'Total Payments' : 'کل ادائیگیاں',
+          value: '${_payments.length}',
+          bg: Colors.white12,
+          lp: lp,
+        ),
         const SizedBox(width: 10),
-        _statChip(icon: Icons.payments_outlined, label: 'Total Paid',
-            value: 'Rs ${_cf.format(_totalPaid)}', bg: Colors.white12),
+        _statChip(
+          icon: Icons.payments_outlined,
+          label: lp.isEnglish ? 'Total Paid' : 'کل ادا شدہ',
+          value: 'Rs ${_cf.format(_totalPaid)}',
+          bg: Colors.white12,
+          lp: lp,
+        ),
         if (_dateRange != null) ...[
           const SizedBox(width: 10),
-          _statChip(icon: Icons.date_range, label: 'Date Range',
-              value: '${_df.format(_dateRange!.start)} – ${_df.format(_dateRange!.end)}',
-              bg: Colors.white24),
+          _statChip(
+            icon: Icons.date_range,
+            label: lp.isEnglish ? 'Date Range' : 'تاریخ کی حد',
+            value: '${_df.format(_dateRange!.start)} – ${_df.format(_dateRange!.end)}',
+            bg: Colors.white24,
+            lp: lp,
+          ),
         ],
       ]),
     );
   }
 
-  Widget _statChip({required IconData icon, required String label, required String value, required Color bg}) {
+  Widget _statChip({required IconData icon, required String label, required String value,
+    required Color bg, required LanguageProvider lp}) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -330,15 +378,15 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen>
     );
   }
 
-  Widget _buildFilters() {
+  Widget _buildFilters(LanguageProvider lp, Map<String, Map<String, dynamic>> methodMeta) {
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
-          children: _methodMeta.keys.map((key) {
-            final meta   = _methodMeta[key]!;
+          children: methodMeta.keys.map((key) {
+            final meta   = methodMeta[key]!;
             final sel    = _filterMethod == key;
             final color  = meta['color'] as Color;
             return Padding(
@@ -358,7 +406,8 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen>
                     const SizedBox(width: 5),
                     Text(meta['label'] as String, style: TextStyle(
                         fontSize: 12, fontWeight: sel ? FontWeight.bold : FontWeight.normal,
-                        color: sel ? color : const Color(0xFF8E8E93))),
+                        color: sel ? color : const Color(0xFF8E8E93),
+                        fontFamily: lp.fontFamily)),
                   ]),
                 ),
               ),
@@ -369,7 +418,7 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen>
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(LanguageProvider lp, Map<String, Map<String, dynamic>> methodMeta) {
     if (_isLoading) return const Center(child: CircularProgressIndicator(color: Color(0xFF10B981)));
     if (_error != null) {
       return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -378,7 +427,8 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen>
         Text(_error!, style: const TextStyle(color: Colors.red)),
         const SizedBox(height: 16),
         ElevatedButton.icon(onPressed: _fetchPayments, icon: const Icon(Icons.refresh),
-            label: const Text('Retry'), style: ElevatedButton.styleFrom(
+            label: Text(lp.isEnglish ? 'Retry' : 'دوبارہ کوشش کریں'),
+            style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF10B981), foregroundColor: Colors.white)),
       ]));
     }
@@ -390,10 +440,11 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen>
           child: const Icon(Icons.payments_outlined, size: 56, color: Color(0xFF10B981)),
         ),
         const SizedBox(height: 20),
-        const Text('No payments found',
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Color(0xFF1C1C1E))),
+        Text(lp.isEnglish ? 'No payments found' : 'کوئی ادائیگی نہیں ملی',
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Color(0xFF1C1C1E))),
         const SizedBox(height: 6),
-        Text('Tap + to record a payment', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+        Text(lp.isEnglish ? 'Tap + to record a payment' : 'ادائیگی ریکارڈ کرنے کے لیے + ٹیپ کریں',
+            style: TextStyle(fontSize: 13, color: Colors.grey[500])),
       ]));
     }
 
@@ -414,10 +465,11 @@ class _SupplierPaymentsScreenState extends State<SupplierPaymentsScreen>
             child: _PaymentCard(
               payment: _payments[i],
               df: _df, dtf: _dtf, cf: _cf,
-              methodMeta: _methodMeta,
+              methodMeta: methodMeta,
               isExpanded: isExpanded,
               onTap: () => setState(() => _expandedIndex = isExpanded ? null : i),
-              onDelete: () => _deletePayment(_payments[i]),
+              onDelete: () => _deletePayment(_payments[i], lp),
+              languageProvider: lp,
             ),
           );
         },
@@ -437,11 +489,13 @@ class _PaymentCard extends StatelessWidget {
   final bool isExpanded;
   final VoidCallback onTap;
   final VoidCallback onDelete;
+  final LanguageProvider languageProvider;
 
   const _PaymentCard({
     required this.payment, required this.df, required this.dtf, required this.cf,
     required this.methodMeta, required this.isExpanded,
     required this.onTap, required this.onDelete,
+    required this.languageProvider,
   });
 
   @override
@@ -480,7 +534,6 @@ class _PaymentCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Header row (always visible) ──
           InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(16),
@@ -488,7 +541,6 @@ class _PaymentCard extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  // Method badge
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(color: color.withOpacity(0.1),
@@ -498,7 +550,8 @@ class _PaymentCard extends StatelessWidget {
                       const SizedBox(width: 5),
                       Text((meta['label'] as String).toUpperCase(),
                           style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold,
-                              color: color, letterSpacing: 0.5)),
+                              color: color, letterSpacing: 0.5,
+                              fontFamily: languageProvider.fontFamily)),
                     ]),
                   ),
                   if (bankName != null && bankName.isNotEmpty) ...[
@@ -511,13 +564,12 @@ class _PaymentCard extends StatelessWidget {
                         Icon(Icons.account_balance_outlined, size: 11, color: Colors.grey[500]),
                         const SizedBox(width: 4),
                         Text(bankName, style: TextStyle(fontSize: 11, color: Colors.grey[600],
-                            fontWeight: FontWeight.w500),
+                            fontWeight: FontWeight.w500, fontFamily: languageProvider.fontFamily),
                             overflow: TextOverflow.ellipsis),
                       ]),
                     ),
                   ],
                   const Spacer(),
-                  // Amount chip
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(color: const Color(0xFF10B981).withOpacity(0.08),
@@ -539,17 +591,18 @@ class _PaymentCard extends StatelessWidget {
                   ),
                 ]),
                 const SizedBox(height: 10),
-                // Quick-info row
                 Row(children: [
                   Icon(Icons.calendar_today_outlined, size: 12, color: Colors.grey[400]),
                   const SizedBox(width: 4),
-                  Text(date, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                  Text(date, style: TextStyle(fontSize: 12, color: Colors.grey[600],
+                      fontFamily: languageProvider.fontFamily)),
                   if (chequeNum != null && chequeNum.isNotEmpty) ...[
                     const SizedBox(width: 12),
                     Icon(Icons.receipt_long_outlined, size: 12, color: Colors.grey[400]),
                     const SizedBox(width: 4),
-                    Text('Chq# $chequeNum', style: TextStyle(fontSize: 12, color: Colors.grey[600],
-                        fontWeight: FontWeight.w500)),
+                    Text('${languageProvider.isEnglish ? 'Chq#' : 'چیک#'} $chequeNum',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600],
+                            fontWeight: FontWeight.w500, fontFamily: languageProvider.fontFamily)),
                   ],
                   if (refNum != null && refNum.isNotEmpty) ...[
                     const SizedBox(width: 12),
@@ -561,7 +614,6 @@ class _PaymentCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis)),
                   ],
                   const Spacer(),
-                  // Expand/collapse arrow
                   AnimatedRotation(
                     turns: isExpanded ? 0.5 : 0,
                     duration: const Duration(milliseconds: 200),
@@ -573,7 +625,6 @@ class _PaymentCard extends StatelessWidget {
             ),
           ),
 
-          // ── Expanded detail panel ──
           AnimatedCrossFade(
             firstChild: const SizedBox.shrink(),
             secondChild: _buildDetailPanel(color, method, bankName, chequeNum,
@@ -597,7 +648,6 @@ class _PaymentCard extends StatelessWidget {
         border: Border.all(color: color.withOpacity(0.25)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Panel header
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
@@ -608,74 +658,71 @@ class _PaymentCard extends StatelessWidget {
           child: Row(children: [
             Icon(Icons.info_outline_rounded, size: 15, color: color),
             const SizedBox(width: 8),
-            Text('Payment Details', style: TextStyle(fontSize: 13,
-                fontWeight: FontWeight.bold, color: color)),
+            Text(languageProvider.isEnglish ? 'Payment Details' : 'ادائیگی کی تفصیلات',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color,
+                    fontFamily: languageProvider.fontFamily)),
             const Spacer(),
             Text('ID #${payment['id']}',
                 style: TextStyle(fontSize: 11, color: color.withOpacity(0.7),
-                    fontWeight: FontWeight.w500)),
+                    fontWeight: FontWeight.w500, fontFamily: languageProvider.fontFamily)),
           ]),
         ),
 
         Padding(
           padding: const EdgeInsets.all(14),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-
-            // Row 1: date + method
             Row(children: [
               Expanded(child: _detailTile(
                   icon: Icons.access_time_outlined,
-                  label: 'Transaction Date',
+                  label: languageProvider.isEnglish ? 'Transaction Date' : 'لین دین کی تاریخ',
                   value: dateTime, color: color)),
               const SizedBox(width: 12),
               Expanded(child: _detailTile(
                   icon: Icons.category_outlined,
-                  label: 'Payment Method',
+                  label: languageProvider.isEnglish ? 'Payment Method' : 'ادائیگی کا طریقہ',
                   value: _methodLabel(method),
                   valueColor: color, color: color)),
             ]),
 
-            // Bank info (bank / cheque methods)
             if (bankName != null && bankName.isNotEmpty) ...[
               const SizedBox(height: 10),
               _detailTile(icon: Icons.account_balance_outlined,
-                  label: 'Bank', value: bankName, color: color),
+                  label: languageProvider.isEnglish ? 'Bank' : 'بینک',
+                  value: bankName, color: color),
             ],
 
-            // Cheque-specific row
             if (chequeNum != null && chequeNum.isNotEmpty) ...[
               const SizedBox(height: 10),
               Row(children: [
                 Expanded(child: _detailTile(
                     icon: Icons.receipt_long_outlined,
-                    label: 'Cheque Number',
+                    label: languageProvider.isEnglish ? 'Cheque Number' : 'چیک نمبر',
                     value: chequeNum, color: color)),
                 if (chequeDate != null) ...[
                   const SizedBox(width: 12),
                   Expanded(child: _detailTile(
                       icon: Icons.event_outlined,
-                      label: 'Cheque Date',
+                      label: languageProvider.isEnglish ? 'Cheque Date' : 'چیک کی تاریخ',
                       value: chequeDate, color: color)),
                 ],
               ]),
             ],
 
-            // Reference number
             if (refNum != null && refNum.isNotEmpty) ...[
               const SizedBox(height: 10),
               _detailTile(icon: Icons.tag_outlined,
-                  label: 'Reference Number', value: refNum,
+                  label: languageProvider.isEnglish ? 'Reference Number' : 'حوالہ نمبر',
+                  value: refNum,
                   valueColor: const Color(0xFF7C3AED), color: color),
             ],
 
-            // Description
             if (desc != null && desc.isNotEmpty) ...[
               const SizedBox(height: 10),
               _detailTile(icon: Icons.notes_outlined,
-                  label: 'Description', value: desc, color: color),
+                  label: languageProvider.isEnglish ? 'Description' : 'تفصیل',
+                  value: desc, color: color),
             ],
 
-            // Amount + balance row
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
@@ -686,12 +733,12 @@ class _PaymentCard extends StatelessWidget {
               ),
               child: Row(children: [
                 Expanded(child: _amountCell(
-                    label: 'Amount Paid',
+                    label: languageProvider.isEnglish ? 'Amount Paid' : 'ادا کردہ رقم',
                     value: 'Rs ${cf.format(double.tryParse(payment['debit']?.toString() ?? '0') ?? 0)}',
                     color: const Color(0xFF10B981), bold: true)),
                 Container(width: 1, height: 36, color: const Color(0xFFE5E5EA)),
                 Expanded(child: _amountCell(
-                    label: 'Running Balance',
+                    label: languageProvider.isEnglish ? 'Running Balance' : 'چلتا بیلنس',
                     value: balance != null ? 'Rs ${cf.format(balance)}' : '—',
                     color: (balance ?? 0) > 0
                         ? const Color(0xFFEF4444)
@@ -708,11 +755,19 @@ class _PaymentCard extends StatelessWidget {
   }
 
   String _methodLabel(String method) {
-    const labels = {
-      'cash': 'Cash Payment', 'bank': 'Bank Transfer',
-      'cheque': 'Cheque Payment', 'slip': 'Pay Slip',
-    };
-    return labels[method] ?? method;
+    if (languageProvider.isEnglish) {
+      const labels = {
+        'cash': 'Cash Payment', 'bank': 'Bank Transfer',
+        'cheque': 'Cheque Payment', 'slip': 'Pay Slip',
+      };
+      return labels[method] ?? method;
+    } else {
+      const labels = {
+        'cash': 'نقد ادائیگی', 'bank': 'بینک ٹرانسفر',
+        'cheque': 'چیک ادائیگی', 'slip': 'پے سلیپ',
+      };
+      return labels[method] ?? method;
+    }
   }
 
   Widget _detailTile({required IconData icon, required String label,
@@ -728,12 +783,13 @@ class _PaymentCard extends StatelessWidget {
         Icon(icon, size: 14, color: color.withOpacity(0.6)),
         const SizedBox(width: 8),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: const TextStyle(fontSize: 10, color: Color(0xFF8E8E93),
-              fontWeight: FontWeight.w600)),
+          Text(label, style: TextStyle(fontSize: 10, color: const Color(0xFF8E8E93),
+              fontWeight: FontWeight.w600, fontFamily: languageProvider.fontFamily)),
           const SizedBox(height: 3),
           Text(value, style: TextStyle(fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: valueColor ?? const Color(0xFF1C1C1E))),
+              color: valueColor ?? const Color(0xFF1C1C1E),
+              fontFamily: languageProvider.fontFamily)),
         ])),
       ]),
     );
@@ -742,11 +798,12 @@ class _PaymentCard extends StatelessWidget {
   Widget _amountCell({required String label, required String value,
     required Color color, bool bold = false}) {
     return Column(children: [
-      Text(label, style: const TextStyle(fontSize: 10, color: Color(0xFF8E8E93),
-          fontWeight: FontWeight.w500)),
+      Text(label, style: TextStyle(fontSize: 10, color: const Color(0xFF8E8E93),
+          fontWeight: FontWeight.w500, fontFamily: languageProvider.fontFamily)),
       const SizedBox(height: 4),
       Text(value, style: TextStyle(fontSize: 14,
-          fontWeight: bold ? FontWeight.bold : FontWeight.w600, color: color)),
+          fontWeight: bold ? FontWeight.bold : FontWeight.w600, color: color,
+          fontFamily: languageProvider.fontFamily)),
     ]);
   }
 }
@@ -757,8 +814,12 @@ class _DeleteDialog extends StatelessWidget {
   final Map<String, dynamic> payment;
   final DateFormat df;
   final NumberFormat cf;
+  final LanguageProvider languageProvider;
 
-  const _DeleteDialog({required this.payment, required this.df, required this.cf});
+  const _DeleteDialog({
+    required this.payment, required this.df, required this.cf,
+    required this.languageProvider,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -766,7 +827,7 @@ class _DeleteDialog extends StatelessWidget {
     final method  = payment['payment_method'] ?? 'payment';
     final bank    = payment['bank_name'];
     final date    = payment['transaction_date'] != null
-        ? df.format(DateTime.parse(payment['transaction_date'])) : 'Unknown date';
+        ? df.format(DateTime.parse(payment['transaction_date'])) : (languageProvider.isEnglish ? 'Unknown date' : 'نامعلوم تاریخ');
 
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -778,11 +839,14 @@ class _DeleteDialog extends StatelessWidget {
           child: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
         ),
         const SizedBox(width: 10),
-        const Text('Delete Payment', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        Text(languageProvider.isEnglish ? 'Delete Payment' : 'ادائیگی حذف کریں',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
       ]),
       content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('This will reverse the ledger entry. This cannot be undone.',
-            style: TextStyle(fontSize: 14, color: Color(0xFF6B7280))),
+        Text(languageProvider.isEnglish
+            ? 'This will reverse the ledger entry. This cannot be undone.'
+            : 'یہ لیجر اندراج کو ریورس کر دے گا۔ یہ عمل واپس نہیں کیا جا سکتا۔',
+            style: const TextStyle(fontSize: 14, color: Color(0xFF6B7280))),
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(14),
@@ -801,12 +865,13 @@ class _DeleteDialog extends StatelessWidget {
       ]),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF8E8E93)))),
+            child: Text(languageProvider.isEnglish ? 'Cancel' : 'منسوخ کریں',
+                style: const TextStyle(color: Color(0xFF8E8E93)))),
         ElevatedButton(
           onPressed: () => Navigator.pop(context, true),
           style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-          child: const Text('Delete Payment'),
+          child: Text(languageProvider.isEnglish ? 'Delete Payment' : 'ادائیگی حذف کریں'),
         ),
       ],
     );

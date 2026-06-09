@@ -121,3 +121,33 @@ class UnitConversion {
     );
   }
 }
+
+
+
+extension UnitExtensions on Unit {
+  String get typeDisplayUrdu {
+    switch (type) {
+      case 'weight': return 'وزن';
+      case 'volume': return 'حجم';
+      case 'count': return 'تعداد';
+      case 'length': return 'لمبائی';
+      case 'area': return 'رقبہ';
+      case 'custom': return 'کسٹم';
+      default: return type;
+    }
+  }
+}
+
+extension UnitTypeExtensions on UnitType {
+  String get labelUrdu {
+    switch (value) {
+      case 'weight': return 'وزن';
+      case 'volume': return 'حجم';
+      case 'count': return 'تعداد';
+      case 'length': return 'لمبائی';
+      case 'area': return 'رقبہ';
+      case 'custom': return 'کسٹم';
+      default: return label;
+    }
+  }
+}

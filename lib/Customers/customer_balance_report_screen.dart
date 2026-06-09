@@ -8,10 +8,10 @@ import 'dart:convert';
 import '../../config/api_config.dart';
 import '../../models/customer.dart';
 import '../../providers/auth_provider.dart';
+import '../providers/lanprovider.dart';
 import 'customer_ledger_screen.dart';
 import 'customer_payment_dialog.dart';
 import 'customer_payments_screen.dart';
-
 
 // ── Data model ────────────────────────────────────────────────────────────────
 
@@ -71,8 +71,8 @@ class _CustomerBalanceReportScreenState
 
   // Filters
   String _search      = '';
-  String _sortBy      = 'balance_desc'; // balance_desc | balance_asc | name_asc | name_desc | debit_desc
-  String _balanceFilter = 'all';         // all | outstanding | settled | overpaid
+  String _sortBy      = 'balance_desc';
+  String _balanceFilter = 'all';
   bool   _activeOnly  = false;
 
   final _searchCtrl = TextEditingController();
@@ -80,22 +80,6 @@ class _CustomerBalanceReportScreenState
   final _cf0        = NumberFormat('#,##0');
 
   late AnimationController _animCtrl;
-
-  // Sort options
-  static const _sortOptions = [
-    {'value': 'balance_desc', 'label': 'Highest Balance'},
-    {'value': 'balance_asc',  'label': 'Lowest Balance'},
-    {'value': 'debit_desc',   'label': 'Most Purchases'},
-    {'value': 'name_asc',     'label': 'Name A–Z'},
-    {'value': 'name_desc',    'label': 'Name Z–A'},
-  ];
-
-  static const _balanceFilters = [
-    {'value': 'all',         'label': 'All Customers'},
-    {'value': 'outstanding', 'label': 'Outstanding'},
-    {'value': 'settled',     'label': 'Settled'},
-    {'value': 'overpaid',    'label': 'In Credit'},
-  ];
 
   @override
   void initState() {
@@ -117,6 +101,21 @@ class _CustomerBalanceReportScreenState
     catch (_) { return null; }
   }
 
+  List<Map<String, String>> _getSortOptions(LanguageProvider lp) => [
+    {'value': 'balance_desc', 'label': lp.isEnglish ? 'Highest Balance' : 'سب سے زیادہ بیلنس'},
+    {'value': 'balance_asc',  'label': lp.isEnglish ? 'Lowest Balance' : 'سب سے کم بیلنس'},
+    {'value': 'debit_desc',   'label': lp.isEnglish ? 'Most Purchases' : 'سب سے زیادہ خریداری'},
+    {'value': 'name_asc',     'label': lp.isEnglish ? 'Name A–Z' : 'نام A–Z'},
+    {'value': 'name_desc',    'label': lp.isEnglish ? 'Name Z–A' : 'نام Z–A'},
+  ];
+
+  List<Map<String, String>> _getBalanceFilters(LanguageProvider lp) => [
+    {'value': 'all',         'label': lp.isEnglish ? 'All Customers' : 'تمام کسٹمرز'},
+    {'value': 'outstanding', 'label': lp.isEnglish ? 'Outstanding' : 'بقایا'},
+    {'value': 'settled',     'label': lp.isEnglish ? 'Settled' : 'تصفیہ شدہ'},
+    {'value': 'overpaid',    'label': lp.isEnglish ? 'In Credit' : 'کریڈٹ میں'},
+  ];
+
   Future<void> _fetch() async {
     setState(() { _isLoading = true; _error = null; });
     try {
@@ -129,21 +128,17 @@ class _CustomerBalanceReportScreenState
       );
       final data = json.decode(res.body);
       if (res.statusCode == 200 && data['success'] == true) {
-        // Handle both cases: when data is directly a list or wrapped in an object
         List<dynamic> customersData;
 
         if (data['data'] is List) {
-          // If data['data'] is already a list
           customersData = data['data'] as List;
         } else if (data['data'] is Map) {
-          // If data['data'] is a map (object), check if it contains the list
           final mapData = data['data'] as Map<String, dynamic>;
           if (mapData.containsKey('customers') && mapData['customers'] is List) {
             customersData = mapData['customers'] as List;
           } else if (mapData.containsKey('balances') && mapData['balances'] is List) {
             customersData = mapData['balances'] as List;
           } else {
-            // If it's a map but doesn't contain a list, treat it as a single item
             customersData = [mapData];
           }
         } else {
@@ -159,7 +154,8 @@ class _CustomerBalanceReportScreenState
         _applyFilters();
         _animCtrl.forward(from: 0);
       } else {
-        setState(() { _error = data['message'] ?? 'Failed to load'; _isLoading = false; });
+        final lp = Provider.of<LanguageProvider>(context, listen: false);
+        setState(() { _error = data['message'] ?? (lp.isEnglish ? 'Failed to load' : 'لوڈ کرنے میں ناکامی'); _isLoading = false; });
       }
     } catch (e) {
       setState(() { _error = e.toString(); _isLoading = false; });
@@ -169,10 +165,8 @@ class _CustomerBalanceReportScreenState
   void _applyFilters() {
     var list = List<CustomerBalanceSummary>.from(_all);
 
-    // Active filter
     if (_activeOnly) list = list.where((c) => c.isActive).toList();
 
-    // Search
     if (_search.isNotEmpty) {
       final q = _search.toLowerCase();
       list = list.where((c) =>
@@ -181,14 +175,12 @@ class _CustomerBalanceReportScreenState
           (c.address?.toLowerCase().contains(q) ?? false)).toList();
     }
 
-    // Balance filter
     switch (_balanceFilter) {
       case 'outstanding': list = list.where((c) => c.balance > 0.01).toList();  break;
       case 'settled':     list = list.where((c) => c.balance.abs() <= 0.01).toList(); break;
       case 'overpaid':    list = list.where((c) => c.balance < -0.01).toList(); break;
     }
 
-    // Sort
     switch (_sortBy) {
       case 'balance_desc': list.sort((a, b) => b.balance.compareTo(a.balance));    break;
       case 'balance_asc':  list.sort((a, b) => a.balance.compareTo(b.balance));    break;
@@ -200,7 +192,6 @@ class _CustomerBalanceReportScreenState
     setState(() => _filtered = list);
   }
 
-  // ── Aggregate totals ──────────────────────────────────────────────────────
   double get _grandDebit   => _filtered.fold(0.0, (s, e) => s + e.totalDebit);
   double get _grandCredit  => _filtered.fold(0.0, (s, e) => s + e.totalCredit);
   double get _grandBalance => _filtered.fold(0.0, (s, e) => s + e.balance);
@@ -208,24 +199,27 @@ class _CustomerBalanceReportScreenState
   int    get _countSettled     => _filtered.where((c) => c.balance.abs() <= 0.01).length;
   int    get _countOverpaid    => _filtered.where((c) => c.balance < -0.01).length;
 
-  // ── Build ─────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FB),
-      body: Column(children: [
-        _buildHeader(),
-        _buildSummaryStrip(),
-        _buildToolbar(),
-        Expanded(child: _buildBody()),
-      ]),
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        final sortOptions = _getSortOptions(languageProvider);
+        final balanceFilters = _getBalanceFilters(languageProvider);
+
+        return Scaffold(
+          backgroundColor: const Color(0xFFF4F6FB),
+          body: Column(children: [
+            _buildHeader(languageProvider),
+            _buildSummaryStrip(languageProvider),
+            _buildToolbar(languageProvider, sortOptions, balanceFilters),
+            Expanded(child: _buildBody(languageProvider)),
+          ]),
+        );
+      },
     );
   }
 
-  // ─── Header ───────────────────────────────────────────────────────────────
-
-  Widget _buildHeader() {
+  Widget _buildHeader(LanguageProvider lp) {
     return Container(
       padding: const EdgeInsets.fromLTRB(28, 28, 28, 20),
       decoration: const BoxDecoration(
@@ -236,7 +230,6 @@ class _CustomerBalanceReportScreenState
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          // Icon
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -248,39 +241,53 @@ class _CustomerBalanceReportScreenState
           ),
           const SizedBox(width: 14),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Customer Balance Report',
-                style: TextStyle(color: Colors.white, fontSize: 20,
+            Text(lp.isEnglish ? 'Customer Balance Report' : 'کسٹمر بیلنس رپورٹ',
+                style: const TextStyle(color: Colors.white, fontSize: 20,
                     fontWeight: FontWeight.bold, letterSpacing: -0.3)),
-            Text('${_all.length} customers • as of ${DateFormat('dd MMM yyyy').format(DateTime.now())}',
-                style: TextStyle(color: Colors.white.withOpacity(0.65), fontSize: 12)),
+            Text('${_all.length} ${lp.isEnglish ? 'customers' : 'کسٹمرز'} • ${lp.isEnglish ? 'as of' : 'بمطابق'} ${DateFormat('dd MMM yyyy').format(DateTime.now())}',
+                style: TextStyle(color: Colors.white.withOpacity(0.65), fontSize: 12,
+                    fontFamily: lp.fontFamily)),
           ])),
-          // Refresh
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: Colors.white70, size: 20),
             onPressed: _fetch,
+            tooltip: lp.isEnglish ? 'Refresh' : 'تازہ کریں',
           ),
         ]),
-
         const SizedBox(height: 20),
-
-        // 3 KPI cards
         Row(children: [
-          _kpiCard(label: 'Total Purchases', value: _grandDebit,
-              icon: Icons.shopping_cart_outlined, color: const Color(0xFFEF4444)),
+          _kpiCard(
+            label: lp.isEnglish ? 'Total Purchases' : 'کل خریداری',
+            value: _grandDebit,
+            icon: Icons.shopping_cart_outlined,
+            color: const Color(0xFFEF4444),
+            lp: lp,
+          ),
           const SizedBox(width: 12),
-          _kpiCard(label: 'Total Paid', value: _grandCredit,
-              icon: Icons.payments_outlined, color: const Color(0xFF10B981)),
+          _kpiCard(
+            label: lp.isEnglish ? 'Total Paid' : 'کل ادا شدہ',
+            value: _grandCredit,
+            icon: Icons.payments_outlined,
+            color: const Color(0xFF10B981),
+            lp: lp,
+          ),
           const SizedBox(width: 12),
-          _kpiCard(label: 'Net Outstanding', value: _grandBalance,
-              icon: Icons.account_balance_wallet_outlined, color: const Color(0xFFF59E0B),
-              highlight: true),
+          _kpiCard(
+            label: lp.isEnglish ? 'Net Outstanding' : 'خالص بقایا',
+            value: _grandBalance,
+            icon: Icons.account_balance_wallet_outlined,
+            color: const Color(0xFFF59E0B),
+            highlight: true,
+            lp: lp,
+          ),
         ]),
       ]),
     );
   }
 
   Widget _kpiCard({required String label, required double value,
-    required IconData icon, required Color color, bool highlight = false}) {
+    required IconData icon, required Color color, bool highlight = false,
+    required LanguageProvider lp}) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(14),
@@ -297,39 +304,54 @@ class _CustomerBalanceReportScreenState
             Icon(icon, size: 14, color: color),
             const SizedBox(width: 5),
             Expanded(child: Text(label, style: TextStyle(fontSize: 10,
-                color: Colors.white.withOpacity(0.7), fontWeight: FontWeight.w600),
+                color: Colors.white.withOpacity(0.7), fontWeight: FontWeight.w600,
+                fontFamily: lp.fontFamily),
                 overflow: TextOverflow.ellipsis)),
           ]),
           const SizedBox(height: 8),
           Text('Rs ${_cf0.format(value)}',
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold,
-                  color: highlight ? Colors.white : Colors.white.withOpacity(0.95)),
+                  color: highlight ? Colors.white : Colors.white.withOpacity(0.95),
+                  fontFamily: lp.fontFamily),
               overflow: TextOverflow.ellipsis),
         ]),
       ),
     );
   }
 
-  // ─── Summary strip (count badges) ─────────────────────────────────────────
-
-  Widget _buildSummaryStrip() {
+  Widget _buildSummaryStrip(LanguageProvider lp) {
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Row(children: [
-        _countBadge(label: 'Showing', value: '${_filtered.length}',
-            color: const Color(0xFF4F46E5)),
+        _countBadge(
+          label: lp.isEnglish ? 'Showing' : 'دکھا رہا ہے',
+          value: '${_filtered.length}',
+          color: const Color(0xFF4F46E5),
+          lp: lp,
+        ),
         _vDivider(),
-        _countBadge(label: 'Outstanding', value: '$_countOutstanding',
-            color: const Color(0xFFEF4444)),
+        _countBadge(
+          label: lp.isEnglish ? 'Outstanding' : 'بقایا',
+          value: '$_countOutstanding',
+          color: const Color(0xFFEF4444),
+          lp: lp,
+        ),
         _vDivider(),
-        _countBadge(label: 'Settled', value: '$_countSettled',
-            color: const Color(0xFF10B981)),
+        _countBadge(
+          label: lp.isEnglish ? 'Settled' : 'تصفیہ شدہ',
+          value: '$_countSettled',
+          color: const Color(0xFF10B981),
+          lp: lp,
+        ),
         _vDivider(),
-        _countBadge(label: 'In Credit', value: '$_countOverpaid',
-            color: const Color(0xFF8B5CF6)),
+        _countBadge(
+          label: lp.isEnglish ? 'In Credit' : 'کریڈٹ میں',
+          value: '$_countOverpaid',
+          color: const Color(0xFF8B5CF6),
+          lp: lp,
+        ),
         const Spacer(),
-        // Active toggle
         GestureDetector(
           onTap: () { setState(() => _activeOnly = !_activeOnly); _applyFilters(); },
           child: AnimatedContainer(
@@ -347,9 +369,10 @@ class _CustomerBalanceReportScreenState
               Icon(Icons.verified_outlined, size: 12,
                   color: _activeOnly ? const Color(0xFF10B981) : Colors.grey),
               const SizedBox(width: 4),
-              Text('Active Only', style: TextStyle(fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: _activeOnly ? const Color(0xFF10B981) : Colors.grey[600])),
+              Text(lp.isEnglish ? 'Active Only' : 'صرف فعال',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+                      color: _activeOnly ? const Color(0xFF10B981) : Colors.grey[600],
+                      fontFamily: lp.fontFamily)),
             ]),
           ),
         ),
@@ -357,12 +380,15 @@ class _CustomerBalanceReportScreenState
     );
   }
 
-  Widget _countBadge({required String label, required String value, required Color color}) {
+  Widget _countBadge({required String label, required String value,
+    required Color color, required LanguageProvider lp}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
-        Text(label, style: TextStyle(fontSize: 10, color: Colors.grey[500], fontWeight: FontWeight.w500)),
+        Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color,
+            fontFamily: lp.fontFamily)),
+        Text(label, style: TextStyle(fontSize: 10, color: Colors.grey[500], fontWeight: FontWeight.w500,
+            fontFamily: lp.fontFamily)),
       ]),
     );
   }
@@ -370,9 +396,9 @@ class _CustomerBalanceReportScreenState
   Widget _vDivider() => Container(width: 1, height: 28,
       color: const Color(0xFFE5E5EA), margin: const EdgeInsets.symmetric(horizontal: 4));
 
-  // ─── Toolbar: search + sort + balance filter ───────────────────────────────
-
-  Widget _buildToolbar() {
+  Widget _buildToolbar(LanguageProvider lp,
+      List<Map<String, String>> sortOptions,
+      List<Map<String, String>> balanceFilters) {
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -380,7 +406,6 @@ class _CustomerBalanceReportScreenState
         const Divider(height: 1, color: Color(0xFFF0F0F5)),
         const SizedBox(height: 12),
         Row(children: [
-          // Search
           Expanded(
             child: Container(
               height: 42,
@@ -389,9 +414,10 @@ class _CustomerBalanceReportScreenState
                   borderRadius: BorderRadius.circular(10)),
               child: TextField(
                 controller: _searchCtrl,
+                style: TextStyle(fontFamily: lp.fontFamily),
                 onChanged: (v) { _search = v; _applyFilters(); },
                 decoration: InputDecoration(
-                  hintText: 'Search customer…',
+                  hintText: lp.isEnglish ? 'Search customer…' : 'کسٹمر تلاش کریں…',
                   hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
                   prefixIcon: Icon(Icons.search, color: Colors.grey[400], size: 18),
                   suffixIcon: _search.isNotEmpty
@@ -405,21 +431,20 @@ class _CustomerBalanceReportScreenState
             ),
           ),
           const SizedBox(width: 10),
-          // Sort dropdown
           _toolbarDropdown(
             icon: Icons.sort_rounded,
             value: _sortBy,
-            items: _sortOptions,
+            items: sortOptions,
             onChanged: (v) { _sortBy = v!; _applyFilters(); },
-            tooltip: 'Sort',
+            tooltip: lp.isEnglish ? 'Sort' : 'ترتیب دیں',
+            lp: lp,
           ),
         ]),
         const SizedBox(height: 10),
-        // Balance filter chips
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
-            children: _balanceFilters.map((f) {
+            children: balanceFilters.map((f) {
               final sel   = _balanceFilter == f['value'];
               final color = _chipColor(f['value']!);
               return Padding(
@@ -437,7 +462,8 @@ class _CustomerBalanceReportScreenState
                     ),
                     child: Text(f['label']!, style: TextStyle(
                         fontSize: 12, fontWeight: sel ? FontWeight.bold : FontWeight.normal,
-                        color: sel ? color : const Color(0xFF8E8E93))),
+                        color: sel ? color : const Color(0xFF8E8E93),
+                        fontFamily: lp.fontFamily)),
                   ),
                 ),
               );
@@ -461,6 +487,7 @@ class _CustomerBalanceReportScreenState
     required IconData icon, required String value,
     required List<Map<String, String>> items,
     required ValueChanged<String?> onChanged, required String tooltip,
+    required LanguageProvider lp,
   }) {
     return Container(
       height: 42,
@@ -473,7 +500,7 @@ class _CustomerBalanceReportScreenState
         child: DropdownButton<String>(
           value: value,
           icon: Icon(Icons.keyboard_arrow_down, size: 16, color: Colors.grey[500]),
-          style: const TextStyle(fontSize: 12, color: Color(0xFF1C1C1E)),
+          style: TextStyle(fontSize: 12, color: const Color(0xFF1C1C1E), fontFamily: lp.fontFamily),
           isDense: true,
           items: items.map((i) => DropdownMenuItem(
               value: i['value'],
@@ -488,9 +515,7 @@ class _CustomerBalanceReportScreenState
     );
   }
 
-  // ─── Body ──────────────────────────────────────────────────────────────────
-
-  Widget _buildBody() {
+  Widget _buildBody(LanguageProvider lp) {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator(color: Color(0xFF4F46E5)));
     }
@@ -501,7 +526,8 @@ class _CustomerBalanceReportScreenState
         Text(_error!, style: const TextStyle(color: Colors.red)),
         const SizedBox(height: 16),
         ElevatedButton.icon(onPressed: _fetch, icon: const Icon(Icons.refresh),
-            label: const Text('Retry'), style: ElevatedButton.styleFrom(
+            label: Text(lp.isEnglish ? 'Retry' : 'دوبارہ کوشش کریں'),
+            style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF4F46E5), foregroundColor: Colors.white)),
       ]));
     }
@@ -512,18 +538,19 @@ class _CustomerBalanceReportScreenState
                 shape: BoxShape.circle),
             child: const Icon(Icons.people_outline, size: 52, color: Color(0xFF4F46E5))),
         const SizedBox(height: 16),
-        const Text('No customers found',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF1C1C1E))),
+        Text(lp.isEnglish ? 'No customers found' : 'کوئی کسٹمر نہیں ملا',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF1C1C1E),
+                fontFamily: lp.fontFamily)),
         const SizedBox(height: 6),
-        Text(_search.isNotEmpty ? 'Try a different search term' : 'Adjust your filters',
-            style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+        Text(_search.isNotEmpty
+            ? (lp.isEnglish ? 'Try a different search term' : 'مختلف تلاش کی اصطلاح آزمائیں')
+            : (lp.isEnglish ? 'Adjust your filters' : 'اپنے فلٹرز کو ایڈجسٹ کریں'),
+            style: TextStyle(fontSize: 13, color: Colors.grey[500], fontFamily: lp.fontFamily)),
       ]));
     }
 
     return Column(children: [
-      // Table header
-      _buildTableHeader(),
-      // Rows
+      _buildTableHeader(lp),
       Expanded(
         child: RefreshIndicator(
           onRefresh: _fetch, color: const Color(0xFF4F46E5),
@@ -542,19 +569,19 @@ class _CustomerBalanceReportScreenState
                 )),
                 child: _CustomerRow(
                   summary: c, index: i, cf: _cf,
-                  onTap: () => _showCustomerActions(c),
+                  onTap: () => _showCustomerActions(c, lp),
+                  languageProvider: lp,
                 ),
               );
             },
           ),
         ),
       ),
-      // Grand total footer
-      _buildFooter(),
+      _buildFooter(lp),
     ]);
   }
 
-  Widget _buildTableHeader() {
+  Widget _buildTableHeader(LanguageProvider lp) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -564,11 +591,11 @@ class _CustomerBalanceReportScreenState
       ),
       child: Row(children: [
         const Expanded(flex: 1, child: Text('#', style: _hStyle)),
-        const Expanded(flex: 5, child: Text('CUSTOMER', style: _hStyle)),
-        const Expanded(flex: 3, child: Text('PURCHASES', textAlign: TextAlign.right, style: _hStyle)),
-        const Expanded(flex: 3, child: Text('PAID', textAlign: TextAlign.right, style: _hStyle)),
-        const Expanded(flex: 3, child: Text('BALANCE', textAlign: TextAlign.right, style: _hStyle)),
-        const Expanded(flex: 2, child: Text('STATUS', textAlign: TextAlign.center, style: _hStyle)),
+        Expanded(flex: 5, child: Text(lp.isEnglish ? 'CUSTOMER' : 'کسٹمر', style: _hStyle)),
+        Expanded(flex: 3, child: Text(lp.isEnglish ? 'PURCHASES' : 'خریداری', textAlign: TextAlign.right, style: _hStyle)),
+        Expanded(flex: 3, child: Text(lp.isEnglish ? 'PAID' : 'ادا شدہ', textAlign: TextAlign.right, style: _hStyle)),
+        Expanded(flex: 3, child: Text(lp.isEnglish ? 'BALANCE' : 'بیلنس', textAlign: TextAlign.right, style: _hStyle)),
+        Expanded(flex: 2, child: Text(lp.isEnglish ? 'STATUS' : 'حالت', textAlign: TextAlign.center, style: _hStyle)),
         const SizedBox(width: 36),
       ]),
     );
@@ -577,7 +604,7 @@ class _CustomerBalanceReportScreenState
   static const _hStyle = TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
       color: Colors.white70, letterSpacing: 0.8);
 
-  Widget _buildFooter() {
+  Widget _buildFooter(LanguageProvider lp) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
@@ -591,9 +618,9 @@ class _CustomerBalanceReportScreenState
       child: Row(children: [
         const Expanded(flex: 1, child: SizedBox()),
         Expanded(flex: 5, child: Text(
-            'TOTAL  (${_filtered.length} customers)',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold,
-                color: Colors.white70))),
+            '${lp.isEnglish ? 'TOTAL' : 'کل'}  (${_filtered.length} ${lp.isEnglish ? 'customers' : 'کسٹمرز'})',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold,
+                color: Colors.white70, fontFamily: lp.fontFamily))),
         Expanded(flex: 3, child: Text('Rs ${_cf.format(_grandDebit)}',
             textAlign: TextAlign.right,
             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold,
@@ -605,47 +632,69 @@ class _CustomerBalanceReportScreenState
         Expanded(flex: 3, child: Text('Rs ${_cf.format(_grandBalance)}',
             textAlign: TextAlign.right,
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold,
-                color: _grandBalance > 0 ? const Color(0xFFFBBF24) : const Color(0xFF6EE7B7)))),
+                color: _grandBalance > 0 ? const Color(0xFFFBBF24) : const Color(0xFF6EE7B7),
+                fontFamily: lp.fontFamily))),
         Expanded(flex: 2, child: Center(child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(color: Colors.white.withOpacity(0.15),
               borderRadius: BorderRadius.circular(8)),
-          child: Text('NET', style: const TextStyle(fontSize: 10,
-              fontWeight: FontWeight.bold, color: Colors.white)),
+          child: Text(lp.isEnglish ? 'NET' : 'خالص',
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
         ))),
         const SizedBox(width: 36),
       ]),
     );
   }
 
-  // ─── Actions bottom sheet ──────────────────────────────────────────────────
-
-  void _showCustomerActions(CustomerBalanceSummary c) {
+  void _showCustomerActions(CustomerBalanceSummary c, LanguageProvider lp) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _CustomerActionSheet(
-        summary: c, cf: _cf,
+        summary: c,
+        cf: _cf,
+        languageProvider: lp,
         onViewLedger: () {
           Navigator.pop(context);
-          Navigator.push(context, MaterialPageRoute(
-              builder: (_) => CustomerLedgerScreen(customer: c.toCustomer())));
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => CustomerLedgerScreen(
+                customer: c.toCustomer(),
+                languageProvider: lp,
+              ),
+            ),
+          );
         },
         onViewPayments: () {
           Navigator.pop(context);
-          Navigator.push(context, MaterialPageRoute(
-              builder: (_) => CustomerPaymentsScreen(customer: c.toCustomer())));
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => CustomerPaymentsScreen(
+                customer: c.toCustomer(),
+                languageProvider: lp,
+              ),
+            ),
+          );
         },
         onReceivePayment: () async {
           Navigator.pop(context);
           final result = await showDialog<bool>(
             context: context,
-            builder: (_) => CustomerPaymentDialog(customer: c.toCustomer()),
+            builder: (_) => CustomerPaymentDialog(
+              customer: c.toCustomer(),
+              languageProvider: lp,
+            ),
           );
           if (result == true) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                content: Text('Payment recorded'), backgroundColor: Color(0xFF10B981)));
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(lp.isEnglish ? 'Payment recorded' : 'ادائیگی ریکارڈ ہوگئی'),
+                backgroundColor: const Color(0xFF10B981),
+              ),
+            );
             _fetch();
           }
         },
@@ -661,10 +710,12 @@ class _CustomerRow extends StatelessWidget {
   final int index;
   final NumberFormat cf;
   final VoidCallback onTap;
+  final LanguageProvider languageProvider;
 
   const _CustomerRow({
     required this.summary, required this.index,
     required this.cf, required this.onTap,
+    required this.languageProvider,
   });
 
   @override
@@ -678,11 +729,13 @@ class _CustomerRow extends StatelessWidget {
         ? const Color(0xFFEF4444)
         : isOverpaid ? const Color(0xFF8B5CF6) : const Color(0xFF10B981);
 
-    final statusLabel = isOutstanding ? 'DUE'
-        : isOverpaid ? 'IN CREDIT' : 'SETTLED';
+    final statusLabel = isOutstanding
+        ? (languageProvider.isEnglish ? 'DUE' : 'واجب')
+        : isOverpaid
+        ? (languageProvider.isEnglish ? 'IN CREDIT' : 'کریڈٹ میں')
+        : (languageProvider.isEnglish ? 'SETTLED' : 'تصفیہ شدہ');
     final statusColor = balColor;
 
-    // Avatar letter color
     final avatarColors = [
       const Color(0xFF4F46E5), const Color(0xFF10B981), const Color(0xFF3B82F6),
       const Color(0xFFF59E0B), const Color(0xFF8B5CF6), const Color(0xFFEF4444),
@@ -700,14 +753,10 @@ class _CustomerRow extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
           child: Row(children: [
-            // Index
             Expanded(flex: 1, child: Text('${index + 1}',
                 style: TextStyle(fontSize: 11, color: Colors.grey[400],
-                    fontWeight: FontWeight.w500))),
-
-            // Customer info
+                    fontWeight: FontWeight.w500, fontFamily: languageProvider.fontFamily))),
             Expanded(flex: 5, child: Row(children: [
-              // Avatar
               Container(
                 width: 36, height: 36,
                 decoration: BoxDecoration(
@@ -716,19 +765,22 @@ class _CustomerRow extends StatelessWidget {
                     border: Border.all(color: avatarColor.withOpacity(0.25))),
                 child: Center(child: Text(
                     summary.name.isNotEmpty ? summary.name[0].toUpperCase() : '?',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: avatarColor))),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: avatarColor,
+                        fontFamily: languageProvider.fontFamily))),
               ),
               const SizedBox(width: 10),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(summary.name,
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
-                        color: Color(0xFF1C1C1E)), overflow: TextOverflow.ellipsis),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                        color: const Color(0xFF1C1C1E), fontFamily: languageProvider.fontFamily),
+                    overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 2),
                 Row(children: [
                   Icon(Icons.phone_outlined, size: 10, color: Colors.grey[400]),
                   const SizedBox(width: 3),
                   Flexible(child: Text(summary.contact,
-                      style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                      style: TextStyle(fontSize: 11, color: Colors.grey[500],
+                          fontFamily: languageProvider.fontFamily),
                       overflow: TextOverflow.ellipsis)),
                   if (!summary.isActive) ...[
                     const SizedBox(width: 6),
@@ -736,33 +788,27 @@ class _CustomerRow extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                       decoration: BoxDecoration(color: Colors.grey[200],
                           borderRadius: BorderRadius.circular(4)),
-                      child: Text('INACTIVE', style: TextStyle(fontSize: 9,
-                          fontWeight: FontWeight.bold, color: Colors.grey[500])),
+                      child: Text(languageProvider.isEnglish ? 'INACTIVE' : 'غیر فعال',
+                          style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold,
+                              color: Colors.grey[500], fontFamily: languageProvider.fontFamily)),
                     ),
                   ],
                 ]),
               ])),
             ])),
-
-            // Purchases (Debit)
             Expanded(flex: 3, child: Text('Rs ${cf.format(summary.totalDebit)}',
                 textAlign: TextAlign.right,
                 style: const TextStyle(fontSize: 12, color: Color(0xFFEF4444),
                     fontWeight: FontWeight.w500))),
-
-            // Paid (Credit)
             Expanded(flex: 3, child: Text('Rs ${cf.format(summary.totalCredit)}',
                 textAlign: TextAlign.right,
                 style: const TextStyle(fontSize: 12, color: Color(0xFF10B981),
                     fontWeight: FontWeight.w500))),
-
-            // Balance
             Expanded(flex: 3, child: Text(
                 '${bal < 0 ? '' : ''}Rs ${cf.format(bal.abs())}',
                 textAlign: TextAlign.right,
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: balColor))),
-
-            // Status badge
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: balColor,
+                    fontFamily: languageProvider.fontFamily))),
             Expanded(flex: 2, child: Center(child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
               decoration: BoxDecoration(
@@ -771,11 +817,10 @@ class _CustomerRow extends StatelessWidget {
                   border: Border.all(color: statusColor.withOpacity(0.3))),
               child: Text(statusLabel,
                   style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold,
-                      color: statusColor, letterSpacing: 0.3),
+                      color: statusColor, letterSpacing: 0.3,
+                      fontFamily: languageProvider.fontFamily),
                   overflow: TextOverflow.ellipsis),
             ))),
-
-            // Chevron
             SizedBox(width: 36, child: Icon(Icons.chevron_right,
                 size: 18, color: Colors.grey[300])),
           ]),
@@ -790,6 +835,7 @@ class _CustomerRow extends StatelessWidget {
 class _CustomerActionSheet extends StatelessWidget {
   final CustomerBalanceSummary summary;
   final NumberFormat cf;
+  final LanguageProvider languageProvider;
   final VoidCallback onViewLedger;
   final VoidCallback onViewPayments;
   final VoidCallback onReceivePayment;
@@ -797,7 +843,7 @@ class _CustomerActionSheet extends StatelessWidget {
   const _CustomerActionSheet({
     required this.summary, required this.cf,
     required this.onViewLedger, required this.onViewPayments,
-    required this.onReceivePayment,
+    required this.onReceivePayment, required this.languageProvider,
   });
 
   @override
@@ -812,6 +858,12 @@ class _CustomerActionSheet extends StatelessWidget {
     final paymentPercent = summary.totalDebit > 0
         ? (summary.totalCredit / summary.totalDebit).clamp(0.0, 1.0) : 0.0;
 
+    final owingLabel = isOutstanding
+        ? (languageProvider.isEnglish ? 'OWING' : 'بقایا')
+        : isOverpaid
+        ? (languageProvider.isEnglish ? 'CREDIT' : 'کریڈٹ')
+        : (languageProvider.isEnglish ? 'CLEAR' : 'صاف');
+
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -819,12 +871,10 @@ class _CustomerActionSheet extends StatelessWidget {
       ),
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        // Handle
         Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 20),
             decoration: BoxDecoration(color: const Color(0xFFE5E5EA),
                 borderRadius: BorderRadius.circular(2))),
 
-        // Customer header
         Row(children: [
           Container(
             width: 52, height: 52,
@@ -838,11 +888,11 @@ class _CustomerActionSheet extends StatelessWidget {
           const SizedBox(width: 14),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(summary.name,
-                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold,
-                    color: Color(0xFF1C1C1E))),
-            Text(summary.contact, style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold,
+                    color: const Color(0xFF1C1C1E), fontFamily: languageProvider.fontFamily)),
+            Text(summary.contact, style: TextStyle(fontSize: 13, color: Colors.grey[500],
+                fontFamily: languageProvider.fontFamily)),
           ])),
-          // Balance chip
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
@@ -850,23 +900,24 @@ class _CustomerActionSheet extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: balColor.withOpacity(0.3))),
             child: Column(children: [
-              Text(isOutstanding ? 'OWING' : isOverpaid ? 'CREDIT' : 'CLEAR',
+              Text(owingLabel,
                   style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: balColor,
-                      letterSpacing: 0.5)),
+                      letterSpacing: 0.5, fontFamily: languageProvider.fontFamily)),
               const SizedBox(height: 2),
               Text('Rs ${cf.format(bal.abs())}',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: balColor)),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: balColor,
+                      fontFamily: languageProvider.fontFamily)),
             ]),
           ),
         ]),
 
         const SizedBox(height: 20),
 
-        // Payment progress bar
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('Payment Progress',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[600])),
+            Text(languageProvider.isEnglish ? 'Payment Progress' : 'ادائیگی کی پیشرفت',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[600],
+                    fontFamily: languageProvider.fontFamily)),
             Text('${(paymentPercent * 100).toStringAsFixed(1)}%',
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold,
                     color: Color(0xFF4F46E5))),
@@ -884,55 +935,74 @@ class _CustomerActionSheet extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('Paid: Rs ${cf.format(summary.totalCredit)}',
-                style: TextStyle(fontSize: 11, color: Colors.grey[500])),
-            Text('Total: Rs ${cf.format(summary.totalDebit)}',
-                style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+            Text('${languageProvider.isEnglish ? 'Paid' : 'ادا شدہ'}: Rs ${cf.format(summary.totalCredit)}',
+                style: TextStyle(fontSize: 11, color: Colors.grey[500], fontFamily: languageProvider.fontFamily)),
+            Text('${languageProvider.isEnglish ? 'Total' : 'کل'}: Rs ${cf.format(summary.totalDebit)}',
+                style: TextStyle(fontSize: 11, color: Colors.grey[500], fontFamily: languageProvider.fontFamily)),
           ]),
         ]),
 
         const SizedBox(height: 20),
 
-        // 3-column stats
         Row(children: [
-          _sheetStat('Total Purchases', 'Rs ${cf.format(summary.totalDebit)}',
-              const Color(0xFFEF4444), Icons.shopping_cart_outlined),
+          _sheetStat(
+            languageProvider.isEnglish ? 'Total Purchases' : 'کل خریداری',
+            'Rs ${cf.format(summary.totalDebit)}',
+            const Color(0xFFEF4444), Icons.shopping_cart_outlined,
+            languageProvider,
+          ),
           const SizedBox(width: 10),
-          _sheetStat('Total Paid', 'Rs ${cf.format(summary.totalCredit)}',
-              const Color(0xFF10B981), Icons.payments_outlined),
+          _sheetStat(
+            languageProvider.isEnglish ? 'Total Paid' : 'کل ادا شدہ',
+            'Rs ${cf.format(summary.totalCredit)}',
+            const Color(0xFF10B981), Icons.payments_outlined,
+            languageProvider,
+          ),
           const SizedBox(width: 10),
-          _sheetStat('Net Balance', 'Rs ${cf.format(bal.abs())}',
-              balColor, Icons.account_balance_wallet_outlined),
+          _sheetStat(
+            languageProvider.isEnglish ? 'Net Balance' : 'خالص بیلنس',
+            'Rs ${cf.format(bal.abs())}',
+            balColor, Icons.account_balance_wallet_outlined,
+            languageProvider,
+          ),
         ]),
 
         const SizedBox(height: 20),
         const Divider(color: Color(0xFFF0F0F5)),
         const SizedBox(height: 12),
-
-        // Action buttons
         if (isOutstanding)
           _actionBtn(
-            icon: Icons.payments_outlined, label: 'Receive Payment',
-            sub: 'Record payment from ${summary.name}',
-            color: const Color(0xFF10B981), onTap: onReceivePayment,
+            icon: Icons.payments_outlined,
+            label: languageProvider.isEnglish ? 'Receive Payment' : 'ادائیگی وصول کریں',
+            sub: languageProvider.isEnglish
+                ? 'Record payment from ${summary.name}'
+                : '${summary.name} سے ادائیگی ریکارڈ کریں',
+            color: const Color(0xFF10B981),
+            onTap: onReceivePayment,
+            lp: languageProvider,         // ← fix
           ),
         const SizedBox(height: 10),
         Row(children: [
           Expanded(child: _smallActionBtn(
               icon: Icons.account_balance_wallet_outlined,
-              label: 'View Ledger', color: const Color(0xFF4F46E5),
-              onTap: onViewLedger)),
+              label: languageProvider.isEnglish ? 'View Ledger' : 'لیجر دیکھیں',
+              color: const Color(0xFF4F46E5),
+              onTap: onViewLedger,
+              lp: languageProvider)),     // ← fix
           const SizedBox(width: 10),
           Expanded(child: _smallActionBtn(
               icon: Icons.history_outlined,
-              label: 'Payments', color: const Color(0xFF3B82F6),
-              onTap: onViewPayments)),
+              label: languageProvider.isEnglish ? 'Payments' : 'ادائیگیاں',
+              color: const Color(0xFF3B82F6),
+              onTap: onViewPayments,
+              lp: languageProvider)),     // ← fix
         ]),
       ]),
     );
   }
 
-  Widget _sheetStat(String label, String value, Color color, IconData icon) {
+  Widget _sheetStat(String label, String value, Color color, IconData icon,
+      LanguageProvider lp) {
     return Expanded(child: Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -944,18 +1014,21 @@ class _CustomerActionSheet extends StatelessWidget {
           Icon(icon, size: 12, color: color),
           const SizedBox(width: 4),
           Expanded(child: Text(label, style: TextStyle(fontSize: 10,
-              color: color.withOpacity(0.8), fontWeight: FontWeight.w600),
+              color: color.withOpacity(0.8), fontWeight: FontWeight.w600,
+              fontFamily: lp.fontFamily),
               overflow: TextOverflow.ellipsis)),
         ]),
         const SizedBox(height: 6),
-        Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color),
+        Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color,
+            fontFamily: lp.fontFamily),
             overflow: TextOverflow.ellipsis),
       ]),
     ));
   }
 
   Widget _actionBtn({required IconData icon, required String label,
-    required String sub, required Color color, required VoidCallback onTap}) {
+    required String sub, required Color color, required VoidCallback onTap,
+    required LanguageProvider lp}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -971,7 +1044,8 @@ class _CustomerActionSheet extends StatelessWidget {
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(label, style: const TextStyle(color: Colors.white, fontSize: 14,
                 fontWeight: FontWeight.bold)),
-            Text(sub, style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 11)),
+            Text(sub, style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 11,
+                fontFamily: lp.fontFamily)),
           ])),
           const Icon(Icons.arrow_forward_ios, color: Colors.white70, size: 14),
         ]),
@@ -980,7 +1054,7 @@ class _CustomerActionSheet extends StatelessWidget {
   }
 
   Widget _smallActionBtn({required IconData icon, required String label,
-    required Color color, required VoidCallback onTap}) {
+    required Color color, required VoidCallback onTap, required LanguageProvider lp}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -992,7 +1066,8 @@ class _CustomerActionSheet extends StatelessWidget {
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(icon, size: 16, color: color),
           const SizedBox(width: 7),
-          Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color)),
+          Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color,
+              fontFamily: lp.fontFamily)),
         ]),
       ),
     );

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../config/api_config.dart';
 import '../../providers/product_provider.dart';
 import '../../models/product_model.dart';
+import '../providers/lanprovider.dart';
 
 class BuildBomScreen extends StatefulWidget {
   const BuildBomScreen({super.key});
@@ -63,7 +64,11 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
       }
     } catch (e) {
       setState(() => _isLoading = false);
-      _snack('Error loading BOM products: $e', isError: true);
+      final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+      _snack(languageProvider.isEnglish
+          ? 'Error loading BOM products: $e'
+          : 'BOM پروڈکٹس لوڈ کرنے میں خرابی: $e',
+          isError: true);
     }
   }
 
@@ -87,7 +92,11 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
         setState(() => _componentStock = stockMap);
       }
     } catch (e) {
-      _snack('Could not load component stock: $e', isError: true);
+      final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+      _snack(languageProvider.isEnglish
+          ? 'Could not load component stock: $e'
+          : 'جزو اسٹاک لوڈ نہیں کر سکے: $e',
+          isError: true);
     } finally {
       setState(() => _loadingStock = false);
     }
@@ -122,7 +131,7 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
     if (_selected?.bomComponents == null) return [];
     return _selected!.bomComponents!.map((c) {
       final needed    = c.quantity * _qty;
-      final available = _componentStock[c.productId] ?? 0.0;  // ← use live stock
+      final available = _componentStock[c.productId] ?? 0.0;
       return _ComponentCheck(
         name:      c.productName,
         unit:      c.unit,
@@ -138,20 +147,26 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
           _componentChecks.every((c) => c.hasEnough);
 
   Future<void> _buildBom() async {
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+
     debugPrint('========== BUILD BOM STARTED ==========');
 
-    // Step 1: Validate form
-    debugPrint('Step 1: Validating form...');
     if (!_formKey.currentState!.validate()) {
       debugPrint('❌ Form validation failed');
-      _snack('Please fill all required fields', isError: true);
+      _snack(languageProvider.isEnglish
+          ? 'Please fill all required fields'
+          : 'براہ کرم تمام ضروری فیلڈز بھریں',
+          isError: true);
       return;
     }
     debugPrint('✅ Form validation passed');
 
     if (_selected == null) {
       debugPrint('❌ No BOM product selected');
-      _snack('Please select a BOM product', isError: true);
+      _snack(languageProvider.isEnglish
+          ? 'Please select a BOM product'
+          : 'براہ کرم ایک BOM پروڈکٹ منتخب کریں',
+          isError: true);
       return;
     }
     debugPrint('✅ Selected product: ${_selected!.itemName} (ID: ${_selected!.id})');
@@ -159,8 +174,6 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
     setState(() => _isBuilding = true);
 
     try {
-      // Step 2: Prepare request data
-      debugPrint('Step 2: Preparing request data...');
       final qty = _qty;
       final buildDateStr = _buildDate.toIso8601String().substring(0, 10);
       final notes = _notesCtrl.text.isEmpty ? null : _notesCtrl.text;
@@ -168,26 +181,15 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
       debugPrint('  - Quantity: $qty');
       debugPrint('  - Build Date: $buildDateStr');
       debugPrint('  - Notes: ${notes ?? "(empty)"}');
-      debugPrint('  - Selected Product ID: ${_selected!.id}');
-      debugPrint('  - BOM Components count: ${_selected!.bomComponents?.length ?? 0}');
 
-      // Step 3: Build request body
       final body = jsonEncode({
         'quantity': qty,
         'build_date': buildDateStr,
         'notes': notes,
       });
-      debugPrint('Step 3: Request body prepared');
-      debugPrint('  Body: $body');
 
-      // Step 4: Build URI
       final uri = Uri.parse('${ApiConfig.baseUrl}/products/bom/${_selected!.id}/build');
-      debugPrint('Step 4: Request URI created');
-      debugPrint('  URI: $uri');
-      debugPrint('  Base URL: ${ApiConfig.baseUrl}');
 
-      // Step 5: Make HTTP request
-      debugPrint('Step 5: Sending HTTP POST request...');
       final stopwatch = Stopwatch()..start();
       final res = await http.post(
         uri,
@@ -198,27 +200,16 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
       debugPrint('  Response received in ${stopwatch.elapsedMilliseconds}ms');
       debugPrint('  Status Code: ${res.statusCode}');
 
-      // Step 6: Parse response
-      debugPrint('Step 6: Parsing response body...');
-      debugPrint('  Raw response: ${res.body}');
-
       final data = jsonDecode(res.body);
-      debugPrint('  Parsed data: $data');
 
-      // Step 7: Check success
-      debugPrint('Step 7: Checking success flag...');
       if (data['success'] == true) {
         debugPrint('✅ Build successful!');
 
-        // Step 8: Show success message
-        final successMsg = 'Built ${_numFormat.format(qty)} × ${_selected!.itemName}  |  '
-            'Date: ${_dateFmt.format(_buildDate)}  |  '
-            'PKR ${_numFormat.format(_buildAmount)}';
-        debugPrint('  Success message: $successMsg');
+        final successMsg = languageProvider.isEnglish
+            ? 'Built ${_numFormat.format(qty)} × ${_selected!.itemName}  |  Date: ${_dateFmt.format(_buildDate)}  |  PKR ${_numFormat.format(_buildAmount)}'
+            : '${_numFormat.format(qty)} × ${_selected!.itemName} تیار کیا گیا  |  تاریخ: ${_dateFmt.format(_buildDate)}  |  PKR ${_numFormat.format(_buildAmount)}';
         _snack(successMsg);
 
-        // Step 9: Reload products
-        debugPrint('Step 9: Reloading products to refresh stock...');
         try {
           await Provider.of<ProductProvider>(context, listen: false).fetchProducts(refresh: true);
           debugPrint('✅ Products reloaded successfully');
@@ -226,44 +217,41 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
           debugPrint('⚠️ Error reloading products: $e');
         }
 
-        // Step 10: Reset form
-        debugPrint('Step 10: Resetting form...');
         _formKey.currentState?.reset();
         setState(() {
           _selected = null;
           _buildDate = DateTime.now();
           _qtyCtrl.text = '1';
           _notesCtrl.clear();
-          _componentStock.clear(); // Clear stock map as well
+          _componentStock.clear();
         });
         debugPrint('✅ Form reset complete');
 
       } else {
-        // Build failed
-        final errorMsg = data['message'] ?? 'Build failed';
+        final errorMsg = data['message'] ?? (languageProvider.isEnglish ? 'Build failed' : 'تیاری ناکام ہوگئی');
         debugPrint('❌ Build failed: $errorMsg');
-        debugPrint('  Full response data: $data');
         _snack(errorMsg, isError: true);
       }
 
     } catch (e, stackTrace) {
-      // Step: Handle errors
       debugPrint('❌❌❌ EXCEPTION CAUGHT ❌❌❌');
       debugPrint('  Error: $e');
       debugPrint('  Stack trace: $stackTrace');
 
-      // Check for specific error types
       if (e is http.ClientException) {
-        debugPrint('  Network error - check internet connection or server availability');
-        _snack('Network error: Could not connect to server. Check your connection.', isError: true);
+        _snack(languageProvider.isEnglish
+            ? 'Network error: Could not connect to server. Check your connection.'
+            : 'نیٹورک خرابی: سرور سے منسلک نہیں ہو سکتا۔ اپنا کنکشن چیک کریں۔',
+            isError: true);
       } else if (e is FormatException) {
-        debugPrint('  JSON parsing error - unexpected response format');
-        _snack('Server response format error. Please contact support.', isError: true);
+        _snack(languageProvider.isEnglish
+            ? 'Server response format error. Please contact support.'
+            : 'سرور ریسپانس فارمیٹ خرابی۔ براہ کرم سپورٹ سے رابطہ کریں۔',
+            isError: true);
       } else {
-        _snack('Error: $e', isError: true);
+        _snack('${languageProvider.isEnglish ? 'Error' : 'خرابی'}: $e', isError: true);
       }
     } finally {
-      debugPrint('Step final: Cleaning up - setting _isBuilding = false');
       setState(() => _isBuilding = false);
       debugPrint('========== BUILD BOM COMPLETED ==========\n');
     }
@@ -285,81 +273,88 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFC),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.close, color: Color(0xFF2D3142)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text('Build BOM',
-            style: TextStyle(
-                color: Color(0xFF2D3142), fontWeight: FontWeight.bold)),
-        actions: [
-          TextButton(
-            onPressed: (_isBuilding || !_canBuild) ? null : _buildBom,
-            child: Text(
-              'Build',
-              style: TextStyle(
-                color: (_isBuilding || !_canBuild)
-                    ? Colors.grey
-                    : const Color(0xFF7C3AED),
-                fontWeight: FontWeight.w600,
-                fontSize: 16,
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        return Scaffold(
+          backgroundColor: const Color(0xFFFAFAFC),
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.close, color: Color(0xFF2D3142)),
+              onPressed: () => Navigator.pop(context),
+            ),
+            title: Text(
+              languageProvider.isEnglish ? 'Build BOM' : 'BOM تیار کریں',
+              style: const TextStyle(
+                  color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
+            ),
+            actions: [
+              TextButton(
+                onPressed: (_isBuilding || !_canBuild) ? null : _buildBom,
+                child: Text(
+                  languageProvider.isEnglish ? 'Build' : 'تیار کریں',
+                  style: TextStyle(
+                    color: (_isBuilding || !_canBuild)
+                        ? Colors.grey
+                        : const Color(0xFF7C3AED),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          body: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildSelectorSection(languageProvider),
+                  const SizedBox(height: 20),
+                  _buildQtyDateSection(languageProvider),
+                  const SizedBox(height: 20),
+                  if (_selected != null) ...[
+                    _buildSummaryCard(languageProvider),
+                    const SizedBox(height: 20),
+                    _buildComponentsSection(languageProvider),
+                    const SizedBox(height: 20),
+                  ],
+                  _buildNotesSection(languageProvider),
+                  const SizedBox(height: 32),
+                  _buildButton(languageProvider),
+                ],
               ),
             ),
           ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildSelectorSection(),
-              const SizedBox(height: 20),
-              _buildQtyDateSection(),
-              const SizedBox(height: 20),
-              if (_selected != null) ...[
-                _buildSummaryCard(),
-                const SizedBox(height: 20),
-                _buildComponentsSection(),
-                const SizedBox(height: 20),
-              ],
-              _buildNotesSection(),
-              const SizedBox(height: 32),
-              _buildButton(),
-            ],
-          ),
-        ),
-      ),
+        );
+      },
     );
   }
 
   // ── Section widgets ──────────────────────────────────────────────
 
-  Widget _buildSelectorSection() {
+  Widget _buildSelectorSection(LanguageProvider languageProvider) {
     return _card(
-      'Select BOM Product',
+      languageProvider.isEnglish ? 'Select BOM Product' : 'BOM پروڈکٹ منتخب کریں',
+      languageProvider,
       child: DropdownButtonFormField<ProductModel>(
         value: _selected,
         isExpanded: true,
-        decoration: const InputDecoration(
-          labelText: 'BOM Product *',
-          border: OutlineInputBorder(),
-          prefixIcon: Icon(Icons.inventory_2),
+        decoration: InputDecoration(
+          labelText: languageProvider.isEnglish ? 'BOM Product *' : 'BOM پروڈکٹ *',
+          border: const OutlineInputBorder(),
+          prefixIcon: const Icon(Icons.inventory_2),
         ),
         items: _bomProducts.map((p) {
           return DropdownMenuItem<ProductModel>(
             value: p,
             child: Text(
-              '${p.itemName}  •  PKR ${_numFormat.format(p.salePrice)}/${p.unit?.symbol ?? 'unit'}',
+              '${p.itemName}  •  PKR ${_numFormat.format(p.salePrice)}/${p.unit?.symbol ?? (languageProvider.isEnglish ? 'unit' : 'یونٹ')}',
               overflow: TextOverflow.ellipsis,
             ),
           );
@@ -368,53 +363,59 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
           setState(() {
             _selected = v;
           });
-          // Add this line to fetch stock when product is selected
           if (v != null) {
             _fetchComponentStock(v);
           }
         },
-        validator: (v) => v == null ? 'Please select a BOM product' : null,
+        validator: (v) => v == null
+            ? (languageProvider.isEnglish ? 'Please select a BOM product' : 'براہ کرم ایک BOM پروڈکٹ منتخب کریں')
+            : null,
       ),
     );
   }
 
-  Widget _buildQtyDateSection() {
+  Widget _buildQtyDateSection(LanguageProvider languageProvider) {
     return _card(
-      'Build Details',
+      languageProvider.isEnglish ? 'Build Details' : 'تیاری کی تفصیلات',
+      languageProvider,
       child: Column(
         children: [
           TextFormField(
             controller: _qtyCtrl,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Quantity to Build *',
+            style: TextStyle(fontFamily: languageProvider.fontFamily),
+            decoration: InputDecoration(
+              labelText: languageProvider.isEnglish ? 'Quantity to Build *' : 'تیار کرنے کی مقدار *',
               hintText: '1',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.add_box),
+              border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.add_box),
             ),
             validator: (v) {
-              if (v == null || v.isEmpty) return 'Quantity is required';
+              if (v == null || v.isEmpty) {
+                return languageProvider.isEnglish ? 'Quantity is required' : 'مقدار ضروری ہے';
+              }
               final d = double.tryParse(v);
-              if (d == null || d <= 0) return 'Enter a valid quantity';
+              if (d == null || d <= 0) {
+                return languageProvider.isEnglish ? 'Enter a valid quantity' : 'ایک درست مقدار درج کریں';
+              }
               return null;
             },
           ),
           const SizedBox(height: 16),
-          // Date picker row
           InkWell(
             onTap: _pickDate,
             borderRadius: BorderRadius.circular(8),
             child: InputDecorator(
-              decoration: const InputDecoration(
-                labelText: 'Build Date',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.calendar_today),
+              decoration: InputDecoration(
+                labelText: languageProvider.isEnglish ? 'Build Date' : 'تیاری کی تاریخ',
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.calendar_today),
               ),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(_dateFmt.format(_buildDate),
-                        style: const TextStyle(fontSize: 15)),
+                        style: TextStyle(fontSize: 15, fontFamily: languageProvider.fontFamily)),
                   ),
                   if (_isSameDay(_buildDate, DateTime.now()))
                     Container(
@@ -424,11 +425,13 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
                         color: const Color(0xFF7C3AED).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Text('Today',
-                          style: TextStyle(
-                              color: Color(0xFF7C3AED),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600)),
+                      child: Text(
+                        languageProvider.isEnglish ? 'Today' : 'آج',
+                        style: const TextStyle(
+                            color: Color(0xFF7C3AED),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600),
+                      ),
                     ),
                   const SizedBox(width: 8),
                   Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
@@ -441,7 +444,7 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
     );
   }
 
-  Widget _buildSummaryCard() {
+  Widget _buildSummaryCard(LanguageProvider languageProvider) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -455,22 +458,36 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Build Summary',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16)),
+          Text(
+            languageProvider.isEnglish ? 'Build Summary' : 'تیاری کا خلاصہ',
+            style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 16),
+          ),
           const SizedBox(height: 12),
-          _summaryRow('Build Date', _dateFmt.format(_buildDate)),
-          _summaryRow('Sale Rate / unit',
-              'PKR ${_numFormat.format(_selected!.salePrice)}'),
-          _summaryRow('BOM Cost / unit',
-              'PKR ${_numFormat.format(_selected!.bomTotalCost ?? 0)}'),
-          _summaryRow('Quantity', _numFormat.format(_qty)),
+          _summaryRow(
+              languageProvider.isEnglish ? 'Build Date' : 'تیاری کی تاریخ',
+              _dateFmt.format(_buildDate)
+          ),
+          _summaryRow(
+              languageProvider.isEnglish ? 'Sale Rate / unit' : 'فروخت کی شرح / یونٹ',
+              'PKR ${_numFormat.format(_selected!.salePrice)}'
+          ),
+          _summaryRow(
+              languageProvider.isEnglish ? 'BOM Cost / unit' : 'BOM لاگت / یونٹ',
+              'PKR ${_numFormat.format(_selected!.bomTotalCost ?? 0)}'
+          ),
+          _summaryRow(
+              languageProvider.isEnglish ? 'Quantity' : 'مقدار',
+              _numFormat.format(_qty)
+          ),
           const Divider(color: Colors.white38, height: 20),
-          _summaryRow('Total Build Amount',
+          _summaryRow(
+              languageProvider.isEnglish ? 'Total Build Amount' : 'کل تیاری کی رقم',
               'PKR ${_numFormat.format(_buildAmount)}',
-              bold: true, fontSize: 16),
+              bold: true, fontSize: 16
+          ),
         ],
       ),
     );
@@ -497,12 +514,13 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
     );
   }
 
-  Widget _buildComponentsSection() {
+  Widget _buildComponentsSection(LanguageProvider languageProvider) {
     final checks = _componentChecks;
     final allOk  = checks.every((c) => c.hasEnough);
 
     return _card(
-      'Required Components',
+      languageProvider.isEnglish ? 'Required Components' : 'مطلوبہ اجزاء',
+      languageProvider,
       trailing: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
@@ -512,7 +530,9 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
-          allOk ? 'All available' : 'Insufficient stock',
+          allOk
+              ? (languageProvider.isEnglish ? 'All available' : 'سب دستیاب')
+              : (languageProvider.isEnglish ? 'Insufficient stock' : 'ناکافی اسٹاک'),
           style: TextStyle(
             color: allOk ? const Color(0xFF10B981) : Colors.red,
             fontSize: 12,
@@ -554,7 +574,7 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
                           style: const TextStyle(
                               fontWeight: FontWeight.w600)),
                       Text(
-                        '${_numFormat.format(c.needed)} ${c.unit} needed',
+                        '${_numFormat.format(c.needed)} ${c.unit} ${languageProvider.isEnglish ? 'needed' : 'درکار'}',
                         style: const TextStyle(
                             fontSize: 12, color: Colors.grey),
                       ),
@@ -565,7 +585,7 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      'Available',
+                      languageProvider.isEnglish ? 'Available' : 'دستیاب',
                       style: TextStyle(
                           fontSize: 10, color: Colors.grey[500]),
                     ),
@@ -588,22 +608,26 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
     );
   }
 
-  Widget _buildNotesSection() {
+  Widget _buildNotesSection(LanguageProvider languageProvider) {
     return _card(
-      'Notes (optional)',
+      languageProvider.isEnglish ? 'Notes (optional)' : 'نوٹس (اختیاری)',
+      languageProvider,
       child: TextFormField(
         controller: _notesCtrl,
         maxLines: 2,
-        decoration: const InputDecoration(
-          hintText: 'Any notes about this build...',
-          border: OutlineInputBorder(),
-          prefixIcon: Icon(Icons.notes),
+        style: TextStyle(fontFamily: languageProvider.fontFamily),
+        decoration: InputDecoration(
+          hintText: languageProvider.isEnglish
+              ? 'Any notes about this build...'
+              : 'اس تیاری کے بارے میں کوئی نوٹس...',
+          border: const OutlineInputBorder(),
+          prefixIcon: const Icon(Icons.notes),
         ),
       ),
     );
   }
 
-  Widget _buildButton() {
+  Widget _buildButton(LanguageProvider languageProvider) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
@@ -616,7 +640,9 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
                 color: Colors.white, strokeWidth: 2))
             : const Icon(Icons.build, color: Colors.white),
         label: Text(
-          _isBuilding ? 'Building...' : 'Build Item',
+          _isBuilding
+              ? (languageProvider.isEnglish ? 'Building...' : 'تیار ہو رہا ہے...')
+              : (languageProvider.isEnglish ? 'Build Item' : 'آئٹم تیار کریں'),
           style: const TextStyle(color: Colors.white, fontSize: 16),
         ),
         style: ElevatedButton.styleFrom(
@@ -633,7 +659,7 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
 
   // ── Shared card wrapper ──────────────────────────────────────────
 
-  Widget _card(String title,
+  Widget _card(String title, LanguageProvider languageProvider,
       {required Widget child, Widget? trailing}) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -649,10 +675,11 @@ class _BuildBomScreenState extends State<BuildBomScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(title,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF2D3142))),
+                      color: const Color(0xFF2D3142),
+                      fontFamily: languageProvider.fontFamily)),
               if (trailing != null) trailing,
             ],
           ),

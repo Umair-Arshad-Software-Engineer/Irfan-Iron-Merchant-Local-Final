@@ -8,6 +8,7 @@ import '../../providers/subcategory_provider.dart';
 import '../../providers/unit_provider.dart';
 import '../../providers/supplier_provider.dart';
 import '../../models/product_model.dart';
+import '../providers/lanprovider.dart';
 import 'bom_component_selector.dart';
 import 'bom_components_list.dart';
 
@@ -124,35 +125,37 @@ class _FractionInputFieldState extends State<FractionInputField> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Insert fraction',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _fractionButtons.entries.map((e) {
-                return ActionChip(
-                  label: Text(e.key,
-                      style: TextStyle(fontSize: widget.fontSize * 1.2)),
-                  backgroundColor: const Color(0xFFEDE9FB),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _insertFraction(e.key);
-                  },
-                  tooltip: '${e.key} = ${e.value}',
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 8),
-          ],
+      builder: (_) => Consumer<LanguageProvider>(
+        builder: (context, languageProvider, __) => Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                languageProvider.isEnglish ? 'Insert fraction' : 'کسر داخل کریں',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _fractionButtons.entries.map((e) {
+                  return ActionChip(
+                    label: Text(e.key,
+                        style: TextStyle(fontSize: widget.fontSize * 1.2)),
+                    backgroundColor: const Color(0xFFEDE9FB),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _insertFraction(e.key);
+                    },
+                    tooltip: '${e.key} = ${e.value}',
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );
@@ -160,44 +163,48 @@ class _FractionInputFieldState extends State<FractionInputField> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        TextFormField(
-          controller: widget.controller,
-          style: TextStyle(fontSize: widget.fontSize),
-          validator: widget.validator,
-          decoration: InputDecoration(
-            labelText: widget.labelText,
-            labelStyle: TextStyle(fontSize: widget.labelFontSize),
-            hintText: widget.hintText ?? 'e.g. 2½ or 2 1/2',
-            hintStyle: TextStyle(fontSize: widget.fontSize * 0.9),
-            border: const OutlineInputBorder(),
-            suffixIcon: IconButton(
-              icon: const Icon(Icons.calculate),
-              onPressed: _showFractionPopup,
-              tooltip: 'Insert fraction',
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextFormField(
+              controller: widget.controller,
+              style: TextStyle(fontSize: widget.fontSize, fontFamily: languageProvider.fontFamily),
+              validator: widget.validator,
+              decoration: InputDecoration(
+                labelText: widget.labelText,
+                labelStyle: TextStyle(fontSize: widget.labelFontSize, fontFamily: languageProvider.fontFamily),
+                hintText: widget.hintText ?? (languageProvider.isEnglish ? 'e.g. 2½ or 2 1/2' : 'مثال: 2½ یا 2 1/2'),
+                hintStyle: TextStyle(fontSize: widget.fontSize * 0.9, fontFamily: languageProvider.fontFamily),
+                border: const OutlineInputBorder(),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.calculate),
+                  onPressed: _showFractionPopup,
+                  tooltip: languageProvider.isEnglish ? 'Insert fraction' : 'کسر داخل کریں',
+                ),
+              ),
+              onChanged: widget.onChanged,
             ),
-          ),
-          onChanged: widget.onChanged,
-        ),
-        const SizedBox(height: 6),
-        Wrap(
-          spacing: 6,
-          runSpacing: 4,
-          children: _fractionButtons.entries.map((e) {
-            return ActionChip(
-              label: Text(e.key,
-                  style: TextStyle(fontSize: widget.fontSize * 1.1)),
-              backgroundColor: const Color(0xFFEDE9FB),
-              onPressed: () => _insertFraction(e.key),
-              tooltip: '${e.key} = ${e.value}',
-              padding: EdgeInsets.zero,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            );
-          }).toList(),
-        ),
-      ],
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: _fractionButtons.entries.map((e) {
+                return ActionChip(
+                  label: Text(e.key,
+                      style: TextStyle(fontSize: widget.fontSize * 1.1)),
+                  backgroundColor: const Color(0xFFEDE9FB),
+                  onPressed: () => _insertFraction(e.key),
+                  tooltip: '${e.key} = ${e.value}',
+                  padding: EdgeInsets.zero,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                );
+              }).toList(),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -246,135 +253,139 @@ class _UnitSearchDialogState extends State<_UnitSearchDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 12, 0),
-            child: Row(
-              children: [
-                const Icon(Icons.square_foot, color: Color(0xFF7C3AED)),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    'Select Unit',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2D3142),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-          ),
-          // Search field
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: TextField(
-              controller: _searchController,
-              autofocus: true,
-              decoration: InputDecoration(
-                hintText: 'Search units...',
-                prefixIcon: const Icon(Icons.search, color: Color(0xFF7C3AED)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFF7C3AED)),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                    vertical: 10, horizontal: 12),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                  icon: const Icon(Icons.clear, size: 18),
-                  onPressed: () => _searchController.clear(),
-                )
-                    : null,
-              ),
-            ),
-          ),
-          // List
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.4,
-            ),
-            child: _filtered.isEmpty
-                ? const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text(
-                'No units found',
-                style: TextStyle(color: Colors.grey),
-              ),
-            )
-                : ListView.separated(
-              shrinkWrap: true,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              itemCount: _filtered.length,
-              separatorBuilder: (_, __) =>
-              const Divider(height: 1, indent: 16),
-              itemBuilder: (context, index) {
-                final unit = _filtered[index];
-                final isSelected = unit.id == widget.selectedId;
-                return ListTile(
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                  leading: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? const Color(0xFF7C3AED)
-                          : const Color(0xFFEDE9FB),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      unit.symbol,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: isSelected
-                            ? Colors.white
-                            : const Color(0xFF7C3AED),
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 12, 0),
+                child: Row(
+                  children: [
+                    const Icon(Icons.square_foot, color: Color(0xFF7C3AED)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        languageProvider.isEnglish ? 'Select Unit' : 'یونٹ منتخب کریں',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2D3142),
+                        ),
                       ),
                     ),
-                  ),
-                  title: Text(
-                    unit.name,
-                    style: TextStyle(
-                      fontWeight: isSelected
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                      color: const Color(0xFF2D3142),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
                     ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: languageProvider.isEnglish ? 'Search units...' : 'یونٹس تلاش کریں...',
+                    prefixIcon: const Icon(Icons.search, color: Color(0xFF7C3AED)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFF7C3AED)),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        vertical: 10, horizontal: 12),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      onPressed: () => _searchController.clear(),
+                    )
+                        : null,
                   ),
-                  subtitle: Text(
-                    'Symbol: ${unit.symbol}',
-                    style: const TextStyle(
-                        fontSize: 12, color: Colors.grey),
+                ),
+              ),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.4,
+                ),
+                child: _filtered.isEmpty
+                    ? Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    languageProvider.isEnglish ? 'No units found' : 'کوئی یونٹ نہیں ملا',
+                    style: const TextStyle(color: Colors.grey),
                   ),
-                  trailing: isSelected
-                      ? const Icon(Icons.check_circle,
-                      color: Color(0xFF7C3AED))
-                      : null,
-                  onTap: () => Navigator.pop(context, unit.id),
-                );
-              },
-            ),
+                )
+                    : ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  itemCount: _filtered.length,
+                  separatorBuilder: (_, __) =>
+                  const Divider(height: 1, indent: 16),
+                  itemBuilder: (context, index) {
+                    final unit = _filtered[index];
+                    final isSelected = unit.id == widget.selectedId;
+                    return ListTile(
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                      leading: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? const Color(0xFF7C3AED)
+                              : const Color(0xFFEDE9FB),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          unit.symbol,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            color: isSelected
+                                ? Colors.white
+                                : const Color(0xFF7C3AED),
+                          ),
+                        ),
+                      ),
+                      title: Text(
+                        unit.name,
+                        style: TextStyle(
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                          color: const Color(0xFF2D3142),
+                          fontFamily: languageProvider.fontFamily,
+                        ),
+                      ),
+                      subtitle: Text(
+                        languageProvider.isEnglish
+                            ? 'Symbol: ${unit.symbol}'
+                            : 'علامت: ${unit.symbol}',
+                        style: const TextStyle(
+                            fontSize: 12, color: Colors.grey),
+                      ),
+                      trailing: isSelected
+                          ? const Icon(Icons.check_circle,
+                          color: Color(0xFF7C3AED))
+                          : null,
+                      onTap: () => Navigator.pop(context, unit.id),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
           ),
-          const SizedBox(height: 12),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -426,7 +437,6 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     if (widget.productId == null) {
       _barcodeController.text = _generateBarcode();
     }
-    // Rebuild preview when barcode text changes
     _barcodeController.addListener(() => setState(() {}));
     _loadInitialData();
   }
@@ -448,7 +458,6 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
 
   String _generateBarcode() {
     final random = Random();
-    // Generate 8-digit numeric barcode
     final barcode = List.generate(8, (_) => random.nextInt(10)).join();
     return barcode;
   }
@@ -480,8 +489,11 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     } catch (e) {
       print(e);
       if (mounted) {
+        final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading data: $e')),
+          SnackBar(content: Text(languageProvider.isEnglish
+              ? 'Error loading data: $e'
+              : 'ڈیٹا لوڈ کرنے میں خرابی: $e')),
         );
       }
     } finally {
@@ -505,7 +517,6 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
       _selectedUnitId = product.unitId.toString();
       _isActive = product.isActive;
 
-      // Load saved length combinations if the model carries them
       if (product.lengthCombinations != null) {
         _lengthCombinations = product.lengthCombinations!
             .map((e) => LengthBodyCombination(
@@ -516,7 +527,6 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
             .toList();
       }
 
-      // In _populateForm(), add inside setState():
       _isBom = product.isBom;
       if (product.bomComponents != null) {
         _bomComponents = product.bomComponents!.map((c) => BomComponent(
@@ -545,9 +555,12 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
 
   void _addLength() {
     final text = _lengthController.text.trim();
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
     if (text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a length value')),
+        SnackBar(content: Text(languageProvider.isEnglish
+            ? 'Please enter a length value'
+            : 'براہ کرم لمبائی کی قیمت درج کریں')),
       );
       return;
     }
@@ -561,7 +574,9 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
       _lengthController.clear();
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Length added')),
+      SnackBar(content: Text(languageProvider.isEnglish
+          ? 'Length added'
+          : 'لمبائی شامل کر دی گئی')),
     );
   }
 
@@ -569,8 +584,11 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     final combination = _lengthCombinations[index];
     _lengthController.text = combination.length;
     setState(() => _lengthCombinations.removeAt(index));
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Length loaded for editing')),
+      SnackBar(content: Text(languageProvider.isEnglish
+          ? 'Length loaded for editing'
+          : 'لمبائی ترمیم کے لیے لوڈ کر دی گئی')),
     );
   }
 
@@ -580,17 +598,23 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
   // ── Save ─────────────────────────────────────
 
   Future<void> _saveProduct() async {
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+
     if (!_formKey.currentState!.validate()) return;
 
     if (_selectedCategoryId == null || _selectedCategoryId!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a category')),
+        SnackBar(content: Text(languageProvider.isEnglish
+            ? 'Please select a category'
+            : 'براہ کرم ایک کیٹگری منتخب کریں')),
       );
       return;
     }
     if (_selectedUnitId == null || _selectedUnitId!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a unit')),
+        SnackBar(content: Text(languageProvider.isEnglish
+            ? 'Please select a unit'
+            : 'براہ کرم ایک یونٹ منتخب کریں')),
       );
       return;
     }
@@ -625,7 +649,6 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
           ? _bomComponents.map((c) => {
         'id': c.id,
         'product_id': c.productId,
-        'product_name': c.productName,
         'quantity': c.quantity,
         'unit': c.unit,
         'cost_per_unit': c.costPerUnit,
@@ -645,19 +668,19 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(widget.productId != null
-                ? 'Product updated successfully'
-                : 'Product created successfully'),
+                ? (languageProvider.isEnglish ? 'Product updated successfully' : 'پروڈکٹ کامیابی سے اپ ڈیٹ ہو گئی')
+                : (languageProvider.isEnglish ? 'Product created successfully' : 'پروڈکٹ کامیابی سے بن گئی')),
           ),
         );
         Navigator.pop(context, true);
       } else {
-        throw Exception(result['error'] ?? 'Failed to save product');
+        throw Exception(result['error'] ?? (languageProvider.isEnglish ? 'Failed to save product' : 'پروڈکٹ محفوظ کرنے میں ناکامی'));
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: Text('${languageProvider.isEnglish ? 'Error' : 'خرابی'}: $e')),
         );
       }
     }
@@ -669,148 +692,176 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
   Widget build(BuildContext context) {
     final isEditing = widget.productId != null;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFC),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.close, color: Color(0xFF2D3142)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          isEditing ? 'Edit Product' : 'Add Product',
-          style: const TextStyle(
-              color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
-        ),
-        actions: [
-          TextButton(
-            onPressed: _isLoading ? null : _saveProduct,
-            child: Text(
-              'Save',
-              style: TextStyle(
-                color: _isLoading ? Colors.grey : const Color(0xFF7C3AED),
-                fontWeight: FontWeight.w600,
-                fontSize: 16,
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        return Scaffold(
+          backgroundColor: const Color(0xFFFAFAFC),
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.close, color: Color(0xFF2D3142)),
+              onPressed: () => Navigator.pop(context),
+            ),
+            title: Text(
+              isEditing
+                  ? (languageProvider.isEnglish ? 'Edit Product' : 'پروڈکٹ میں ترمیم کریں')
+                  : (languageProvider.isEnglish ? 'Add Product' : 'پروڈکٹ شامل کریں'),
+              style: const TextStyle(
+                  color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
+            ),
+            actions: [
+              TextButton(
+                onPressed: _isLoading ? null : _saveProduct,
+                child: Text(
+                  languageProvider.isEnglish ? 'Save' : 'محفوظ کریں',
+                  style: TextStyle(
+                    color: _isLoading ? Colors.grey : const Color(0xFF7C3AED),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          body: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildBasicInfoSection(languageProvider),
+                  const SizedBox(height: 20),
+                  _buildPricingSection(languageProvider),
+                  const SizedBox(height: 20),
+                  _buildStockSection(languageProvider),
+                  const SizedBox(height: 20),
+                  _buildCategorySection(languageProvider),
+                  const SizedBox(height: 20),
+                  _buildLengthCombinationsSection(languageProvider),
+                  const SizedBox(height: 20),
+                  _buildAdditionalSection(languageProvider),
+                  const SizedBox(height: 20),
+                  if (isEditing) _buildStatusSection(languageProvider),
+                  _buildBomSection(languageProvider),
+                ],
               ),
             ),
           ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildBasicInfoSection(),
-              const SizedBox(height: 20),
-              _buildPricingSection(),
-              const SizedBox(height: 20),
-              _buildStockSection(),
-              const SizedBox(height: 20),
-              _buildCategorySection(),
-              const SizedBox(height: 20),
-              _buildLengthCombinationsSection(),
-              const SizedBox(height: 20),
-              _buildAdditionalSection(),
-              const SizedBox(height: 20),
-              if (isEditing) _buildStatusSection(),
-              _buildBomSection(),
-
-            ],
-          ),
-        ),
-      ),
+        );
+      },
     );
   }
 
   // ── Section builders ──────────────────────────
 
-  Widget _buildBasicInfoSection() {
+  Widget _buildBasicInfoSection(LanguageProvider languageProvider) {
     return _buildSection(
-      'Basic Information',
+      languageProvider.isEnglish ? 'Basic Information' : 'بنیادی معلومات',
+      languageProvider,
       children: [
-        // Product name uses FractionInputField
         FractionInputField(
           controller: _nameController,
-          labelText: 'Product Name *',
-          hintText: 'e.g. Pipe 2½" or Rod 3 1/4"',
+          labelText: languageProvider.isEnglish ? 'Product Name *' : 'پروڈکٹ کا نام *',
+          hintText: languageProvider.isEnglish ? 'e.g. Pipe 2½" or Rod 3 1/4"' : 'مثال: پائپ 2½" یا راڈ 3 1/4"',
           validator: (value) =>
-          (value == null || value.isEmpty) ? 'Product name is required' : null,
+          (value == null || value.isEmpty)
+              ? (languageProvider.isEnglish ? 'Product name is required' : 'پروڈکٹ کا نام ضروری ہے')
+              : null,
         ),
-        // Show parsed decimal hint below name field
-        _buildDecimalHint(_nameController.text),
+        _buildDecimalHint(_nameController.text, languageProvider),
         const SizedBox(height: 16),
         TextFormField(
           controller: _descriptionController,
-          decoration: const InputDecoration(
-            labelText: 'Description',
-            hintText: 'Enter product description',
-            border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.description),
+          decoration: InputDecoration(
+            labelText: languageProvider.isEnglish ? 'Description' : 'تفصیل',
+            hintText: languageProvider.isEnglish ? 'Enter product description' : 'پروڈکٹ کی تفصیل درج کریں',
+            border: const OutlineInputBorder(),
+            prefixIcon: const Icon(Icons.description),
           ),
           maxLines: 3,
+          style: TextStyle(fontFamily: languageProvider.fontFamily),
         ),
         const SizedBox(height: 16),
         Consumer<SupplierProvider>(
           builder: (context, provider, _) => DropdownButtonFormField<String?>(
             value: _selectedSupplierId,
-            decoration: const InputDecoration(
-              labelText: 'Supplier',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.business),
+            decoration: InputDecoration(
+              labelText: languageProvider.isEnglish ? 'Supplier' : 'سپلائر',
+              border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.business),
             ),
             items: [
-              const DropdownMenuItem<String?>(
-                  value: null, child: Text('Select Supplier')),
-              ...provider.suppliers.map((s) => DropdownMenuItem<String?>(
-                value: s.id.toString(),
-                child: Text(s.name),
-              )),
+              DropdownMenuItem<String?>(
+                value: null,
+                child: Text(
+                  languageProvider.isEnglish
+                      ? 'Select Supplier'
+                      : 'سپلائر منتخب کریں',
+                  style: const TextStyle(color: Colors.black),
+                ),
+              ),
+              ...provider.suppliers.map(
+                    (s) => DropdownMenuItem<String?>(
+                  value: s.id.toString(),
+                  child: Text(
+                    s.name,
+                    style: const TextStyle(color: Colors.black),
+                  ),
+                ),
+              ),
             ],
             onChanged: (v) => setState(() => _selectedSupplierId = v),
+            style: TextStyle(
+              fontFamily: languageProvider.fontFamily,
+              color: Colors.black,
+            ),
+            dropdownColor: Colors.white,
+            iconEnabledColor: Colors.black,
           ),
         ),
       ],
     );
   }
 
-  Widget _buildPricingSection() {
+  Widget _buildPricingSection(LanguageProvider languageProvider) {
     return _buildSection(
-      'Pricing Information',
+      languageProvider.isEnglish ? 'Pricing Information' : 'قیمت کی معلومات',
+      languageProvider,
       children: [
         TextFormField(
           controller: _costPriceController,
-          decoration: const InputDecoration(
-            labelText: 'Cost Price *',
+          decoration: InputDecoration(
+            labelText: languageProvider.isEnglish ? 'Cost Price *' : 'لاگت قیمت *',
             hintText: '0.00',
-            border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.attach_money),
+            border: const OutlineInputBorder(),
+            prefixIcon: const Icon(Icons.attach_money),
           ),
           keyboardType: TextInputType.number,
+          style: TextStyle(fontFamily: languageProvider.fontFamily),
           validator: (v) {
-            if (v == null || v.isEmpty) return 'Cost price is required';
-            if (double.tryParse(v) == null) return 'Enter a valid number';
+            if (v == null || v.isEmpty) return languageProvider.isEnglish ? 'Cost price is required' : 'لاگت قیمت ضروری ہے';
+            if (double.tryParse(v) == null) return languageProvider.isEnglish ? 'Enter a valid number' : 'ایک درست نمبر درج کریں';
             return null;
           },
         ),
         const SizedBox(height: 16),
         TextFormField(
           controller: _salePriceController,
-          decoration: const InputDecoration(
-            labelText: 'Sale Price *',
+          decoration: InputDecoration(
+            labelText: languageProvider.isEnglish ? 'Sale Price *' : 'فروخت قیمت *',
             hintText: '0.00',
-            border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.attach_money),
+            border: const OutlineInputBorder(),
+            prefixIcon: const Icon(Icons.attach_money),
           ),
           keyboardType: TextInputType.number,
+          style: TextStyle(fontFamily: languageProvider.fontFamily),
           validator: (v) {
-            if (v == null || v.isEmpty) return 'Sale price is required';
-            if (double.tryParse(v) == null) return 'Enter a valid number';
+            if (v == null || v.isEmpty) return languageProvider.isEnglish ? 'Sale price is required' : 'فروخت قیمت ضروری ہے';
+            if (double.tryParse(v) == null) return languageProvider.isEnglish ? 'Enter a valid number' : 'ایک درست نمبر درج کریں';
             return null;
           },
         ),
@@ -818,38 +869,41 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     );
   }
 
-  Widget _buildStockSection() {
+  Widget _buildStockSection(LanguageProvider languageProvider) {
     return _buildSection(
-      'Stock Information',
+      languageProvider.isEnglish ? 'Stock Information' : 'اسٹاک کی معلومات',
+      languageProvider,
       children: [
         TextFormField(
           controller: _physicalQtyController,
-          decoration: const InputDecoration(
-            labelText: 'Physical Quantity *',
+          decoration: InputDecoration(
+            labelText: languageProvider.isEnglish ? 'Physical Quantity *' : 'طبعی مقدار *',
             hintText: '0',
-            border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.inventory),
+            border: const OutlineInputBorder(),
+            prefixIcon: const Icon(Icons.inventory),
           ),
           keyboardType: TextInputType.number,
+          style: TextStyle(fontFamily: languageProvider.fontFamily),
           validator: (v) {
-            if (v == null || v.isEmpty) return 'Quantity is required';
-            if (int.tryParse(v) == null) return 'Enter a valid number';
+            if (v == null || v.isEmpty) return languageProvider.isEnglish ? 'Quantity is required' : 'مقدار ضروری ہے';
+            if (int.tryParse(v) == null) return languageProvider.isEnglish ? 'Enter a valid number' : 'ایک درست نمبر درج کریں';
             return null;
           },
         ),
         const SizedBox(height: 16),
         TextFormField(
           controller: _minStockController,
-          decoration: const InputDecoration(
-            labelText: 'Minimum Stock Level *',
+          decoration: InputDecoration(
+            labelText: languageProvider.isEnglish ? 'Minimum Stock Level *' : 'کم از کم اسٹاک لیول *',
             hintText: '0',
-            border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.warning),
+            border: const OutlineInputBorder(),
+            prefixIcon: const Icon(Icons.warning),
           ),
           keyboardType: TextInputType.number,
+          style: TextStyle(fontFamily: languageProvider.fontFamily),
           validator: (v) {
-            if (v == null || v.isEmpty) return 'Minimum stock is required';
-            if (int.tryParse(v) == null) return 'Enter a valid number';
+            if (v == null || v.isEmpty) return languageProvider.isEnglish ? 'Minimum stock is required' : 'کم از کم اسٹاک ضروری ہے';
+            if (int.tryParse(v) == null) return languageProvider.isEnglish ? 'Enter a valid number' : 'ایک درست نمبر درج کریں';
             return null;
           },
         ),
@@ -857,26 +911,40 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     );
   }
 
-  Widget _buildCategorySection() {
+  Widget _buildCategorySection(LanguageProvider languageProvider) {
     return _buildSection(
-      'Category Information',
+      languageProvider.isEnglish ? 'Category Information' : 'کیٹگری کی معلومات',
+      languageProvider,
       children: [
         Consumer<CategoryProvider>(
           builder: (context, provider, _) =>
               DropdownButtonFormField<String?>(
                 value: _selectedCategoryId,
-                decoration: const InputDecoration(
-                  labelText: 'Category *',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.category),
+                decoration: InputDecoration(
+                  labelText: languageProvider.isEnglish ? 'Category *' : 'کیٹگری *',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.category),
                 ),
                 items: [
-                  const DropdownMenuItem<String?>(
-                      value: null, child: Text('Select Category')),
-                  ...provider.categories.map((c) => DropdownMenuItem<String?>(
-                    value: c.id.toString(),
-                    child: Text(c.name),
-                  )),
+                  DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text(
+                      languageProvider.isEnglish
+                          ? 'Select Category'
+                          : 'کیٹگری منتخب کریں',
+                      style: const TextStyle(color: Colors.black),
+                    ),
+                  ),
+
+                  ...provider.categories.map(
+                        (c) => DropdownMenuItem<String?>(
+                      value: c.id.toString(),
+                      child: Text(
+                        c.name,
+                        style: const TextStyle(color: Colors.black),
+                      ),
+                    ),
+                  ),
                 ],
                 onChanged: (value) async {
                   setState(() {
@@ -889,13 +957,15 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                   }
                 },
                 validator: (v) =>
-                (v == null || v.isEmpty) ? 'Category is required' : null,
+                (v == null || v.isEmpty)
+                    ? (languageProvider.isEnglish ? 'Category is required' : 'کیٹگری ضروری ہے')
+                    : null,
+                style: TextStyle(fontFamily: languageProvider.fontFamily),
               ),
         ),
         const SizedBox(height: 16),
         Consumer<SubcategoryProvider>(
           builder: (context, provider, _) {
-            // Ensure the stored value actually exists in the current list
             final subcategoryIds = provider.subcategories
                 .map((s) => s.id.toString())
                 .toList();
@@ -905,20 +975,34 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
 
             return DropdownButtonFormField<String?>(
               value: safeValue,
-              decoration: const InputDecoration(
-                labelText: 'Subcategory',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.category),
+              decoration: InputDecoration(
+                labelText: languageProvider.isEnglish ? 'Subcategory' : 'ذیلی کیٹگری',
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.category),
               ),
               items: [
-                const DropdownMenuItem<String?>(
-                    value: null, child: Text('Select Subcategory')),
-                ...provider.subcategories.map((s) => DropdownMenuItem<String?>(
-                  value: s.id.toString(), // ← always toString()
-                  child: Text(s.name),
-                )),
+                DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text(
+                    languageProvider.isEnglish
+                        ? 'Select Subcategory'
+                        : 'ذیلی کیٹگری منتخب کریں',
+                    style: const TextStyle(color: Colors.black),
+                  ),
+                ),
+
+                ...provider.subcategories.map(
+                      (s) => DropdownMenuItem<String?>(
+                    value: s.id.toString(),
+                    child: Text(
+                      s.name,
+                      style: const TextStyle(color: Colors.black),
+                    ),
+                  ),
+                ),
               ],
               onChanged: (v) => setState(() => _selectedSubcategoryId = v),
+              style: TextStyle(fontFamily: languageProvider.fontFamily),
             );
           },
         ),
@@ -928,7 +1012,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
             return FormField<String>(
               validator: (v) =>
               (_selectedUnitId == null || _selectedUnitId!.isEmpty)
-                  ? 'Unit is required'
+                  ? (languageProvider.isEnglish ? 'Unit is required' : 'یونٹ ضروری ہے')
                   : null,
               builder: (fieldState) => Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -949,7 +1033,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                     },
                     child: InputDecorator(
                       decoration: InputDecoration(
-                        labelText: 'Unit *',
+                        labelText: languageProvider.isEnglish ? 'Unit *' : 'یونٹ *',
                         border: const OutlineInputBorder(),
                         prefixIcon: const Icon(Icons.square_foot),
                         errorText: fieldState.errorText,
@@ -977,14 +1061,15 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                             );
                             return '${unit.name} (${unit.symbol})';
                           } catch (e) {
-                            return 'Select Unit';
+                            return languageProvider.isEnglish ? 'Select Unit' : 'یونٹ منتخب کریں';
                           }
                         }()
-                            : 'Select Unit',
+                            : (languageProvider.isEnglish ? 'Select Unit' : 'یونٹ منتخب کریں'),
                         style: TextStyle(
                           color: _selectedUnitId != null
                               ? const Color(0xFF2D3142)
                               : Colors.grey[600],
+                          fontFamily: languageProvider.fontFamily,
                         ),
                       ),
                     ),
@@ -998,30 +1083,27 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     );
   }
 
-  /// Length combinations section — mirrors RegisterItemPage behaviour
-  Widget _buildLengthCombinationsSection() {
+  Widget _buildLengthCombinationsSection(LanguageProvider languageProvider) {
     return _buildSection(
-      'Length Combinations',
+      languageProvider.isEnglish ? 'Length Combinations' : 'لمبائی کے امتزاج',
+      languageProvider,
       children: [
-        // Length input with fraction support
         FractionInputField(
           controller: _lengthController,
-          labelText: 'Length',
-          hintText: 'e.g. 3¼ or 3 1/4',
-          onChanged: (_) => setState(() {}), // refresh decimal hint live
+          labelText: languageProvider.isEnglish ? 'Length' : 'لمبائی',
+          hintText: languageProvider.isEnglish ? 'e.g. 3¼ or 3 1/4' : 'مثال: 3¼ یا 3 1/4',
+          onChanged: (_) => setState(() {}),
         ),
-        // Live decimal preview
-        _buildDecimalHint(_lengthController.text),
+        _buildDecimalHint(_lengthController.text, languageProvider),
         const SizedBox(height: 12),
 
-        // Add button
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
             onPressed: _addLength,
             icon: const Icon(Icons.add, color: Colors.white),
-            label: const Text('Add Length',
-                style: TextStyle(color: Colors.white)),
+            label: Text(languageProvider.isEnglish ? 'Add Length' : 'لمبائی شامل کریں',
+                style: const TextStyle(color: Colors.white)),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF7C3AED),
               padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1032,12 +1114,11 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         ),
         const SizedBox(height: 16),
 
-        // List header
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'Added Lengths (${_lengthCombinations.length})',
+              '${languageProvider.isEnglish ? 'Added Lengths' : 'شامل کردہ لمبائیاں'} (${_lengthCombinations.length})',
               style: const TextStyle(
                   fontWeight: FontWeight.w600, color: Color(0xFF2D3142)),
             ),
@@ -1047,8 +1128,8 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                     setState(() => _lengthCombinations.clear()),
                 icon: const Icon(Icons.delete_sweep,
                     color: Colors.red, size: 18),
-                label: const Text('Clear all',
-                    style: TextStyle(color: Colors.red)),
+                label: Text(languageProvider.isEnglish ? 'Clear all' : 'سب صاف کریں',
+                    style: const TextStyle(color: Colors.red)),
                 style: TextButton.styleFrom(
                     padding: EdgeInsets.zero,
                     minimumSize: Size.zero,
@@ -1058,13 +1139,12 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         ),
         const SizedBox(height: 8),
 
-        // Length list
-        _buildLengthList(),
+        _buildLengthList(languageProvider),
       ],
     );
   }
 
-  Widget _buildLengthList() {
+  Widget _buildLengthList(LanguageProvider languageProvider) {
     if (_lengthCombinations.isEmpty) {
       return Container(
         padding: const EdgeInsets.symmetric(vertical: 20),
@@ -1075,9 +1155,9 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
           border: Border.all(
               color: const Color(0xFFE0E0E8), style: BorderStyle.solid),
         ),
-        child: const Text(
-          'No lengths added yet',
-          style: TextStyle(color: Colors.grey),
+        child: Text(
+          languageProvider.isEnglish ? 'No lengths added yet' : 'ابھی تک کوئی لمبائی شامل نہیں کی گئی',
+          style: const TextStyle(color: Colors.grey),
         ),
       );
     }
@@ -1114,11 +1194,11 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
               ),
             ),
             title: Text(
-              'Length: ${c.length}',
+              '${languageProvider.isEnglish ? 'Length' : 'لمبائی'}: ${c.length}',
               style: const TextStyle(fontWeight: FontWeight.w500),
             ),
             subtitle: c.lengthDecimal.isNotEmpty
-                ? Text('Decimal: ${c.lengthDecimal}',
+                ? Text('${languageProvider.isEnglish ? 'Decimal' : 'اعشاریہ'}: ${c.lengthDecimal}',
                 style: const TextStyle(fontSize: 12, color: Colors.grey))
                 : null,
             trailing: Row(
@@ -1128,12 +1208,12 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                   icon: const Icon(Icons.edit,
                       color: Color(0xFF7C3AED), size: 20),
                   onPressed: () => _editLength(index),
-                  tooltip: 'Edit',
+                  tooltip: languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں',
                 ),
                 IconButton(
                   icon: const Icon(Icons.delete, color: Colors.red, size: 20),
                   onPressed: () => _removeLength(index),
-                  tooltip: 'Remove',
+                  tooltip: languageProvider.isEnglish ? 'Remove' : 'ہٹائیں',
                 ),
               ],
             ),
@@ -1143,9 +1223,10 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     );
   }
 
-  Widget _buildAdditionalSection() {
+  Widget _buildAdditionalSection(LanguageProvider languageProvider) {
     return _buildSection(
-      'Additional Information',
+      languageProvider.isEnglish ? 'Additional Information' : 'اضافی معلومات',
+      languageProvider,
       children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1153,22 +1234,27 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
             Expanded(
               child: TextFormField(
                 controller: _barcodeController,
-                decoration: const InputDecoration(
-                  labelText: 'Barcode',
-                  hintText: '8-digit barcode',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.qr_code),
+                decoration: InputDecoration(
+                  labelText: languageProvider.isEnglish ? 'Barcode' : 'بارکوڈ',
+                  hintText: languageProvider.isEnglish ? '8-digit barcode' : '8 ہندسوں کا بارکوڈ',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.qr_code),
                   counterText: '',
                 ),
                 keyboardType: TextInputType.number,
                 maxLength: 8,
+                style: TextStyle(fontFamily: languageProvider.fontFamily),
                 validator: (value) {
                   if (value != null && value.isNotEmpty) {
                     if (value.length != 8) {
-                      return 'Barcode must be exactly 8 digits';
+                      return languageProvider.isEnglish
+                          ? 'Barcode must be exactly 8 digits'
+                          : 'بارکوڈ بالکل 8 ہندسوں کا ہونا چاہیے';
                     }
                     if (int.tryParse(value) == null) {
-                      return 'Barcode must be numeric';
+                      return languageProvider.isEnglish
+                          ? 'Barcode must be numeric'
+                          : 'بارکوڈ عددی ہونا چاہیے';
                     }
                   }
                   return null;
@@ -1185,7 +1271,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                   });
                 },
                 icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Generate'),
+                label: Text(languageProvider.isEnglish ? 'Generate' : 'بنائیں'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF7C3AED),
                   foregroundColor: Colors.white,
@@ -1202,7 +1288,6 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        // Barcode preview
         if (_barcodeController.text.isNotEmpty &&
             _barcodeController.text.length == 8)
           Container(
@@ -1235,13 +1320,16 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     );
   }
 
-  Widget _buildStatusSection() {
+  Widget _buildStatusSection(LanguageProvider languageProvider) {
     return _buildSection(
-      'Status',
+      languageProvider.isEnglish ? 'Status' : 'حالت',
+      languageProvider,
       children: [
         SwitchListTile(
-          title: const Text('Active'),
-          subtitle: const Text('Product is available for sale'),
+          title: Text(languageProvider.isEnglish ? 'Active' : 'فعال'),
+          subtitle: Text(languageProvider.isEnglish
+              ? 'Product is available for sale'
+              : 'پروڈکٹ فروخت کے لیے دستیاب ہے'),
           value: _isActive,
           onChanged: (v) => setState(() => _isActive = v),
           activeColor: const Color(0xFF7C3AED),
@@ -1252,8 +1340,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
 
   // ── Shared helpers ────────────────────────────
 
-  /// Shows the parsed decimal value below a fraction input field.
-  Widget _buildDecimalHint(String text) {
+  Widget _buildDecimalHint(String text, LanguageProvider languageProvider) {
     final decimal = parseFractionString(text);
     if (decimal == null || text.isEmpty) return const SizedBox.shrink();
     return Container(
@@ -1269,7 +1356,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
           const Icon(Icons.calculate, size: 14, color: Color(0xFF7C3AED)),
           const SizedBox(width: 6),
           Text(
-            'Decimal value = ${decimal.toStringAsFixed(4)}',
+            '${languageProvider.isEnglish ? 'Decimal value' : 'اعشاریہ قیمت'} = ${decimal.toStringAsFixed(4)}',
             style: const TextStyle(
                 fontSize: 12, color: Color(0xFF7C3AED)),
           ),
@@ -1278,7 +1365,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     );
   }
 
-  Widget _buildSection(String title,
+  Widget _buildSection(String title, LanguageProvider languageProvider,
       {required List<Widget> children}) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -1292,10 +1379,11 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: Color(0xFF2D3142),
+              color: const Color(0xFF2D3142),
+              fontFamily: languageProvider.fontFamily,
             ),
           ),
           const SizedBox(height: 20),
@@ -1305,29 +1393,25 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     );
   }
 
-// ── BOM Code ────────────────────────────
+  // ── BOM Code ────────────────────────────
   double get _bomTotalCost {
     return _bomComponents.fold(0.0, (sum, c) => sum + c.totalCost);
   }
 
-// Add this method to edit BOM component
   void _editBomComponent(BomComponent component) {
-    // Find the component
     final index = _bomComponents.indexWhere((c) => c.id == component.id);
     if (index != -1) {
-      // Remove old and add edited version
       setState(() {
         _bomComponents.removeAt(index);
       });
-
-      // Show edit dialog
       _showEditComponentDialog(component);
     }
   }
 
   void _showEditComponentDialog(BomComponent component) {
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
     final quantityController = TextEditingController(
-      text: component.quantity.abs().toString(), // Show absolute value
+      text: component.quantity.abs().toString(),
     );
     final notesController = TextEditingController(text: component.notes ?? '');
     final wasByproduct = component.quantity < 0;
@@ -1335,11 +1419,10 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Edit ${component.productName}'),
+        title: Text('${languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں'} ${component.productName}'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Show component type
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
@@ -1355,7 +1438,13 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    wasByproduct ? 'Type: Byproduct / Wastage' : 'Type: Material (Consumable)',
+                    wasByproduct
+                        ? (languageProvider.isEnglish
+                        ? 'Type: Byproduct / Wastage'
+                        : 'قسم: ضمنی پیداوار / ضائع')
+                        : (languageProvider.isEnglish
+                        ? 'Type: Material (Consumable)'
+                        : 'قسم: مواد (خرچ ہونے والا)'),
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       color: wasByproduct ? Colors.orange : Colors.green,
@@ -1369,21 +1458,33 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
               controller: quantityController,
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
-                labelText: wasByproduct ? 'Quantity (wastage/produced)' : 'Quantity (consumed)',
-                hintText: wasByproduct ? 'Positive number only' : 'Enter quantity',
+                labelText: wasByproduct
+                    ? (languageProvider.isEnglish
+                    ? 'Quantity (wastage/produced)'
+                    : 'مقدار (ضائع / پیدا شدہ)')
+                    : (languageProvider.isEnglish
+                    ? 'Quantity (consumed)'
+                    : 'مقدار (استعمال شدہ)'),
+                hintText: wasByproduct
+                    ? (languageProvider.isEnglish ? 'Positive number only' : 'صرف مثبت نمبر')
+                    : (languageProvider.isEnglish ? 'Enter quantity' : 'مقدار درج کریں'),
                 border: const OutlineInputBorder(),
                 helperText: wasByproduct
+                    ? (languageProvider.isEnglish
                     ? 'This will be stored as negative quantity'
-                    : 'This will be stored as positive quantity',
+                    : 'یہ منفی مقدار کے طور پر محفوظ ہو گا')
+                    : (languageProvider.isEnglish
+                    ? 'This will be stored as positive quantity'
+                    : 'یہ مثبت مقدار کے طور پر محفوظ ہو گا'),
               ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: notesController,
               maxLines: 2,
-              decoration: const InputDecoration(
-                labelText: 'Notes',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: languageProvider.isEnglish ? 'Notes' : 'نوٹس',
+                border: const OutlineInputBorder(),
               ),
             ),
           ],
@@ -1391,7 +1492,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(languageProvider.isEnglish ? 'Cancel' : 'منسوخ کریں'),
           ),
           TextButton(
             onPressed: () {
@@ -1410,7 +1511,6 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                 );
 
                 setState(() {
-                  // Remove old and add updated
                   final index = _bomComponents.indexWhere((c) => c.id == component.id);
                   if (index != -1) {
                     _bomComponents.removeAt(index);
@@ -1420,26 +1520,29 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                 Navigator.pop(ctx);
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please enter a valid positive quantity')),
+                  SnackBar(content: Text(languageProvider.isEnglish
+                      ? 'Please enter a valid positive quantity'
+                      : 'براہ کرم ایک درست مثبت مقدار درج کریں')),
                 );
               }
             },
-            child: const Text('Save'),
+            child: Text(languageProvider.isEnglish ? 'Save' : 'محفوظ کریں'),
           ),
         ],
       ),
     );
   }
 
-// Add BOM section builder method
-  Widget _buildBomSection() {
+  Widget _buildBomSection(LanguageProvider languageProvider) {
     return _buildSection(
-      'Bill of Materials (BOM)',
+      languageProvider.isEnglish ? 'Bill of Materials (BOM)' : 'مواد کی فہرست (BOM)',
+      languageProvider,
       children: [
-        // BOM toggle switch
         SwitchListTile(
-          title: const Text('This is a BOM Product'),
-          subtitle: const Text('Product will be assembled from components'),
+          title: Text(languageProvider.isEnglish ? 'This is a BOM Product' : 'یہ ایک BOM پروڈکٹ ہے'),
+          subtitle: Text(languageProvider.isEnglish
+              ? 'Product will be assembled from components'
+              : 'پروڈکٹ اجزاء سے تیار کی جائے گی'),
           value: _isBom,
           onChanged: (value) {
             setState(() {
@@ -1455,14 +1558,13 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         if (_isBom) ...[
           const SizedBox(height: 16),
 
-          // Component selector
           BomComponentSelector(
             onComponentAdded: (component) {
               setState(() {
                 _bomComponents.add(component);
               });
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Added ${component.productName} to BOM')),
+                SnackBar(content: Text('${languageProvider.isEnglish ? 'Added' : 'شامل کیا گیا'} ${component.productName} ${languageProvider.isEnglish ? 'to BOM' : 'BOM میں'}')),
               );
             },
             existingComponents: _bomComponents,
@@ -1471,7 +1573,6 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
 
           const SizedBox(height: 20),
 
-          // Components list
           BomComponentsList(
             components: _bomComponents,
             onRemove: (index) {
@@ -1479,14 +1580,13 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                 final removed = _bomComponents[index];
                 _bomComponents.removeAt(index);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Removed ${removed.productName} from BOM')),
+                  SnackBar(content: Text('${languageProvider.isEnglish ? 'Removed' : 'ہٹا دیا گیا'} ${removed.productName} ${languageProvider.isEnglish ? 'from BOM' : 'BOM سے'}}')),
                 );
               });
             },
             onEdit: _editBomComponent,
           ),
 
-          // Auto-calculate cost price from BOM
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(12),
@@ -1503,12 +1603,12 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Auto-calculate Cost Price',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                      Text(
+                        languageProvider.isEnglish ? 'Auto-calculate Cost Price' : 'خودکار قیمت کا حساب',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       Text(
-                        'Set cost price from BOM total (${_bomTotalCost.toStringAsFixed(2)} PKR)',
+                        '${languageProvider.isEnglish ? 'Set cost price from BOM total' : 'BOM کل سے قیمت مقرر کریں'} (${_bomTotalCost.toStringAsFixed(2)} PKR)',
                         style: const TextStyle(fontSize: 12),
                       ),
                     ],
@@ -1522,10 +1622,12 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                       _costPriceController.text = _bomTotalCost.toStringAsFixed(2);
                     });
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Cost price updated from BOM')),
+                      SnackBar(content: Text(languageProvider.isEnglish
+                          ? 'Cost price updated from BOM'
+                          : 'BOM سے قیمت اپ ڈیٹ ہو گئی')),
                     );
                   },
-                  child: const Text('Apply'),
+                  child: Text(languageProvider.isEnglish ? 'Apply' : 'لاگو کریں'),
                 ),
               ],
             ),
@@ -1534,7 +1636,4 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
       ],
     );
   }
-
 }
-
-

@@ -2,15 +2,32 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../components/confirmation_dialog.dart';
 import '../components/customer_form_dialog.dart';
-import '../components/customer_list_item.dart';
 import '../models/customer.dart';
 import '../providers/customer_provider.dart';
 import '../components/custom_button.dart';
+import '../providers/lanprovider.dart';
 import 'customer_adjustment_dialog.dart';
 import 'customer_balance_report_screen.dart';
 import 'customer_invoice_payment_screen.dart';
 import 'customer_ledger_screen.dart';
 import 'customer_payments_screen.dart';
+
+// ─── Design tokens ───────────────────────────────────────────────────────────
+class _C {
+  static const bg         = Color(0xFFF4F5F9);
+  static const surface    = Colors.white;
+  static const brand      = Color(0xFF5B4FE9);
+  static const brandLight = Color(0xFFEEECFD);
+  static const text1      = Color(0xFF111827);
+  static const text2      = Color(0xFF4B5563);
+  static const text3      = Color(0xFF9CA3AF);
+  static const border     = Color(0xFFE5E7EB);
+  static const rowHover   = Color(0xFFF9F8FF);
+  static const green      = Color(0xFF10B981);
+  static const red        = Color(0xFFEF4444);
+  static const orange     = Color(0xFFF59E0B);
+  static const blue       = Color(0xFF3B82F6);
+}
 
 class CustomerScreen extends StatefulWidget {
   const CustomerScreen({Key? key}) : super(key: key);
@@ -26,15 +43,15 @@ class _CustomerScreenState extends State<CustomerScreen> {
   String _currentSearch = '';
   String _selectedType = 'all';
   bool _hasInitialized = false;
+  String _sortColumn = 'name';
+  bool _sortAscending = true;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_scrollListener);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _initializeData();
-      }
+      if (mounted) _initializeData();
     });
   }
 
@@ -47,11 +64,10 @@ class _CustomerScreenState extends State<CustomerScreen> {
 
   Future<void> _initializeData() async {
     if (_hasInitialized) return;
-
-    final customerProvider = Provider.of<CustomerProvider>(context, listen: false);
+    final p = Provider.of<CustomerProvider>(context, listen: false);
     _hasInitialized = true;
-    await customerProvider.fetchCustomers();
-    await customerProvider.fetchActiveCustomers();
+    await p.fetchCustomers();
+    await p.fetchActiveCustomers();
   }
 
   void _scrollListener() {
@@ -62,11 +78,10 @@ class _CustomerScreenState extends State<CustomerScreen> {
   }
 
   Future<void> _loadMoreCustomers() async {
-    final customerProvider = Provider.of<CustomerProvider>(context, listen: false);
-
-    if (customerProvider.hasMorePages && !customerProvider.isLoading) {
-      await customerProvider.fetchCustomers(
-        page: customerProvider.currentPage + 1,
+    final p = Provider.of<CustomerProvider>(context, listen: false);
+    if (p.hasMorePages && !p.isLoading) {
+      await p.fetchCustomers(
+        page: p.currentPage + 1,
         search: _currentSearch,
         active: _showActiveOnly ? true : null,
         customerType: _selectedType != 'all' ? _selectedType : null,
@@ -75,8 +90,8 @@ class _CustomerScreenState extends State<CustomerScreen> {
   }
 
   Future<void> _refreshCustomers() async {
-    final customerProvider = Provider.of<CustomerProvider>(context, listen: false);
-    await customerProvider.fetchCustomers(
+    final p = Provider.of<CustomerProvider>(context, listen: false);
+    await p.fetchCustomers(
       search: _currentSearch,
       active: _showActiveOnly ? true : null,
       customerType: _selectedType != 'all' ? _selectedType : null,
@@ -84,27 +99,22 @@ class _CustomerScreenState extends State<CustomerScreen> {
   }
 
   void _handleSearch(String value) {
-    final customerProvider = Provider.of<CustomerProvider>(context, listen: false);
-
-    if (value != _currentSearch) {
-      _currentSearch = value;
-      customerProvider.clearCustomers();
-      customerProvider.fetchCustomers(
-        search: value,
-        active: _showActiveOnly ? true : null,
-        customerType: _selectedType != 'all' ? _selectedType : null,
-      );
-    }
+    if (value == _currentSearch) return;
+    _currentSearch = value;
+    final p = Provider.of<CustomerProvider>(context, listen: false);
+    p.clearCustomers();
+    p.fetchCustomers(
+      search: value,
+      active: _showActiveOnly ? true : null,
+      customerType: _selectedType != 'all' ? _selectedType : null,
+    );
   }
 
   void _toggleActiveFilter() {
-    setState(() {
-      _showActiveOnly = !_showActiveOnly;
-    });
-
-    final customerProvider = Provider.of<CustomerProvider>(context, listen: false);
-    customerProvider.clearCustomers();
-    customerProvider.fetchCustomers(
+    setState(() => _showActiveOnly = !_showActiveOnly);
+    final p = Provider.of<CustomerProvider>(context, listen: false);
+    p.clearCustomers();
+    p.fetchCustomers(
       search: _currentSearch,
       active: _showActiveOnly ? true : null,
       customerType: _selectedType != 'all' ? _selectedType : null,
@@ -112,160 +122,355 @@ class _CustomerScreenState extends State<CustomerScreen> {
   }
 
   void _handleTypeFilter(String type) {
-    setState(() {
-      _selectedType = type;
-    });
-
-    final customerProvider = Provider.of<CustomerProvider>(context, listen: false);
-    customerProvider.clearCustomers();
-    customerProvider.fetchCustomers(
+    setState(() => _selectedType = type);
+    final p = Provider.of<CustomerProvider>(context, listen: false);
+    p.clearCustomers();
+    p.fetchCustomers(
       search: _currentSearch,
       active: _showActiveOnly ? true : null,
       customerType: type != 'all' ? type : null,
     );
   }
 
-  void _navigateToReports() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const CustomerBalanceReportScreen(),
-      ),
-    ).then((_) {
-      // Refresh data when returning from reports
-      _refreshCustomers();
+  void _toggleSort(String column) {
+    setState(() {
+      if (_sortColumn == column) {
+        _sortAscending = !_sortAscending;
+      } else {
+        _sortColumn = column;
+        _sortAscending = true;
+      }
+    });
+  }
+
+  void _sortCustomers(List<Customer> customers) {
+    customers.sort((a, b) {
+      int cmp;
+      switch (_sortColumn) {
+        case 'name':    cmp = a.name.toLowerCase().compareTo(b.name.toLowerCase()); break;
+        case 'contact': cmp = a.contact.compareTo(b.contact); break;
+        case 'email':   cmp = (a.email ?? '').compareTo(b.email ?? ''); break;
+        case 'type':    cmp = a.customerType.compareTo(b.customerType); break;
+        case 'balance': cmp = a.balance.compareTo(b.balance); break;
+        case 'status':  cmp = a.isActive.toString().compareTo(b.isActive.toString()); break;
+        default:        cmp = 0;
+      }
+      return _sortAscending ? cmp : -cmp;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<CustomerProvider>(
-      builder: (context, customerProvider, child) {
-        return Scaffold(
-          backgroundColor: const Color(0xFFFAFAFC),
-          body: Column(
-            children: [
-              // Header Section
-              _buildHeader(customerProvider),
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        return Consumer<CustomerProvider>(
+          builder: (context, provider, _) {
+            final sorted = List<Customer>.from(provider.customers);
+            _sortCustomers(sorted);
 
-              // Search and Filter Section
-              _buildSearchFilterSection(),
-
-              // Type Filter Chips
-              _buildTypeFilter(),
-
-              // Main Content
-              Expanded(
-                child: RefreshIndicator(
-                  onRefresh: _refreshCustomers,
-                  child: _buildCustomerList(customerProvider),
-                ),
+            return Scaffold(
+              backgroundColor: _C.bg,
+              body: Column(
+                children: [
+                  _Header(
+                    provider: provider,
+                    onReports: _navigateToReports,
+                    languageProvider: languageProvider,
+                  ),
+                  _SearchBar(
+                    controller: _searchController,
+                    currentSearch: _currentSearch,
+                    showActiveOnly: _showActiveOnly,
+                    onSearch: _handleSearch,
+                    onToggleActive: _toggleActiveFilter,
+                    languageProvider: languageProvider,
+                  ),
+                  _TypeChips(
+                    selected: _selectedType,
+                    onSelect: _handleTypeFilter,
+                    languageProvider: languageProvider,
+                  ),
+                  _TableHeader(
+                    sortColumn: _sortColumn,
+                    sortAscending: _sortAscending,
+                    onSort: _toggleSort,
+                    languageProvider: languageProvider,
+                  ),
+                  Expanded(
+                    child: RefreshIndicator(
+                      color: _C.brand,
+                      onRefresh: _refreshCustomers,
+                      child: _buildBody(provider, sorted, languageProvider),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => _showAddCustomerDialog(),
-            backgroundColor: const Color(0xFF7C3AED),
-            foregroundColor: Colors.white,
-            icon: const Icon(Icons.person_add),
-            label: const Text('Add Customer'),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
+              floatingActionButton: _AddFAB(
+                onPressed: () => _showAddCustomerDialog(languageProvider),
+                languageProvider: languageProvider,
+              ),
+            );
+          },
         );
       },
     );
   }
 
-  Widget _buildHeader(CustomerProvider customerProvider) {
-    final activeCustomers =
-        customerProvider.customers.where((c) => c.isActive).length;
+  Widget _buildBody(CustomerProvider provider, List<Customer> customers, LanguageProvider lp) {
+    if (provider.isLoading && customers.isEmpty) {
+      return const Center(
+        child: CircularProgressIndicator(color: _C.brand),
+      );
+    }
+    if (customers.isEmpty) {
+      return _EmptyState(
+        hasSearch: _currentSearch.isNotEmpty,
+        onAdd: () => _showAddCustomerDialog(lp),
+        languageProvider: lp,
+      );
+    }
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 120),
+      itemCount: customers.length + 1,
+      itemBuilder: (context, i) {
+        if (i < customers.length) {
+          return _CustomerRow(
+            customer: customers[i],
+            index: i,
+            onTap: () => _showCustomerDetails(customers[i], lp),
+            onEdit: () => _showEditCustomerDialog(customers[i], lp),
+            onToggle: () => _toggleCustomerStatus(customers[i]),
+            onDelete: () => _deleteCustomer(customers[i]),
+            languageProvider: lp,
+          );
+        }
+        return provider.isLoading
+            ? const Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Center(child: CircularProgressIndicator(color: _C.brand)),
+        )
+            : const SizedBox(height: 16);
+      },
+    );
+  }
 
-    final customersWithBalance =
-        customerProvider.customers.where((c) => c.balance > 0).length;
+  void _navigateToReports() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CustomerBalanceReportScreen()),
+    ).then((_) => _refreshCustomers());
+  }
 
-    final totalBalance = customerProvider.totalOutstandingBalance;
+// In CustomerScreen, update the _showAddCustomerDialog method:
+
+  Future<void> _showAddCustomerDialog(LanguageProvider lp) async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => CustomerFormDialog(languageProvider: lp), // Pass languageProvider
+    );
+    if (result?['success'] == true) {
+      _showSnack(result!['message'], _C.green, lp);
+      _refreshCustomers();
+    }
+  }
+
+// Update the _showEditCustomerDialog method:
+  Future<void> _showEditCustomerDialog(Customer customer, LanguageProvider lp) async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => CustomerFormDialog(
+        customer: customer,
+        languageProvider: lp, // Pass languageProvider
+      ),
+    );
+    if (result?['success'] == true) {
+      _showSnack(result!['message'], _C.green, lp);
+      _refreshCustomers();
+    }
+  }
+
+  void _showCustomerDetails(Customer customer, LanguageProvider lp) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => CustomerDetailsSheet(
+        customer: customer,
+        languageProvider: lp,
+        onEdit: () { Navigator.pop(context); _showEditCustomerDialog(customer, lp); },
+        onToggleStatus: () { Navigator.pop(context); _toggleCustomerStatus(customer); },
+        onViewLedger: () { Navigator.pop(context); _viewCustomerLedger(customer, lp); },
+        onViewPayments: () { Navigator.pop(context); _viewCustomerPayments(customer, lp); },
+        onReceivePayment: () { Navigator.pop(context); _receiveCustomerPayment(customer, lp); },
+        onAdjustBalance: () { Navigator.pop(context); _adjustCustomerBalance(customer, lp); },
+      ),
+    );
+  }
+
+  void _viewCustomerLedger(Customer c, LanguageProvider lp) {
+    Navigator.push(context, MaterialPageRoute(
+        builder: (_) => CustomerLedgerScreen(customer: c, languageProvider: lp)));
+  }
+
+  void _viewCustomerPayments(Customer c, LanguageProvider lp) {
+    Navigator.push(context, MaterialPageRoute(
+        builder: (_) => CustomerPaymentsScreen(customer: c, languageProvider: lp)));
+  }
+
+  Future<void> _receiveCustomerPayment(Customer c, LanguageProvider lp) async {
+    final ok = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => CustomerInvoicePaymentScreen(customer: c, languageProvider: lp)),
+    );
+    if (ok == true) {
+      _refreshCustomers();
+      _showSnack(lp.isEnglish ? 'Payment recorded successfully' : 'ادائیگی کامیابی سے ریکارڈ ہوگئی', _C.green, lp);
+    }
+  }
+
+  Future<void> _adjustCustomerBalance(Customer c, LanguageProvider lp) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => CustomerAdjustmentDialog(customer: c, languageProvider: lp),
+    );
+    if (ok == true) {
+      _refreshCustomers();
+      _showSnack(lp.isEnglish ? 'Balance adjusted successfully' : 'بیلنس کامیابی سے ایڈجسٹ ہوگیا', _C.brand, lp);
+    }
+  }
+
+  Future<void> _toggleCustomerStatus(Customer c) async {
+    final lp = Provider.of<LanguageProvider>(context, listen: false);
+    final ok = await showConfirmationDialog(
+      context,
+      title: c.isActive
+          ? (lp.isEnglish ? 'Deactivate Customer' : 'کسٹمر غیر فعال کریں')
+          : (lp.isEnglish ? 'Activate Customer' : 'کسٹمر فعال کریں'),
+      message: c.isActive
+          ? (lp.isEnglish ? 'Are you sure you want to deactivate ${c.name}?' : 'کیا آپ واقعی ${c.name} کو غیر فعال کرنا چاہتے ہیں؟')
+          : (lp.isEnglish ? 'Are you sure you want to activate ${c.name}?' : 'کیا آپ واقعی ${c.name} کو فعال کرنا چاہتے ہیں؟'),
+      confirmText: c.isActive
+          ? (lp.isEnglish ? 'Deactivate' : 'غیر فعال کریں')
+          : (lp.isEnglish ? 'Activate' : 'فعال کریں'),
+      confirmColor: c.isActive ? _C.red : _C.green,
+    );
+    if (ok == true) {
+      final p = Provider.of<CustomerProvider>(context, listen: false);
+      final result = await p.toggleCustomerStatus(c.id);
+      _showSnack(result['message'], result['success'] ? _C.green : _C.red, lp);
+      if (result['success']) _refreshCustomers();
+    }
+  }
+
+  Future<void> _deleteCustomer(Customer c) async {
+    final lp = Provider.of<LanguageProvider>(context, listen: false);
+    final ok = await showConfirmationDialog(
+      context,
+      title: lp.isEnglish ? 'Delete Customer' : 'کسٹمر حذف کریں',
+      message: lp.isEnglish
+          ? 'Are you sure you want to delete ${c.name}? This cannot be undone.'
+          : 'کیا آپ واقعی ${c.name} کو حذف کرنا چاہتے ہیں؟ یہ عمل واپس نہیں کیا جا سکتا۔',
+      confirmText: lp.isEnglish ? 'Delete' : 'حذف کریں',
+      confirmColor: _C.red,
+    );
+    if (ok == true) {
+      final p = Provider.of<CustomerProvider>(context, listen: false);
+      final result = await p.deleteCustomer(c.id);
+      _showSnack(result['message'], result['success'] ? _C.green : _C.red, lp);
+      if (result['success']) _refreshCustomers();
+    }
+  }
+
+  void _showSnack(String msg, Color color, LanguageProvider lp) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg, style: TextStyle(fontWeight: FontWeight.w500, fontFamily: lp.fontFamily)),
+      backgroundColor: color,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      margin: const EdgeInsets.all(16),
+    ));
+  }
+}
+
+// ─── Header ──────────────────────────────────────────────────────────────────
+class _Header extends StatelessWidget {
+  final CustomerProvider provider;
+  final VoidCallback onReports;
+  final LanguageProvider languageProvider;
+  const _Header({required this.provider, required this.onReports, required this.languageProvider});
+
+  @override
+  Widget build(BuildContext context) {
+    final active   = provider.customers.where((c) => c.isActive).length;
+    final withBal  = provider.customers.where((c) => c.balance > 0).length;
+    final total    = provider.totalOutstandingBalance;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(32, 32, 32, 24),
+      padding: const EdgeInsets.fromLTRB(28, 28, 28, 20),
       decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          bottom: BorderSide(
-            color: Color(0xFFF0F0F5),
-            width: 1,
-          ),
-        ),
+        color: _C.surface,
+        border: Border(bottom: BorderSide(color: _C.border)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: _C.brandLight,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.people_alt_rounded, color: _C.brand, size: 22),
+              ),
+              const SizedBox(width: 14),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Customer Management',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2D3142),
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Manage your customer relationships and balances',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                    ),
-                  ),
+                  Text(languageProvider.isEnglish ? 'Customers' : 'کسٹمرز',
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700,
+                          color: _C.text1, letterSpacing: -0.4)),
+                  Text(languageProvider.isEnglish ? 'Manage relationships & balances' : 'تعلقات اور بیلنس کا انتظام کریں',
+                      style: TextStyle(fontSize: 13, color: Colors.grey[500], fontFamily: languageProvider.fontFamily)),
                 ],
               ),
-              CustomButton(
-                text: 'Reports',
-                icon: Icons.assessment,
-                onPressed: _navigateToReports, // Updated to navigate
-                width: 120,
-                height: 48,
-                backgroundColor: Colors.white,
-                textColor: const Color(0xFF7C3AED),
-              ),
+              const Spacer(),
+              _ReportsButton(onPressed: onReports, languageProvider: languageProvider),
             ],
           ),
           const SizedBox(height: 20),
           Row(
             children: [
-              _buildStatCard(
-                'Total Customers',
-                customerProvider.totalItems.toString(),
-                Icons.people,
-                const Color(0xFF7C3AED),
+              _StatTile(
+                label: languageProvider.isEnglish ? 'Total' : 'کل',
+                value: provider.totalItems.toString(),
+                color: _C.brand,
+                languageProvider: languageProvider,
               ),
-              const SizedBox(width: 16),
-              _buildStatCard(
-                'Active',
-                activeCustomers.toString(),
-                Icons.check_circle,
-                const Color(0xFF10B981),
+              _divider(),
+              _StatTile(
+                label: languageProvider.isEnglish ? 'Active' : 'فعال',
+                value: active.toString(),
+                color: _C.green,
+                languageProvider: languageProvider,
               ),
-              const SizedBox(width: 16),
-              _buildStatCard(
-                'With Balance',
-                customersWithBalance.toString(),
-                Icons.account_balance_wallet,
-                Colors.orange,
+              _divider(),
+              _StatTile(
+                label: languageProvider.isEnglish ? 'With Balance' : 'بیلنس والے',
+                value: withBal.toString(),
+                color: _C.orange,
+                languageProvider: languageProvider,
               ),
-              const SizedBox(width: 16),
-              _buildStatCard(
-                'Total Owed',
-                '${totalBalance.toStringAsFixed(2)}',
-                Icons.money,
-                Colors.red,
+              _divider(),
+              _StatTile(
+                label: languageProvider.isEnglish ? 'Total Owed' : 'کل بقایا',
+                value: total.toStringAsFixed(2),
+                color: _C.red,
+                isAmount: true,
+                languageProvider: languageProvider,
               ),
             ],
           ),
@@ -274,464 +479,653 @@ class _CustomerScreenState extends State<CustomerScreen> {
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFF0F0F5)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _divider() => Container(
+    width: 1, height: 36,
+    margin: const EdgeInsets.symmetric(horizontal: 12),
+    color: _C.border,
+  );
+}
+
+class _StatTile extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  final bool isAmount;
+  final LanguageProvider languageProvider;
+  const _StatTile({required this.label, required this.value, required this.color, this.isAmount = false, required this.languageProvider});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 11, color: _C.text3, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 2),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, color: color, size: 20),
-                ),
-                const Spacer(),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF2D3142),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+            if (isAmount) Text('PKR ', style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600, fontFamily: languageProvider.fontFamily)),
+            Text(value,
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: color, letterSpacing: -0.5, fontFamily: languageProvider.fontFamily)),
           ],
         ),
+      ],
+    );
+  }
+}
+
+class _ReportsButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  final LanguageProvider languageProvider;
+  const _ReportsButton({required this.onPressed, required this.languageProvider});
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: const Icon(Icons.bar_chart_rounded, size: 16),
+      label: Text(languageProvider.isEnglish ? 'Reports' : 'رپورٹس'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: _C.brand,
+        side: const BorderSide(color: _C.brand),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
       ),
     );
   }
+}
 
-  Widget _buildSearchFilterSection() {
+// ─── Search Bar ──────────────────────────────────────────────────────────────
+class _SearchBar extends StatelessWidget {
+  final TextEditingController controller;
+  final String currentSearch;
+  final bool showActiveOnly;
+  final ValueChanged<String> onSearch;
+  final VoidCallback onToggleActive;
+  final LanguageProvider languageProvider;
+  const _SearchBar({
+    required this.controller, required this.currentSearch,
+    required this.showActiveOnly, required this.onSearch, required this.onToggleActive,
+    required this.languageProvider,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          bottom: BorderSide(color: Color(0xFFF0F0F5), width: 1),
-        ),
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      color: _C.surface,
       child: Row(
         children: [
           Expanded(
             child: Container(
-              height: 48,
+              height: 44,
               decoration: BoxDecoration(
-                color: const Color(0xFFF5F6FA),
-                borderRadius: BorderRadius.circular(12),
+                color: _C.bg,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _C.border),
               ),
               child: TextField(
-                controller: _searchController,
-                onChanged: (value) => _handleSearch(value),
+                controller: controller,
+                onChanged: onSearch,
+                style: TextStyle(fontSize: 14, color: _C.text1, fontFamily: languageProvider.fontFamily),
                 decoration: InputDecoration(
-                  hintText: 'Search customers by name, contact, email or address...',
-                  hintStyle: TextStyle(
-                    color: Colors.grey[400],
-                    fontSize: 14,
-                  ),
-                  prefixIcon: Icon(Icons.search, color: Colors.grey[400], size: 20),
-                  suffixIcon: _currentSearch.isNotEmpty
+                  hintText: languageProvider.isEnglish ? 'Search by name, contact, email…' : 'نام، رابطہ، ای میل سے تلاش کریں…',
+                  hintStyle: const TextStyle(color: _C.text3, fontSize: 14),
+                  prefixIcon: const Icon(Icons.search, color: _C.text3, size: 19),
+                  suffixIcon: currentSearch.isNotEmpty
                       ? IconButton(
-                    icon: Icon(Icons.clear, color: Colors.grey[400], size: 20),
-                    onPressed: () {
-                      _searchController.clear();
-                      _handleSearch('');
-                    },
+                    icon: const Icon(Icons.close, size: 17, color: _C.text3),
+                    onPressed: () { controller.clear(); onSearch(''); },
                   )
                       : null,
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 11),
                 ),
               ),
             ),
           ),
-          const SizedBox(width: 16),
-          FilterChip(
-            label: Text(
-              'Active Only',
-              style: TextStyle(
-                color: _showActiveOnly ? Colors.white : const Color(0xFF7C3AED),
-              ),
-            ),
-            selected: _showActiveOnly,
-            onSelected: (_) => _toggleActiveFilter(),
-            backgroundColor: Colors.white,
-            selectedColor: const Color(0xFF7C3AED),
-            side: BorderSide(color: const Color(0xFF7C3AED)),
-            checkmarkColor: Colors.white,
+          const SizedBox(width: 12),
+          _FilterPill(
+            label: languageProvider.isEnglish ? 'Active only' : 'صرف فعال',
+            selected: showActiveOnly,
+            onTap: onToggleActive,
+            languageProvider: languageProvider,
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildTypeFilter() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-      color: Colors.white,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
+class _FilterPill extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final LanguageProvider languageProvider;
+  const _FilterPill({required this.label, required this.selected, required this.onTap, required this.languageProvider});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? _C.brand : _C.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: selected ? _C.brand : _C.border),
+        ),
         child: Row(
           children: [
-            FilterChip(
-              label: const Text('All'),
-              selected: _selectedType == 'all',
-              onSelected: (_) => _handleTypeFilter('all'),
-              backgroundColor: _selectedType == 'all'
-                  ? const Color(0xFF7C3AED)
-                  : Colors.grey[100],
-              selectedColor: const Color(0xFF7C3AED),
-              checkmarkColor: Colors.white,
-              labelStyle: TextStyle(
-                color: _selectedType == 'all' ? Colors.white : Colors.grey[700],
-              ),
-            ),
-            const SizedBox(width: 8),
-            FilterChip(
-              label: const Text('Regular'),
-              selected: _selectedType == 'regular',
-              onSelected: (_) => _handleTypeFilter('regular'),
-              backgroundColor: _selectedType == 'regular'
-                  ? Colors.blue
-                  : Colors.grey[100],
-              selectedColor: Colors.blue,
-              checkmarkColor: Colors.white,
-              labelStyle: TextStyle(
-                color: _selectedType == 'regular' ? Colors.white : Colors.grey[700],
-              ),
-            ),
-            const SizedBox(width: 8),
-            FilterChip(
-              label: const Text('Retail'),
-              selected: _selectedType == 'retail',
-              onSelected: (_) => _handleTypeFilter('retail'),
-              backgroundColor: _selectedType == 'retail'
-                  ? Colors.green
-                  : Colors.grey[100],
-              selectedColor: Colors.green,
-              checkmarkColor: Colors.white,
-              labelStyle: TextStyle(
-                color: _selectedType == 'retail' ? Colors.white : Colors.grey[700],
-              ),
-            ),
-            const SizedBox(width: 8),
-            FilterChip(
-              label: const Text('Wholesale'),
-              selected: _selectedType == 'wholesale',
-              onSelected: (_) => _handleTypeFilter('wholesale'),
-              backgroundColor: _selectedType == 'wholesale'
-                  ? Colors.orange
-                  : Colors.grey[100],
-              selectedColor: Colors.orange,
-              checkmarkColor: Colors.white,
-              labelStyle: TextStyle(
-                color: _selectedType == 'wholesale' ? Colors.white : Colors.grey[700],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCustomerList(CustomerProvider customerProvider) {
-    if (customerProvider.isLoading && customerProvider.customers.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (customerProvider.customers.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
             Icon(
-              Icons.people_outline,
-              size: 80,
-              color: Colors.grey[300],
+              selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+              size: 15,
+              color: selected ? Colors.white : _C.text3,
             ),
-            const SizedBox(height: 20),
-            Text(
-              _currentSearch.isEmpty
-                  ? 'No customers found'
-                  : 'No customers match your search',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _currentSearch.isEmpty
-                  ? 'Add your first customer to get started'
-                  : 'Try a different search term',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[500],
-              ),
-            ),
-            const SizedBox(height: 20),
-            if (_currentSearch.isEmpty)
-              CustomButton(
-                text: 'Add Customer',
-                icon: Icons.person_add,
-                onPressed: () => _showAddCustomerDialog(),
-                width: 160,
-                height: 48,
-                useGradient: true,
-                gradientColors: const [Color(0xFF7C3AED), Color(0xFF6366F1)],
-              ),
+            const SizedBox(width: 6),
+            Text(label,
+                style: TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w500,
+                  color: selected ? Colors.white : _C.text2,
+                  fontFamily: languageProvider.fontFamily,
+                )),
           ],
         ),
-      );
-    }
-
-    return ListView.builder(
-      controller: _scrollController,
-      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-      itemCount: customerProvider.customers.length + 1,
-      itemBuilder: (context, index) {
-        if (index < customerProvider.customers.length) {
-          final customer = customerProvider.customers[index];
-          return CustomerListItem(
-            customer: customer,
-            onTap: () => _showCustomerDetails(customer),
-            onEdit: () => _showEditCustomerDialog(customer),
-            onToggleStatus: () => _toggleCustomerStatus(customer),
-            onDelete: () => _deleteCustomer(customer),
-          );
-        } else {
-          return customerProvider.isLoading
-              ? const Padding(
-            padding: EdgeInsets.symmetric(vertical: 20),
-            child: Center(child: CircularProgressIndicator()),
-          )
-              : customerProvider.hasMorePages
-              ? const SizedBox(height: 20)
-              : Container();
-        }
-      },
-    );
-  }
-
-  Future<void> _showAddCustomerDialog() async {
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (context) => const CustomerFormDialog(),
-    );
-
-    if (result != null && result['success'] == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['message']),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
-  }
-
-  Future<void> _showEditCustomerDialog(Customer customer) async {
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (context) => CustomerFormDialog(customer: customer),
-    );
-
-    if (result != null && result['success'] == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['message']),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
-  }
-
-  void _showCustomerDetails(Customer customer) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => CustomerDetailsSheet(
-        customer: customer,
-        onEdit: () {
-          Navigator.pop(context);
-          _showEditCustomerDialog(customer);
-        },
-        onToggleStatus: () {
-          Navigator.pop(context);
-          _toggleCustomerStatus(customer);
-        },
-        onViewLedger: () {
-          Navigator.pop(context);
-          _viewCustomerLedger(customer);
-        },
-        onViewPayments: () {
-          Navigator.pop(context);
-          _viewCustomerPayments(customer);
-        },
-        onReceivePayment: () {
-          Navigator.pop(context);
-          _receiveCustomerPayment(customer);
-        },
-        onAdjustBalance: () {
-          Navigator.pop(context);
-          _adjustCustomerBalance(customer);
-        },
       ),
     );
-  }
-
-  void _viewCustomerLedger(Customer customer) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => CustomerLedgerScreen(customer: customer),
-      ),
-    );
-  }
-
-  void _viewCustomerPayments(Customer customer) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => CustomerPaymentsScreen(customer: customer),
-      ),
-    );
-  }
-
-  Future<void> _receiveCustomerPayment(Customer customer) async {
-    final result = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (context) => CustomerInvoicePaymentScreen(customer: customer),
-      ),
-    );
-
-    if (result == true) {
-      _refreshCustomers();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Payment recorded successfully'),
-          backgroundColor: Color(0xFF10B981),
-        ),
-      );
-    }
-  }
-
-  Future<void> _adjustCustomerBalance(Customer customer) async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (_) => CustomerAdjustmentDialog(customer: customer),
-    );
-
-    if (result == true) {
-      _refreshCustomers();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Balance adjusted successfully'),
-          backgroundColor: Color(0xFF7C3AED),
-        ),
-      );
-    }
-  }
-
-  Future<void> _toggleCustomerStatus(Customer customer) async {
-    final confirm = await showConfirmationDialog(
-      context,
-      title: customer.isActive ? 'Deactivate Customer' : 'Activate Customer',
-      message: customer.isActive
-          ? 'Are you sure you want to deactivate ${customer.name}?'
-          : 'Are you sure you want to activate ${customer.name}?',
-      confirmText: customer.isActive ? 'Deactivate' : 'Activate',
-      confirmColor: customer.isActive ? Colors.red : Colors.green,
-    );
-
-    if (confirm == true) {
-      final customerProvider = Provider.of<CustomerProvider>(context, listen: false);
-      final result = await customerProvider.toggleCustomerStatus(customer.id);
-
-      if (result['success']) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message']),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message']),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _deleteCustomer(Customer customer) async {
-    final confirm = await showConfirmationDialog(
-      context,
-      title: 'Delete Customer',
-      message: 'Are you sure you want to delete ${customer.name}? This action cannot be undone.',
-      confirmText: 'Delete',
-      confirmColor: Colors.red,
-    );
-
-    if (confirm == true) {
-      final customerProvider = Provider.of<CustomerProvider>(context, listen: false);
-      final result = await customerProvider.deleteCustomer(customer.id);
-
-      if (result['success']) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message']),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message']),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 }
 
+// ─── Type Chips ──────────────────────────────────────────────────────────────
+class _TypeChips extends StatelessWidget {
+  final String selected;
+  final ValueChanged<String> onSelect;
+  final LanguageProvider languageProvider;
+  const _TypeChips({required this.selected, required this.onSelect, required this.languageProvider});
+
+  List<Map<String, dynamic>> get _types => [
+    {'id': 'all',       'label': languageProvider.isEnglish ? 'All' : 'سب',       'color': _C.brand,   'icon': Icons.grid_view_rounded},
+    {'id': 'regular',   'label': languageProvider.isEnglish ? 'Regular' : 'عام',   'color': _C.blue,    'icon': Icons.person_rounded},
+    {'id': 'retail',    'label': languageProvider.isEnglish ? 'Retail' : 'خوردہ',    'color': _C.green,   'icon': Icons.shopping_bag_rounded},
+    {'id': 'wholesale', 'label': languageProvider.isEnglish ? 'Wholesale' : 'تھوک', 'color': _C.orange,  'icon': Icons.warehouse_rounded},
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+      decoration: const BoxDecoration(
+        color: _C.surface,
+        border: Border(bottom: BorderSide(color: _C.border)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: _types.map((t) {
+            final id = t['id'] as String;
+            final label = t['label'] as String;
+            final color = t['color'] as Color;
+            final icon = t['icon'] as IconData;
+            final isSelected = selected == id;
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: GestureDetector(
+                onTap: () => onSelect(id),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: isSelected ? color : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isSelected ? color : _C.border,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(icon, size: 14,
+                          color: isSelected ? Colors.white : color),
+                      const SizedBox(width: 6),
+                      Text(label,
+                          style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w500,
+                            color: isSelected ? Colors.white : _C.text2,
+                            fontFamily: languageProvider.fontFamily,
+                          )),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Table Header ─────────────────────────────────────────────────────────────
+class _TableHeader extends StatelessWidget {
+  final String sortColumn;
+  final bool sortAscending;
+  final void Function(String) onSort;
+  final LanguageProvider languageProvider;
+  const _TableHeader({required this.sortColumn, required this.sortAscending, required this.onSort, required this.languageProvider});
+
+  @override
+  Widget build(BuildContext context) {
+    final headers = [
+      {'label': languageProvider.isEnglish ? 'Customer' : 'کسٹمر', 'column': 'name', 'flex': 3, 'rightAlign': false},
+      {'label': languageProvider.isEnglish ? 'Contact' : 'رابطہ', 'column': 'contact', 'flex': 2, 'rightAlign': false},
+      {'label': languageProvider.isEnglish ? 'Email' : 'ای میل', 'column': 'email', 'flex': 3, 'rightAlign': false},
+      {'label': languageProvider.isEnglish ? 'Type' : 'قسم', 'column': 'type', 'flex': 2, 'rightAlign': false},
+      {'label': languageProvider.isEnglish ? 'Balance' : 'بیلنس', 'column': 'balance', 'flex': 2, 'rightAlign': true},
+      {'label': languageProvider.isEnglish ? 'Status' : 'حالت', 'column': 'status', 'flex': 2, 'rightAlign': false},
+    ];
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0EDFD),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+        border: Border.all(color: const Color(0xFFDDD8FA)),
+      ),
+      child: Row(
+        children: [
+          ...headers.map((h) => Expanded(
+            flex: h['flex'] as int,
+            child: GestureDetector(
+              onTap: () => onSort(h['column'] as String),
+              child: Row(
+                mainAxisAlignment: (h['rightAlign'] as bool) ? MainAxisAlignment.end : MainAxisAlignment.start,
+                children: [
+                  Text(h['label'] as String,
+                      style: const TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w700,
+                        color: _C.text2, letterSpacing: 0.5,
+                      )),
+                  const SizedBox(width: 3),
+                  Icon(
+                    sortColumn == h['column']
+                        ? (sortAscending ? Icons.arrow_upward : Icons.arrow_downward)
+                        : Icons.unfold_more,
+                    size: 13,
+                    color: sortColumn == h['column'] ? _C.brand : _C.text3,
+                  ),
+                ],
+              ),
+            ),
+          )),
+          const SizedBox(width: 100),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Customer Row ─────────────────────────────────────────────────────────────
+class _CustomerRow extends StatefulWidget {
+  final Customer customer;
+  final int index;
+  final VoidCallback onTap;
+  final VoidCallback onEdit;
+  final VoidCallback onToggle;
+  final VoidCallback onDelete;
+  final LanguageProvider languageProvider;
+
+  const _CustomerRow({
+    required this.customer, required this.index,
+    required this.onTap, required this.onEdit,
+    required this.onToggle, required this.onDelete,
+    required this.languageProvider,
+  });
+
+  @override
+  State<_CustomerRow> createState() => _CustomerRowState();
+}
+
+class _CustomerRowState extends State<_CustomerRow> {
+  bool _hovered = false;
+
+  Color _typeColor(String t) {
+    switch (t) {
+      case 'wholesale': return _C.orange;
+      case 'retail':    return _C.green;
+      default:          return _C.blue;
+    }
+  }
+
+  IconData _typeIcon(String t) {
+    switch (t) {
+      case 'wholesale': return Icons.warehouse_rounded;
+      case 'retail':    return Icons.shopping_bag_rounded;
+      default:          return Icons.person_rounded;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.customer;
+    final isEven = widget.index % 2 == 0;
+    final tc = _typeColor(c.customerType);
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit:  (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          margin: const EdgeInsets.only(bottom: 1),
+          decoration: BoxDecoration(
+            color: _hovered ? _C.rowHover : (isEven ? Colors.white : const Color(0xFFFBFBFD)),
+            border: Border(
+              left: BorderSide(
+                color: _hovered ? tc : Colors.transparent,
+                width: 3,
+              ),
+              bottom: const BorderSide(color: _C.border, width: 0.5),
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 34, height: 34,
+                      decoration: BoxDecoration(
+                        color: tc.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Icon(_typeIcon(c.customerType), color: tc, size: 16),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(c.name,
+                            style: TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600,
+                              color: _C.text1, fontFamily: widget.languageProvider.fontFamily,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (c.address != null && c.address!.isNotEmpty)
+                            Text(c.address!,
+                              style: TextStyle(fontSize: 11, color: _C.text3, fontFamily: widget.languageProvider.fontFamily),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(c.contact,
+                  style: TextStyle(fontSize: 13, color: _C.text2, fontFamily: widget.languageProvider.fontFamily),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Expanded(
+                flex: 3,
+                child: Text(c.email ?? '—',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: c.email != null ? _C.text2 : _C.text3,
+                    fontFamily: widget.languageProvider.fontFamily,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: tc.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(c.typeLabel,
+                      style: TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w600, color: tc,
+                        fontFamily: widget.languageProvider.fontFamily,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: _BalanceBadge(balance: c.balance, formatted: c.formattedBalance, languageProvider: widget.languageProvider),
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: _StatusDot(
+                  active: c.isActive,
+                  languageProvider: widget.languageProvider,
+                ),
+              ),
+              SizedBox(
+                width: 100,
+                child: AnimatedOpacity(
+                  opacity: _hovered ? 1 : 0.4,
+                  duration: const Duration(milliseconds: 120),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      _ActionBtn(
+                        icon: Icons.edit_outlined,
+                        color: _C.brand,
+                        tooltip: widget.languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں',
+                        onTap: widget.onEdit,
+                        languageProvider: widget.languageProvider,
+                      ),
+                      _ActionBtn(
+                        icon: c.isActive ? Icons.pause_circle_outline : Icons.play_circle_outline,
+                        color: c.isActive ? _C.orange : _C.green,
+                        tooltip: c.isActive
+                            ? (widget.languageProvider.isEnglish ? 'Deactivate' : 'غیر فعال کریں')
+                            : (widget.languageProvider.isEnglish ? 'Activate' : 'فعال کریں'),
+                        onTap: widget.onToggle,
+                        languageProvider: widget.languageProvider,
+                      ),
+                      _ActionBtn(
+                        icon: Icons.delete_outline,
+                        color: _C.red,
+                        tooltip: widget.languageProvider.isEnglish ? 'Delete' : 'حذف کریں',
+                        onTap: widget.onDelete,
+                        languageProvider: widget.languageProvider,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BalanceBadge extends StatelessWidget {
+  final double balance;
+  final String formatted;
+  final LanguageProvider languageProvider;
+  const _BalanceBadge({required this.balance, required this.formatted, required this.languageProvider});
+
+  @override
+  Widget build(BuildContext context) {
+    final owing = balance > 0.01;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: owing ? _C.red.withOpacity(0.08) : _C.green.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        formatted,
+        style: TextStyle(
+          fontSize: 12, fontWeight: FontWeight.w700,
+          color: owing ? _C.red : _C.green,
+          fontFamily: languageProvider.fontFamily,
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusDot extends StatelessWidget {
+  final bool active;
+  final LanguageProvider languageProvider;
+  const _StatusDot({required this.active, required this.languageProvider});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 7, height: 7,
+          decoration: BoxDecoration(
+            color: active ? _C.green : _C.text3,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          active
+              ? (languageProvider.isEnglish ? 'Active' : 'فعال')
+              : (languageProvider.isEnglish ? 'Inactive' : 'غیر فعال'),
+          style: TextStyle(
+            fontSize: 12, fontWeight: FontWeight.w500,
+            color: active ? _C.green : _C.text3,
+            fontFamily: languageProvider.fontFamily,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ActionBtn extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String tooltip;
+  final VoidCallback onTap;
+  final LanguageProvider languageProvider;
+  const _ActionBtn({required this.icon, required this.color, required this.tooltip, required this.onTap, required this.languageProvider});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.all(5),
+          child: Icon(icon, size: 17, color: color),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Empty State ─────────────────────────────────────────────────────────────
+class _EmptyState extends StatelessWidget {
+  final bool hasSearch;
+  final VoidCallback onAdd;
+  final LanguageProvider languageProvider;
+  const _EmptyState({required this.hasSearch, required this.onAdd, required this.languageProvider});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 80, height: 80,
+            decoration: BoxDecoration(
+              color: _C.brandLight,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Icon(Icons.people_outline_rounded, size: 40, color: _C.brand),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            hasSearch
+                ? (languageProvider.isEnglish ? 'No customers found' : 'کوئی کسٹمر نہیں ملا')
+                : (languageProvider.isEnglish ? 'No customers yet' : 'ابھی تک کوئی کسٹمر نہیں'),
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: _C.text1,
+                fontFamily: languageProvider.fontFamily),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            hasSearch
+                ? (languageProvider.isEnglish ? 'Try a different search term' : 'مختلف تلاش کی اصطلاح آزمائیں')
+                : (languageProvider.isEnglish ? 'Add your first customer to get started' : 'شروع کرنے کے لیے اپنا پہلا کسٹمر شامل کریں'),
+            style: TextStyle(fontSize: 13, color: _C.text3, fontFamily: languageProvider.fontFamily),
+          ),
+          if (!hasSearch) ...[
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.person_add_rounded, size: 17),
+              label: Text(languageProvider.isEnglish ? 'Add Customer' : 'کسٹمر شامل کریں'),
+              style: FilledButton.styleFrom(
+                backgroundColor: _C.brand,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ─── FAB ─────────────────────────────────────────────────────────────────────
+class _AddFAB extends StatelessWidget {
+  final VoidCallback onPressed;
+  final LanguageProvider languageProvider;
+  const _AddFAB({required this.onPressed, required this.languageProvider});
+
+  @override
+  Widget build(BuildContext context) {
+    return FloatingActionButton.extended(
+      onPressed: onPressed,
+      backgroundColor: _C.brand,
+      foregroundColor: Colors.white,
+      icon: const Icon(Icons.person_add_rounded, size: 20),
+      label: Text(languageProvider.isEnglish ? 'Add Customer' : 'کسٹمر شامل کریں',
+          style: const TextStyle(fontWeight: FontWeight.w600)),
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    );
+  }
+}
+
+// ─── Customer Details Sheet ──────────────────────────────────────────────────
 class CustomerDetailsSheet extends StatelessWidget {
   final Customer customer;
+  final LanguageProvider languageProvider;
   final VoidCallback onEdit;
   final VoidCallback onToggleStatus;
   final VoidCallback onViewLedger;
@@ -742,6 +1136,7 @@ class CustomerDetailsSheet extends StatelessWidget {
   const CustomerDetailsSheet({
     Key? key,
     required this.customer,
+    required this.languageProvider,
     required this.onEdit,
     required this.onToggleStatus,
     required this.onViewLedger,
@@ -750,72 +1145,72 @@ class CustomerDetailsSheet extends StatelessWidget {
     required this.onAdjustBalance,
   }) : super(key: key);
 
+  Color _typeColor(String t) {
+    switch (t) {
+      case 'wholesale': return _C.orange;
+      case 'retail':    return _C.green;
+      default:          return _C.blue;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isOutstanding = customer.balance > 0.01;
+    final owing      = customer.balance > 0.01;
     final hasDiscount = customer.discountPercent > 0;
 
     return Container(
-      padding: const EdgeInsets.all(24),
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      padding: EdgeInsets.fromLTRB(24, 20, 24,
+          MediaQuery.of(context).viewInsets.bottom + 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header with close button
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF7C3AED).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.person_outline,
-                      color: Color(0xFF7C3AED),
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Customer Details',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey[800],
-                    ),
-                  ),
-                ],
+          Center(
+            child: Container(
+              width: 36, height: 4,
+              decoration: BoxDecoration(
+                color: _C.border,
+                borderRadius: BorderRadius.circular(2),
               ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: _C.brandLight,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.person_outline_rounded, color: _C.brand, size: 19),
+              ),
+              const SizedBox(width: 12),
+              Text(languageProvider.isEnglish ? 'Customer Details' : 'کسٹمر کی تفصیلات',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _C.text1,
+                      fontFamily: languageProvider.fontFamily)),
+              const Spacer(),
               IconButton(
                 onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close),
+                icon: const Icon(Icons.close, size: 20, color: _C.text3),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
 
-          // Customer name and balance highlight
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  const Color(0xFF7C3AED).withOpacity(0.1),
-                  const Color(0xFF6366F1).withOpacity(0.05),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF7C3AED).withOpacity(0.2)),
+              color: _C.brandLight,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFDDD8FA)),
             ),
             child: Row(
               children: [
@@ -823,157 +1218,132 @@ class CustomerDetailsSheet extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        customer.name,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1C1C1E),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        customer.contact,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey[600],
-                        ),
-                      ),
+                      Text(customer.name,
+                          style: const TextStyle(
+                              fontSize: 17, fontWeight: FontWeight.w700, color: _C.text1)),
+                      const SizedBox(height: 3),
+                      Text(customer.contact,
+                          style: const TextStyle(fontSize: 13, color: _C.text3)),
                     ],
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                   decoration: BoxDecoration(
-                    color: isOutstanding ? Colors.red.withOpacity(0.1) : Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    color: owing ? _C.red.withOpacity(0.1) : _C.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: isOutstanding ? Colors.red.withOpacity(0.3) : Colors.green.withOpacity(0.3),
+                      color: owing ? _C.red.withOpacity(0.3) : _C.green.withOpacity(0.3),
                     ),
                   ),
                   child: Column(
                     children: [
-                      Text(
-                        isOutstanding ? 'OWING' : 'CLEAR',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: isOutstanding ? Colors.red : Colors.green,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        customer.formattedBalance,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: isOutstanding ? Colors.red : Colors.green,
-                        ),
-                      ),
+                      Text(owing
+                          ? (languageProvider.isEnglish ? 'OWING' : 'بقایا')
+                          : (languageProvider.isEnglish ? 'CLEAR' : 'صاف'),
+                          style: TextStyle(
+                            fontSize: 9, fontWeight: FontWeight.w800,
+                            color: owing ? _C.red : _C.green, letterSpacing: 0.8,
+                            fontFamily: languageProvider.fontFamily,
+                          )),
+                      const SizedBox(height: 3),
+                      Text(customer.formattedBalance,
+                          style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700,
+                            color: owing ? _C.red : _C.green,
+                            fontFamily: languageProvider.fontFamily,
+                          )),
                     ],
                   ),
                 ),
               ],
             ),
           ),
+          const SizedBox(height: 18),
 
-          const SizedBox(height: 20),
-
-          // Details grid
-          _buildDetailItem('Contact', customer.contact, Icons.phone),
-          if (customer.email != null && customer.email!.isNotEmpty)
-            _buildDetailItem('Email', customer.email!, Icons.email),
-          if (customer.address != null && customer.address!.isNotEmpty)
-            _buildDetailItem('Address', customer.address!, Icons.location_on),
-
-          // Add Discount display here - show only if discount > 0
+          _Info(languageProvider.isEnglish ? 'Contact' : 'رابطہ', customer.contact, Icons.phone_rounded, languageProvider: languageProvider),
+          if (customer.email?.isNotEmpty ?? false)
+            _Info(languageProvider.isEnglish ? 'Email' : 'ای میل', customer.email!, Icons.email_rounded, languageProvider: languageProvider),
+          if (customer.address?.isNotEmpty ?? false)
+            _Info(languageProvider.isEnglish ? 'Address' : 'پتہ', customer.address!, Icons.location_on_rounded, languageProvider: languageProvider),
           if (hasDiscount)
-            _buildDetailItem(
-              'Default Discount',
-              '${customer.discountPercent.toStringAsFixed(1)}%',
-              Icons.local_offer,
-              color: const Color(0xFF7C3AED),
-            ),
-
-          _buildDetailItem('Type', customer.typeLabel, Icons.category,
-              color: _getTypeColor(customer.customerType)),
-          _buildDetailItem('Status', customer.isActive ? 'Active' : 'Inactive',
-              customer.isActive ? Icons.check_circle : Icons.cancel,
-              color: customer.isActive ? Colors.green : Colors.red),
-          _buildDetailItem('Created',
+            _Info(languageProvider.isEnglish ? 'Discount' : 'چھوٹ', '${customer.discountPercent.toStringAsFixed(1)}%',
+                Icons.local_offer_rounded, color: _C.brand, languageProvider: languageProvider),
+          _Info(languageProvider.isEnglish ? 'Type' : 'قسم', customer.typeLabel, Icons.category_rounded,
+              color: _typeColor(customer.customerType), languageProvider: languageProvider),
+          _Info(languageProvider.isEnglish ? 'Status' : 'حالت',
+              customer.isActive
+                  ? (languageProvider.isEnglish ? 'Active' : 'فعال')
+                  : (languageProvider.isEnglish ? 'Inactive' : 'غیر فعال'),
+              customer.isActive ? Icons.check_circle_rounded : Icons.cancel_rounded,
+              color: customer.isActive ? _C.green : _C.red,
+              languageProvider: languageProvider),
+          _Info(languageProvider.isEnglish ? 'Created' : 'بنایا گیا',
               '${customer.createdAt.day}/${customer.createdAt.month}/${customer.createdAt.year}',
-              Icons.calendar_today),
+              Icons.calendar_today_rounded, languageProvider: languageProvider),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
-          // Action buttons in two rows
-          // First row - Quick Actions
           Row(
             children: [
-              Expanded(
-                child: _buildActionButton(
-                  icon: Icons.receipt_long,
-                  label: 'Ledger',
-                  color: const Color(0xFF7C3AED),
-                  onTap: onViewLedger,
-                ),
+              _SheetBtn(
+                icon: Icons.receipt_long_rounded,
+                label: languageProvider.isEnglish ? 'Ledger' : 'لیجر',
+                color: _C.brand,
+                onTap: onViewLedger,
+                languageProvider: languageProvider,
               ),
               const SizedBox(width: 10),
-              Expanded(
-                child: _buildActionButton(
-                  icon: Icons.history,
-                  label: 'Payments',
-                  color: const Color(0xFF3B82F6),
-                  onTap: onViewPayments,
-                ),
+              _SheetBtn(
+                icon: Icons.history_rounded,
+                label: languageProvider.isEnglish ? 'Payments' : 'ادائیگیاں',
+                color: _C.blue,
+                onTap: onViewPayments,
+                languageProvider: languageProvider,
               ),
             ],
           ),
           const SizedBox(height: 10),
-
-          // Second row - Payment Actions
-          if (isOutstanding)
+          if (owing)
             Row(
               children: [
-                Expanded(
-                  child: _buildActionButton(
-                    icon: Icons.payments,
-                    label: 'Receive Payment',
-                    color: const Color(0xFF10B981),
-                    onTap: onReceivePayment,
-                    isPrimary: true,
-                  ),
+                _SheetBtn(
+                  icon: Icons.payments_rounded,
+                  label: languageProvider.isEnglish ? 'Receive Payment' : 'ادائیگی وصول کریں',
+                  color: _C.green,
+                  onTap: onReceivePayment,
+                  primary: true,
+                  languageProvider: languageProvider,
                 ),
                 const SizedBox(width: 10),
-                Expanded(
-                  child: _buildActionButton(
-                    icon: Icons.swap_horiz,
-                    label: 'Adjust',
-                    color: Colors.orange,
-                    onTap: onAdjustBalance,
-                  ),
+                _SheetBtn(
+                  icon: Icons.swap_horiz_rounded,
+                  label: languageProvider.isEnglish ? 'Adjust' : 'ایڈجسٹ کریں',
+                  color: _C.orange,
+                  onTap: onAdjustBalance,
+                  languageProvider: languageProvider,
                 ),
               ],
             )
           else
             Row(
               children: [
-                Expanded(
-                  child: _buildActionButton(
-                    icon: Icons.edit,
-                    label: 'Edit',
-                    color: const Color(0xFF7C3AED),
-                    onTap: onEdit,
-                  ),
+                _SheetBtn(
+                  icon: Icons.edit_rounded,
+                  label: languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں',
+                  color: _C.brand,
+                  onTap: onEdit,
+                  languageProvider: languageProvider,
                 ),
                 const SizedBox(width: 10),
-                Expanded(
-                  child: _buildActionButton(
-                    icon: customer.isActive ? Icons.pause : Icons.play_arrow,
-                    label: customer.isActive ? 'Deactivate' : 'Activate',
-                    color: customer.isActive ? Colors.red : Colors.green,
-                    onTap: onToggleStatus,
-                  ),
+                _SheetBtn(
+                  icon: customer.isActive ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  label: customer.isActive
+                      ? (languageProvider.isEnglish ? 'Deactivate' : 'غیر فعال کریں')
+                      : (languageProvider.isEnglish ? 'Activate' : 'فعال کریں'),
+                  color: customer.isActive ? _C.red : _C.green,
+                  onTap: onToggleStatus,
+                  languageProvider: languageProvider,
                 ),
               ],
             ),
@@ -981,46 +1351,36 @@ class CustomerDetailsSheet extends StatelessWidget {
       ),
     );
   }
+}
 
-  Color _getTypeColor(String type) {
-    switch (type) {
-      case 'wholesale':
-        return Colors.orange;
-      case 'retail':
-        return Colors.green;
-      default:
-        return Colors.blue;
-    }
-  }
+class _Info extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color? color;
+  final LanguageProvider languageProvider;
+  const _Info(this.label, this.value, this.icon, {this.color, required this.languageProvider});
 
-  Widget _buildDetailItem(String label, String value, IconData icon, {Color? color}) {
+  @override
+  Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
         children: [
-          Icon(icon, color: color ?? const Color(0xFF6B7280), size: 18),
+          Icon(icon, size: 16, color: color ?? _C.text3),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[500],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: color ?? const Color(0xFF2D3142),
-                  ),
-                ),
+                Text(label,
+                    style: TextStyle(fontSize: 10, color: _C.text3,
+                        fontWeight: FontWeight.w600, letterSpacing: 0.3,
+                        fontFamily: languageProvider.fontFamily)),
+                const SizedBox(height: 1),
+                Text(value,
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500,
+                        color: color ?? _C.text1, fontFamily: languageProvider.fontFamily)),
               ],
             ),
           ),
@@ -1028,50 +1388,50 @@ class CustomerDetailsSheet extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _buildActionButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-    bool isPrimary = false,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          gradient: isPrimary
-              ? LinearGradient(
-            colors: [color, color.withOpacity(0.8)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          )
-              : null,
-          color: isPrimary ? null : color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isPrimary ? Colors.transparent : color.withOpacity(0.25),
+class _SheetBtn extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+  final bool primary;
+  final LanguageProvider languageProvider;
+  const _SheetBtn({
+    required this.icon, required this.label,
+    required this.color, required this.onTap,
+    this.primary = false,
+    required this.languageProvider,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 11),
+          decoration: BoxDecoration(
+            gradient: primary
+                ? LinearGradient(colors: [color, color.withOpacity(0.8)])
+                : null,
+            color: primary ? null : color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: primary ? Colors.transparent : color.withOpacity(0.2)),
           ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 16,
-              color: isPrimary ? Colors.white : color,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: isPrimary ? Colors.white : color,
-              ),
-            ),
-          ],
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 15, color: primary ? Colors.white : color),
+              const SizedBox(width: 6),
+              Text(label,
+                  style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w600,
+                    color: primary ? Colors.white : color,
+                    fontFamily: languageProvider.fontFamily,
+                  )),
+            ],
+          ),
         ),
       ),
     );

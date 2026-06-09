@@ -6,12 +6,20 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../config/api_config.dart';
+import '../providers/lanprovider.dart';
 
 class DbBankSheet extends StatefulWidget {
   final Color accentColor;
   final String? token;
-  const DbBankSheet({required this.accentColor, required this.token});
+  final LanguageProvider languageProvider;
+
+  const DbBankSheet({
+    required this.accentColor,
+    required this.token,
+    required this.languageProvider,
+  });
 
   @override
   State<DbBankSheet> createState() => DbBankSheetState();
@@ -57,12 +65,15 @@ class DbBankSheetState extends State<DbBankSheet> {
         });
       } else {
         setState(() {
-          _error = data['message'] ?? 'Failed to load banks';
+          _error = data['message'] ?? (widget.languageProvider.isEnglish ? 'Failed to load banks' : 'بینکس لوڈ کرنے میں ناکامی');
           _isLoading = false;
         });
       }
     } catch (e) {
-      setState(() { _error = e.toString(); _isLoading = false; });
+      setState(() {
+        _error = '${widget.languageProvider.isEnglish ? 'Error' : 'خرابی'}: $e';
+        _isLoading = false;
+      });
     }
   }
 
@@ -78,6 +89,9 @@ class DbBankSheetState extends State<DbBankSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final lp = widget.languageProvider;
+    final formatter = NumberFormat('#,##0.00');
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.72,
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -93,13 +107,13 @@ class DbBankSheetState extends State<DbBankSheet> {
             ),
           ),
           Row(children: [
-            const Text('Select Bank',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+            Text(lp.isEnglish ? 'Select Bank' : 'بینک منتخب کریں',
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
             const Spacer(),
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel',
-                  style: TextStyle(color: Color(0xFF8E8E93))),
+              child: Text(lp.isEnglish ? 'Cancel' : 'منسوخ کریں',
+                  style: const TextStyle(color: Color(0xFF8E8E93))),
             ),
           ]),
           const SizedBox(height: 10),
@@ -108,8 +122,9 @@ class DbBankSheetState extends State<DbBankSheet> {
           TextField(
             controller: _search,
             onChanged: _filter,
+            style: TextStyle(fontFamily: lp.fontFamily),
             decoration: InputDecoration(
-              hintText: 'Search banks…',
+              hintText: lp.isEnglish ? 'Search banks…' : 'بینکس تلاش کریں…',
               prefixIcon: const Icon(Icons.search, size: 20),
               filled: true,
               fillColor: const Color(0xFFF5F5F7),
@@ -149,8 +164,8 @@ class DbBankSheetState extends State<DbBankSheet> {
                     },
                     style: ElevatedButton.styleFrom(
                         backgroundColor: widget.accentColor),
-                    child: const Text('Retry',
-                        style: TextStyle(color: Colors.white)),
+                    child: Text(lp.isEnglish ? 'Retry' : 'دوبارہ کوشش کریں',
+                        style: const TextStyle(color: Colors.white)),
                   ),
                 ],
               ),
@@ -166,10 +181,14 @@ class DbBankSheetState extends State<DbBankSheet> {
                   const SizedBox(height: 12),
                   Text(
                     _search.text.isEmpty
+                        ? (lp.isEnglish
                         ? 'No active banks found.\nInitialize banks first.'
-                        : 'No banks match your search',
+                        : 'کوئی فعال بینک نہیں ملا۔\nپہلے بینکس انیشیلائز کریں۔')
+                        : (lp.isEnglish
+                        ? 'No banks match your search'
+                        : 'آپ کی تلاش سے ملنے والا کوئی بینک نہیں'),
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey[500]),
+                    style: TextStyle(color: Colors.grey[500], fontFamily: lp.fontFamily),
                   ),
                 ],
               ),
@@ -215,18 +234,20 @@ class DbBankSheetState extends State<DbBankSheet> {
                       ),
                     ),
                     title: Text(name,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
-                            color: Color(0xFF1C1C1E))),
+                            color: const Color(0xFF1C1C1E),
+                            fontFamily: lp.fontFamily)),
                     subtitle: Text(
-                      'Balance: Rs ${NumberFormat('#,##0.00').format(balance)}',
+                      '${lp.isEnglish ? 'Balance' : 'بیلنس'}: Rs ${formatter.format(balance)}',
                       style: TextStyle(
                         fontSize: 11,
                         color: balance > 0
                             ? const Color(0xFF10B981)
                             : Colors.grey[400],
                         fontWeight: FontWeight.w500,
+                        fontFamily: lp.fontFamily,
                       ),
                     ),
                     onTap: () => Navigator.pop(context, b),

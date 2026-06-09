@@ -10,8 +10,8 @@ import '../../providers/supplier_provider.dart';
 import '../../models/purchase_order_model.dart';
 import '../components/loading_indicator.dart';
 import '../components/error_widget.dart';
+import '../providers/lanprovider.dart';
 import 'add_edit_purchase_order_screen.dart';
-
 
 class PurchaseOrdersListScreen extends StatefulWidget {
   const PurchaseOrdersListScreen({super.key});
@@ -31,7 +31,16 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
   bool _showFilters = false;
 
   final DateFormat _dateFormat = DateFormat('MMM dd, yyyy');
-  final NumberFormat _currencyFormat = NumberFormat.currency(symbol: '\$');
+  final NumberFormat _currencyFormat = NumberFormat.currency(symbol: 'Rs ');
+
+  // Status options with bilingual labels
+  List<Map<String, String>> _getStatusOptions(LanguageProvider lp) => [
+    {'value': 'draft', 'label': lp.isEnglish ? 'Draft' : 'ڈرافٹ'},
+    {'value': 'ordered', 'label': lp.isEnglish ? 'Ordered' : 'آرڈر شدہ'},
+    {'value': 'partial', 'label': lp.isEnglish ? 'Partial' : 'جزوی'},
+    {'value': 'received', 'label': lp.isEnglish ? 'Received' : 'موصول شدہ'},
+    {'value': 'cancelled', 'label': lp.isEnglish ? 'Cancelled' : 'منسوخ شدہ'},
+  ];
 
   @override
   void initState() {
@@ -70,79 +79,86 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFC),
-      body: Column(
-        children: [
-          _buildHeader(),
-          _buildStatsCards(),
-          _buildSearchAndFilterBar(),
-          if (_showFilters) _buildFiltersPanel(),
-          Expanded(
-            child: Consumer<PurchaseOrderProvider>(
-              builder: (context, provider, child) {
-                if (provider.isLoading && provider.purchaseOrders.isEmpty) {
-                  return const LoadingIndicator();
-                }
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        final statusOptions = _getStatusOptions(languageProvider);
 
-                if (provider.errorMessage != null) {
-                  return CustomErrorWidget(
-                    message: provider.errorMessage!,
-                    onRetry: () => provider.fetchPurchaseOrders(refresh: true),
-                  );
-                }
+        return Scaffold(
+          backgroundColor: const Color(0xFFFAFAFC),
+          body: Column(
+            children: [
+              _buildHeader(languageProvider),
+              _buildStatsCards(languageProvider),
+              _buildSearchAndFilterBar(languageProvider),
+              if (_showFilters) _buildFiltersPanel(languageProvider, statusOptions),
+              Expanded(
+                child: Consumer<PurchaseOrderProvider>(
+                  builder: (context, provider, child) {
+                    if (provider.isLoading && provider.purchaseOrders.isEmpty) {
+                      return const LoadingIndicator();
+                    }
 
-                if (provider.purchaseOrders.isEmpty) {
-                  return _buildEmptyState();
-                }
+                    if (provider.errorMessage != null) {
+                      return CustomErrorWidget(
+                        message: provider.errorMessage!,
+                        onRetry: () => provider.fetchPurchaseOrders(refresh: true),
+                      );
+                    }
 
-                return RefreshIndicator(
-                  onRefresh: () => provider.fetchPurchaseOrders(refresh: true),
-                  child: ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-                    itemCount: provider.purchaseOrders.length,
-                    itemBuilder: (context, index) {
-                      final order = provider.purchaseOrders[index];
-                      return _buildOrderCard(order);
-                    },
-                  ),
-                );
-              },
-            ),
+                    if (provider.purchaseOrders.isEmpty) {
+                      return _buildEmptyState(languageProvider);
+                    }
+
+                    return RefreshIndicator(
+                      onRefresh: () => provider.fetchPurchaseOrders(refresh: true),
+                      child: ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                        itemCount: provider.purchaseOrders.length,
+                        itemBuilder: (context, index) {
+                          final order = provider.purchaseOrders[index];
+                          return _buildOrderCard(order, languageProvider);
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ),
+              _buildPagination(),
+            ],
           ),
-          _buildPagination(),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _navigateToAddOrder(),
-        label: const Text('New Purchase Order', style: TextStyle(color: Colors.white)),
-        icon: const Icon(Icons.add, color: Colors.white),
-        backgroundColor: const Color(0xFF7C3AED),
-      ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => _navigateToAddOrder(),
+            label: Text(languageProvider.isEnglish ? 'New Purchase Order' : 'نیا پرچیز آرڈر',
+                style: const TextStyle(color: Colors.white)),
+            icon: const Icon(Icons.add, color: Colors.white),
+            backgroundColor: const Color(0xFF7C3AED),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(LanguageProvider lp) {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-      child: const Row(
+      child: Row(
         children: [
           Text(
-            'Purchase Orders',
-            style: TextStyle(
+            lp.isEnglish ? 'Purchase Orders' : 'پرچیز آرڈرز',
+            style: const TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.bold,
               color: Color(0xFF2D3142),
             ),
           ),
-          Spacer(),
+          const Spacer(),
         ],
       ),
     );
   }
 
-  Widget _buildStatsCards() {
+  Widget _buildStatsCards(LanguageProvider lp) {
     return Consumer<PurchaseOrderProvider>(
       builder: (context, provider, child) {
         int draftCount = provider.purchaseOrders.where((po) => po.status == 'draft').length;
@@ -154,13 +170,17 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           child: Row(
             children: [
-              _buildStatCard('Draft', draftCount.toString(), Icons.drafts, Colors.grey),
+              _buildStatCard(lp.isEnglish ? 'Draft' : 'ڈرافٹ', draftCount.toString(),
+                  Icons.drafts, Colors.grey, lp),
               const SizedBox(width: 16),
-              _buildStatCard('Ordered', orderedCount.toString(), Icons.shopping_cart, Colors.blue),
+              _buildStatCard(lp.isEnglish ? 'Ordered' : 'آرڈر شدہ', orderedCount.toString(),
+                  Icons.shopping_cart, Colors.blue, lp),
               const SizedBox(width: 16),
-              _buildStatCard('Received', receivedCount.toString(), Icons.check_circle, Colors.green),
+              _buildStatCard(lp.isEnglish ? 'Received' : 'موصول شدہ', receivedCount.toString(),
+                  Icons.check_circle, Colors.green, lp),
               const SizedBox(width: 16),
-              _buildStatCard('Total Value', _currencyFormat.format(totalValue), Icons.attach_money, Colors.purple),
+              _buildStatCard(lp.isEnglish ? 'Total Value' : 'کل قیمت',
+                  _currencyFormat.format(totalValue), Icons.attach_money, Colors.purple, lp),
             ],
           ),
         );
@@ -168,7 +188,7 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+  Widget _buildStatCard(String title, String value, IconData icon, Color color, LanguageProvider lp) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -194,15 +214,16 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                    style: TextStyle(fontSize: 12, color: Color(0xFF6B7280), fontFamily: lp.fontFamily),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     value,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: Color(0xFF2D3142),
+                      fontFamily: lp.fontFamily,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -215,7 +236,7 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
     );
   }
 
-  Widget _buildSearchAndFilterBar() {
+  Widget _buildSearchAndFilterBar(LanguageProvider lp) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       child: Row(
@@ -230,8 +251,9 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
               ),
               child: TextField(
                 controller: _searchController,
+                style: TextStyle(fontFamily: lp.fontFamily),
                 decoration: InputDecoration(
-                  hintText: 'Search by PO number or supplier...',
+                  hintText: lp.isEnglish ? 'Search by PO number or supplier...' : 'PO نمبر یا سپلائر سے تلاش کریں...',
                   hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
                   prefixIcon: Icon(Icons.search, color: Colors.grey[400], size: 20),
                   border: InputBorder.none,
@@ -257,6 +279,7 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
                 Icons.filter_list,
                 color: _showFilters ? const Color(0xFF7C3AED) : Colors.grey[600],
               ),
+              tooltip: lp.isEnglish ? 'Filters' : 'فلٹرز',
             ),
           ),
         ],
@@ -264,7 +287,7 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
     );
   }
 
-  Widget _buildFiltersPanel() {
+  Widget _buildFiltersPanel(LanguageProvider lp, List<Map<String, String>> statusOptions) {
     return Consumer<SupplierProvider>(
       builder: (context, supplierProvider, child) {
         return Container(
@@ -278,38 +301,38 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Filters',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              Text(
+                lp.isEnglish ? 'Filters' : 'فلٹرز',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
                     child: _buildFilterDropdown(
-                      label: 'Status',
+                      label: lp.isEnglish ? 'Status' : 'حالت',
                       value: _selectedStatus,
-                      items: const [
-                        DropdownMenuItem(value: null, child: Text('All Statuses')),
-                        DropdownMenuItem(value: 'draft', child: Text('Draft')),
-                        DropdownMenuItem(value: 'ordered', child: Text('Ordered')),
-                        DropdownMenuItem(value: 'partial', child: Text('Partial')),
-                        DropdownMenuItem(value: 'received', child: Text('Received')),
-                        DropdownMenuItem(value: 'cancelled', child: Text('Cancelled')),
+                      items: [
+                        const DropdownMenuItem(value: null, child: Text('All Statuses')),
+                        ...statusOptions.map((opt) => DropdownMenuItem(
+                          value: opt['value'],
+                          child: Text(opt['label']!),
+                        )),
                       ],
                       onChanged: (value) {
                         setState(() => _selectedStatus = value);
                         _applyFilters();
                       },
+                      lp: lp,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: _buildFilterDropdown<int?>(
-                      label: 'Supplier',
+                      label: lp.isEnglish ? 'Supplier' : 'سپلائر',
                       value: _selectedSupplierId,
                       items: [
-                        const DropdownMenuItem<int?>(value: null, child: Text('All Suppliers')),
+                        DropdownMenuItem<int?>(value: null, child: Text(lp.isEnglish ? 'All Suppliers' : 'تمام سپلائرز')),
                         ...supplierProvider.suppliers.map((s) => DropdownMenuItem<int?>(
                           value: s.id,
                           child: Text(s.name),
@@ -319,6 +342,7 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
                         setState(() => _selectedSupplierId = value);
                         _applyFilters();
                       },
+                      lp: lp,
                     ),
                   ),
                 ],
@@ -328,7 +352,7 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
                 children: [
                   Expanded(
                     child: InkWell(
-                      onTap: () => _selectDateRange(),
+                      onTap: () => _selectDateRange(lp),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                         decoration: BoxDecoration(
@@ -341,7 +365,7 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                _getDateRangeText(),
+                                _getDateRangeText(lp),
                                 style: const TextStyle(fontSize: 13),
                               ),
                             ),
@@ -359,7 +383,7 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
                 children: [
                   TextButton(
                     onPressed: _clearFilters,
-                    child: const Text('Clear All'),
+                    child: Text(lp.isEnglish ? 'Clear All' : 'سب صاف کریں'),
                   ),
                   const SizedBox(width: 12),
                   ElevatedButton(
@@ -368,7 +392,7 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
                       backgroundColor: const Color(0xFF7C3AED),
                       foregroundColor: Colors.white,
                     ),
-                    child: const Text('Apply Filters'),
+                    child: Text(lp.isEnglish ? 'Apply Filters' : 'فلٹرز لاگو کریں'),
                   ),
                 ],
               ),
@@ -384,6 +408,7 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
     required T? value,
     required List<DropdownMenuItem<T>> items,
     required void Function(T?) onChanged,
+    required LanguageProvider lp,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -396,24 +421,22 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
           value: value,
           items: items,
           onChanged: onChanged,
-          hint: Text(label),
+          hint: Text(label, style: TextStyle(fontFamily: lp.fontFamily)),
           isExpanded: true,
           icon: const Icon(Icons.keyboard_arrow_down),
+          style: TextStyle(fontFamily: lp.fontFamily),
         ),
       ),
     );
   }
 
-  // ─── Order Card ────────────────────────────────────────────────────────────
-
-  Widget _buildOrderCard(PurchaseOrderModel order) {
+  Widget _buildOrderCard(PurchaseOrderModel order, LanguageProvider lp) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          // Highlight border red if any item is over-received
           color: order.hasOverReceivedItems
               ? Colors.red.withOpacity(0.4)
               : const Color(0xFFF0F0F5),
@@ -429,7 +452,6 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                // ── Top row: icon + PO number + status ──
                 Row(
                   children: [
                     Container(
@@ -473,6 +495,7 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
                                     fontSize: 11,
                                     color: order.statusColor,
                                     fontWeight: FontWeight.w600,
+                                    fontFamily: lp.fontFamily,
                                   ),
                                 ),
                               ),
@@ -485,8 +508,8 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
                               const SizedBox(width: 4),
                               Expanded(
                                 child: Text(
-                                  order.supplier?.name ?? 'Unknown Supplier',
-                                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                                  order.supplier?.name ?? (lp.isEnglish ? 'Unknown Supplier' : 'نامعلوم سپلائر'),
+                                  style: TextStyle(fontSize: 12, color: Colors.grey[600], fontFamily: lp.fontFamily),
                                 ),
                               ),
                             ],
@@ -496,37 +519,35 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 16),
-
-                // ── Info chips row ──
                 Row(
                   children: [
                     Expanded(
                       child: _buildInfoChip(
-                        label: 'Order Date',
+                        label: lp.isEnglish ? 'Order Date' : 'آرڈر کی تاریخ',
                         value: _dateFormat.format(order.orderDate),
                         color: Colors.blue,
+                        lp: lp,
                       ),
                     ),
                     Expanded(
                       child: _buildInfoChip(
-                        label: 'Items',
-                        value: '${order.items?.length ?? 0} items',
+                        label: lp.isEnglish ? 'Items' : 'آئٹمز',
+                        value: '${order.items?.length ?? 0} ${lp.isEnglish ? 'items' : 'آئٹمز'}',
                         color: Colors.purple,
+                        lp: lp,
                       ),
                     ),
                     Expanded(
                       child: _buildInfoChip(
-                        label: 'Total',
+                        label: lp.isEnglish ? 'Total' : 'کل',
                         value: _currencyFormat.format(order.totalAmount),
                         color: Colors.green,
+                        lp: lp,
                       ),
                     ),
                   ],
                 ),
-
-                // ── Over-received banner ──────────────────────────────────
                 if (order.hasOverReceivedItems) ...[
                   const SizedBox(height: 10),
                   Container(
@@ -539,17 +560,14 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.warning_amber_rounded,
-                            color: Colors.red, size: 15),
+                        const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 15),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            'Over-received: ${_overReceivedCount(order)} item${_overReceivedCount(order) > 1 ? 's exceed' : ' exceeds'} the ordered quantity',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.red,
-                              fontWeight: FontWeight.w500,
-                            ),
+                            lp.isEnglish
+                                ? 'Over-received: ${_overReceivedCount(order)} item${_overReceivedCount(order) > 1 ? 's exceed' : ' exceeds'} the ordered quantity'
+                                : 'زیادہ موصول: ${_overReceivedCount(order)} آئٹم آرڈر کردہ مقدار سے زیادہ ہے',
+                            style: const TextStyle(fontSize: 11, color: Colors.red, fontWeight: FontWeight.w500),
                           ),
                         ),
                       ],
@@ -564,11 +582,10 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
     );
   }
 
-  /// Count how many items in the order are over-received.
   int _overReceivedCount(PurchaseOrderModel order) =>
       order.items?.where((i) => i.isOverReceived).length ?? 0;
 
-  Widget _buildInfoChip({required String label, required String value, required Color color}) {
+  Widget _buildInfoChip({required String label, required String value, required Color color, required LanguageProvider lp}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -580,12 +597,12 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
         children: [
           Text(
             '$label: ',
-            style: TextStyle(fontSize: 11, color: color.withOpacity(0.7)),
+            style: TextStyle(fontSize: 11, color: color.withOpacity(0.7), fontFamily: lp.fontFamily),
           ),
           Expanded(
             child: Text(
               value,
-              style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold, fontFamily: lp.fontFamily),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -594,7 +611,7 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(LanguageProvider lp) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -602,19 +619,20 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
           Icon(Icons.shopping_cart_outlined, size: 80, color: Colors.grey[300]),
           const SizedBox(height: 16),
           Text(
-            'No Purchase Orders',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.grey[600]),
+            lp.isEnglish ? 'No Purchase Orders' : 'کوئی پرچیز آرڈر نہیں',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.grey[600],
+                fontFamily: lp.fontFamily),
           ),
           const SizedBox(height: 8),
           Text(
-            'Create your first purchase order',
-            style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+            lp.isEnglish ? 'Create your first purchase order' : 'اپنا پہلا پرچیز آرڈر بنائیں',
+            style: TextStyle(fontSize: 14, color: Colors.grey[500], fontFamily: lp.fontFamily),
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
             onPressed: () => _navigateToAddOrder(),
             icon: const Icon(Icons.add),
-            label: const Text('New Purchase Order'),
+            label: Text(lp.isEnglish ? 'New Purchase Order' : 'نیا پرچیز آرڈر'),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF7C3AED),
               foregroundColor: Colors.white,
@@ -631,39 +649,45 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
       builder: (context, provider, child) {
         if (provider.totalPages <= 1) return const SizedBox.shrink();
 
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Color(0xFFF0F0F5), width: 1)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                onPressed: provider.currentPage > 1
-                    ? () => provider.setPage(provider.currentPage - 1)
-                    : null,
-                icon: const Icon(Icons.chevron_left),
-                color: provider.currentPage > 1 ? const Color(0xFF7C3AED) : Colors.grey,
+        return Consumer<LanguageProvider>(
+          builder: (context, lp, _) {
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(top: BorderSide(color: Color(0xFFF0F0F5), width: 1)),
               ),
-              const SizedBox(width: 8),
-              Text(
-                'Page ${provider.currentPage} of ${provider.totalPages}',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    onPressed: provider.currentPage > 1
+                        ? () => provider.setPage(provider.currentPage - 1)
+                        : null,
+                    icon: const Icon(Icons.chevron_left),
+                    color: provider.currentPage > 1 ? const Color(0xFF7C3AED) : Colors.grey,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    lp.isEnglish
+                        ? 'Page ${provider.currentPage} of ${provider.totalPages}'
+                        : 'صفحہ ${provider.currentPage} / ${provider.totalPages}',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: provider.currentPage < provider.totalPages
+                        ? () => provider.setPage(provider.currentPage + 1)
+                        : null,
+                    icon: const Icon(Icons.chevron_right),
+                    color: provider.currentPage < provider.totalPages
+                        ? const Color(0xFF7C3AED)
+                        : Colors.grey,
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              IconButton(
-                onPressed: provider.currentPage < provider.totalPages
-                    ? () => provider.setPage(provider.currentPage + 1)
-                    : null,
-                icon: const Icon(Icons.chevron_right),
-                color: provider.currentPage < provider.totalPages
-                    ? const Color(0xFF7C3AED)
-                    : Colors.grey,
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -686,19 +710,23 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
     }
   }
 
-  String _getDateRangeText() {
+  String _getDateRangeText(LanguageProvider lp) {
     if (_fromDate != null && _toDate != null) {
       return '${_dateFormat.format(_fromDate!)} - ${_dateFormat.format(_toDate!)}';
     } else if (_fromDate != null) {
-      return 'From ${_dateFormat.format(_fromDate!)}';
+      return lp.isEnglish
+          ? 'From ${_dateFormat.format(_fromDate!)}'
+          : 'سے ${_dateFormat.format(_fromDate!)}';
     } else if (_toDate != null) {
-      return 'To ${_dateFormat.format(_toDate!)}';
+      return lp.isEnglish
+          ? 'To ${_dateFormat.format(_toDate!)}'
+          : 'تک ${_dateFormat.format(_toDate!)}';
     } else {
-      return 'Select date range';
+      return lp.isEnglish ? 'Select date range' : 'تاریخ کی حد منتخب کریں';
     }
   }
 
-  Future<void> _selectDateRange() async {
+  Future<void> _selectDateRange(LanguageProvider lp) async {
     final DateTimeRange? picked = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2020),

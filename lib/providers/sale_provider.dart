@@ -218,6 +218,8 @@ class SaleProvider with ChangeNotifier {
         String? bankName,
         int? bankId,           // Add this parameter
         DateTime? chequeDate,
+        bool fromSimpleCashbook = false, // ✅ new
+
       })
   async {
     _isLoading = true;
@@ -229,6 +231,7 @@ class SaleProvider with ChangeNotifier {
       final Map<String, dynamic> requestBody = {
         'amount': amount,
         'payment_method': paymentMethod,
+        if (fromSimpleCashbook) 'from_simple_cashbook': true, // ✅ add
       };
 
       if (paymentDate != null) {

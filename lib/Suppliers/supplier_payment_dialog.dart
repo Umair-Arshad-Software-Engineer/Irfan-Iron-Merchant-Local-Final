@@ -10,10 +10,13 @@ import '../../models/supplier.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/supplier_ledger_provider.dart';
 import '../components/bankpicker.dart';
+import '../providers/lanprovider.dart';
 
 class SupplierPaymentDialog extends StatefulWidget {
   final Supplier supplier;
-  const SupplierPaymentDialog({super.key, required this.supplier});
+  final LanguageProvider languageProvider;
+
+  const SupplierPaymentDialog({super.key, required this.supplier, required this.languageProvider});
 
   @override
   State<SupplierPaymentDialog> createState() => _SupplierPaymentDialogState();
@@ -41,20 +44,6 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
 
   final _df = DateFormat('MMM dd, yyyy');
 
-  static const _methods = [
-    {'value': 'cash',   'label': 'Cash',     'icon': Icons.payments_outlined},
-    {'value': 'bank',   'label': 'Bank',      'icon': Icons.account_balance_outlined},
-    {'value': 'cheque', 'label': 'Cheque',    'icon': Icons.receipt_long_outlined},
-    {'value': 'slip',   'label': 'Slip',      'icon': Icons.receipt_outlined},
-  ];
-
-  static const _methodColors = {
-    'cash':   Color(0xFF10B981),
-    'bank':   Color(0xFF3B82F6),
-    'cheque': Color(0xFFF59E0B),
-    'slip':   Color(0xFF8B5CF6),
-  };
-
   @override
   void initState() {
     super.initState();
@@ -74,6 +63,21 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
     super.dispose();
   }
 
+  // ── Dynamic methods based on language ─────────────────────────────────────
+  List<Map<String, dynamic>> _getMethods(LanguageProvider lp) => [
+    {'value': 'cash',   'label': lp.isEnglish ? 'Cash' : 'نقد',     'icon': Icons.payments_outlined},
+    {'value': 'bank',   'label': lp.isEnglish ? 'Bank' : 'بینک',      'icon': Icons.account_balance_outlined},
+    {'value': 'cheque', 'label': lp.isEnglish ? 'Cheque' : 'چیک',    'icon': Icons.receipt_long_outlined},
+    {'value': 'slip',   'label': lp.isEnglish ? 'Slip' : 'سلیپ',      'icon': Icons.receipt_outlined},
+  ];
+
+  static const _methodColors = {
+    'cash':   Color(0xFF10B981),
+    'bank':   Color(0xFF3B82F6),
+    'cheque': Color(0xFFF59E0B),
+    'slip':   Color(0xFF8B5CF6),
+  };
+
   Color get _activeColor =>
       _methodColors[_paymentMethod] ?? const Color(0xFF10B981);
 
@@ -85,27 +89,24 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // ✅ SUBMIT PAYMENT - WITH CHEQUE CREATION
-  // ═══════════════════════════════════════════════════════════════════════════
   Future<void> _submit() async {
+    final lp = Provider.of<LanguageProvider>(context, listen: false);
+
     if (!_formKey.currentState!.validate()) return;
 
-    // ── Validate bank selection for bank/cheque payments ──
     if ((_paymentMethod == 'bank' || _paymentMethod == 'cheque') &&
         _selectedBankName == null) {
-      _err('Please select a bank');
+      _err(lp.isEnglish ? 'Please select a bank' : 'براہ کرم بینک منتخب کریں');
       return;
     }
 
-    // ── Validate cheque fields ──
     if (_paymentMethod == 'cheque') {
       if (_chequeNumCtrl.text.trim().isEmpty) {
-        _err('Please enter cheque number');
+        _err(lp.isEnglish ? 'Please enter cheque number' : 'براہ کرم چیک نمبر درج کریں');
         return;
       }
       if (_chequeDate == null) {
-        _err('Please select cheque date');
+        _err(lp.isEnglish ? 'Please select cheque date' : 'براہ کرم چیک کی تاریخ منتخب کریں');
         return;
       }
     }
@@ -117,9 +118,6 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
       final description = _descCtrl.text.trim();
       final referenceNumber = _refCtrl.text.trim().isEmpty ? null : _refCtrl.text.trim();
 
-      // ═════════════════════════════════════════════════════════════════════
-      // STEP 1: Create Cheque Record (if payment method is cheque)
-      // ═════════════════════════════════════════════════════════════════════
       int? chequeId;
       if (_paymentMethod == 'cheque') {
         final chequeResponse = await http.post(
@@ -131,9 +129,9 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
           body: json.encode({
             'bank_id': _selectedBankId,
             'cheque_number': _chequeNumCtrl.text.trim(),
-            'cheque_type': 'issued', // We are issuing cheque TO supplier
+            'cheque_type': 'issued',
             'amount': amount,
-            'payee_payer_name': widget.supplier.name, // Supplier name as payee
+            'payee_payer_name': widget.supplier.name,
             'description': description.isEmpty
                 ? 'Payment to supplier: ${widget.supplier.name}'
                 : description,
@@ -150,15 +148,12 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
           chequeId = chequeData['data']['id'];
           debugPrint('Cheque created with ID: $chequeId');
         } else {
-          _err(chequeData['message'] ?? 'Failed to create cheque record');
+          _err(chequeData['message'] ?? (lp.isEnglish ? 'Failed to create cheque record' : 'چیک ریکارڈ بنانے میں ناکامی'));
           setState(() => _isLoading = false);
           return;
         }
       }
 
-      // ═════════════════════════════════════════════════════════════════════
-      // STEP 2: Record supplier payment
-      // ═════════════════════════════════════════════════════════════════════
       final paymentResponse = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/suppliers/${widget.supplier.id}/payments'),
         headers: {
@@ -171,11 +166,12 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
           'bank_id': _selectedBankId,
           'bank_name': _selectedBankName,
           'cheque_number': _paymentMethod == 'cheque' ? _chequeNumCtrl.text.trim() : null,
-          'cheque_id': chequeId, // ✅ Pass cheque_id to link payment with cheque
+          'cheque_id': chequeId,
           'cheque_date': _chequeDate != null
               ? "${_chequeDate!.year}-${_chequeDate!.month.toString().padLeft(2, '0')}-${_chequeDate!.day.toString().padLeft(2, '0')}"
               : null,
-          'transaction_date': "${_paymentDate.year}-${_paymentDate.month.toString().padLeft(2, '0')}-${_paymentDate.day.toString().padLeft(2, '0')}",          'reference_number': referenceNumber,
+          'transaction_date': "${_paymentDate.year}-${_paymentDate.month.toString().padLeft(2, '0')}-${_paymentDate.day.toString().padLeft(2, '0')}",
+          'reference_number': referenceNumber,
           'description': description.isEmpty ? null : description,
         }),
       );
@@ -184,7 +180,6 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
 
       if (paymentResponse.statusCode == 201 && paymentData['success'] == true) {
         if (mounted) {
-          // Refresh supplier ledger
           await Provider.of<SupplierLedgerProvider>(context, listen: false)
               .fetchLedger(
             context: context,
@@ -192,21 +187,22 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
             page: 1,
           );
 
-          // Close dialog and return success
           Navigator.pop(context, true);
 
-          // Show success message with cheque info
-          String successMessage = 'Payment recorded successfully!\n'
-              'Amount: Rs ${amount.toStringAsFixed(2)}\n'
-              'Method: ${_paymentMethod.toUpperCase()}';
+          String successMessage = lp.isEnglish
+              ? 'Payment recorded successfully!\nAmount: Rs ${amount.toStringAsFixed(2)}\nMethod: ${_paymentMethod.toUpperCase()}'
+              : 'ادائیگی کامیابی سے ریکارڈ ہوگئی!\nرقم: Rs ${amount.toStringAsFixed(2)}\nطریقہ: ${_getMethodLabel(_paymentMethod, lp)}';
 
           if (_paymentMethod == 'cheque') {
-            successMessage += '\nCheque #${_chequeNumCtrl.text.trim()} created\n'
-                'Status: Pending (awaiting clearing)';
+            successMessage += lp.isEnglish
+                ? '\nCheque #${_chequeNumCtrl.text.trim()} created\nStatus: Pending (awaiting clearing)'
+                : '\nچیک نمبر #${_chequeNumCtrl.text.trim()} بن گیا\nحالت: زیر التواء (کلئیرنگ کے انتظار میں)';
           }
 
           if (_selectedBankName != null) {
-            successMessage += '\nBank: $_selectedBankName';
+            successMessage += lp.isEnglish
+                ? '\nBank: $_selectedBankName'
+                : '\nبینک: $_selectedBankName';
           }
 
           ScaffoldMessenger.of(context).showSnackBar(
@@ -214,22 +210,10 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
               content: Text(successMessage),
               backgroundColor: Colors.green,
               duration: const Duration(seconds: 4),
-              action: _paymentMethod == 'cheque'
-                  ? SnackBarAction(
-                label: 'View Cheque',
-                textColor: Colors.white,
-                onPressed: () {
-                  // Navigate to Cheque Management
-                  // You'll need to access the parent navigator context
-                  // This depends on your navigation structure
-                },
-              )
-                  : null,
             ),
           );
         }
       } else {
-        // If payment fails but cheque was created, we should clean up the cheque
         if (chequeId != null) {
           await http.delete(
             Uri.parse('${ApiConfig.baseUrl}/cheques/$chequeId'),
@@ -239,13 +223,23 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
             },
           );
         }
-        _err(paymentData['message'] ?? 'Failed to record payment');
+        _err(paymentData['message'] ?? (lp.isEnglish ? 'Failed to record payment' : 'ادائیگی ریکارڈ کرنے میں ناکامی'));
       }
     } catch (e) {
-      _err('Error: $e');
+      _err('${lp.isEnglish ? 'Error' : 'خرابی'}: $e');
     }
 
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  String _getMethodLabel(String method, LanguageProvider lp) {
+    if (lp.isEnglish) {
+      const labels = {'cash': 'Cash', 'bank': 'Bank', 'cheque': 'Cheque', 'slip': 'Slip'};
+      return labels[method] ?? method;
+    } else {
+      const labels = {'cash': 'نقد', 'bank': 'بینک', 'cheque': 'چیک', 'slip': 'سلیپ'};
+      return labels[method] ?? method;
+    }
   }
 
   void _err(String msg) => ScaffoldMessenger.of(context).showSnackBar(
@@ -285,6 +279,7 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
   );
 
   Future<void> _openBankPicker() async {
+    final lp = Provider.of<LanguageProvider>(context, listen: false);
     final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
@@ -293,6 +288,7 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
       builder: (_) => DbBankSheet(
         accentColor: _activeColor,
         token: _getToken(),
+        languageProvider: lp,
       ),
     );
     if (result != null) {
@@ -306,149 +302,156 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _fadeAnim,
-      child: Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildHeader(),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildAmountField(),
-                      const SizedBox(height: 20),
-                      _buildMethodSelector(),
-                      const SizedBox(height: 16),
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        final methods = _getMethods(languageProvider);
 
-                      // Bank selector (for bank/cheque methods)
-                      if (_paymentMethod == 'bank' || _paymentMethod == 'cheque') ...[
-                        _lbl('Bank *'),
-                        const SizedBox(height: 6),
-                        _buildBankTile(),
-                        const SizedBox(height: 16),
-                      ],
+        return FadeTransition(
+          opacity: _fadeAnim,
+          child: Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildHeader(languageProvider),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildAmountField(languageProvider),
+                          const SizedBox(height: 20),
+                          _buildMethodSelector(languageProvider, methods),
+                          const SizedBox(height: 16),
 
-                      // Cheque fields (only for cheque method)
-                      if (_paymentMethod == 'cheque') ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _lbl('Cheque No. *'),
-                                  const SizedBox(height: 6),
-                                  TextFormField(
-                                    controller: _chequeNumCtrl,
-                                    decoration: _inp(hint: 'e.g. 001234'),
-                                    validator: (v) {
-                                      if (_paymentMethod == 'cheque' && (v == null || v.isEmpty)) {
-                                        return 'Required';
-                                      }
-                                      return null;
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _lbl('Cheque Date *'),
-                                  const SizedBox(height: 6),
-                                  _dateTile(
-                                    val: _chequeDate != null
-                                        ? _df.format(_chequeDate!)
-                                        : 'Pick date',
-                                    filled: _chequeDate != null,
-                                    onTap: _pickChequeDate,
-                                  ),
-                                ],
-                              ),
-                            ),
+                          if (_paymentMethod == 'bank' || _paymentMethod == 'cheque') ...[
+                            _lbl(languageProvider.isEnglish ? 'Bank *' : 'بینک *', languageProvider),
+                            const SizedBox(height: 6),
+                            _buildBankTile(languageProvider),
+                            const SizedBox(height: 16),
                           ],
-                        ),
-                        const SizedBox(height: 16),
 
-                        // Info note about cheque
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF59E0B).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0xFFF59E0B).withOpacity(0.3)),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.info_outline, size: 16, color: const Color(0xFFF59E0B)),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Cheque will be recorded as "pending" in Cheque Management. '
-                                      'Update status to "cleared" when cashed.',
-                                  style: TextStyle(fontSize: 11, color: const Color(0xFFF59E0B)),
+                          if (_paymentMethod == 'cheque') ...[
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      _lbl(languageProvider.isEnglish ? 'Cheque No. *' : 'چیک نمبر *', languageProvider),
+                                      const SizedBox(height: 6),
+                                      TextFormField(
+                                        controller: _chequeNumCtrl,
+                                        style: TextStyle(fontFamily: languageProvider.fontFamily),
+                                        decoration: _inp(hint: languageProvider.isEnglish ? 'e.g. 001234' : 'مثال: 001234', lp: languageProvider),
+                                        validator: (v) {
+                                          if (_paymentMethod == 'cheque' && (v == null || v.isEmpty)) {
+                                            return languageProvider.isEnglish ? 'Required' : 'ضروری';
+                                          }
+                                          return null;
+                                        },
+                                      ),
+                                    ],
+                                  ),
                                 ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      _lbl(languageProvider.isEnglish ? 'Cheque Date *' : 'چیک کی تاریخ *', languageProvider),
+                                      const SizedBox(height: 6),
+                                      _dateTile(
+                                        val: _chequeDate != null
+                                            ? _df.format(_chequeDate!)
+                                            : (languageProvider.isEnglish ? 'Pick date' : 'تاریخ منتخب کریں'),
+                                        filled: _chequeDate != null,
+                                        onTap: _pickChequeDate,
+                                        lp: languageProvider,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF59E0B).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0xFFF59E0B).withOpacity(0.3)),
                               ),
-                            ],
+                              child: Row(
+                                children: [
+                                  Icon(Icons.info_outline, size: 16, color: const Color(0xFFF59E0B)),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      languageProvider.isEnglish
+                                          ? 'Cheque will be recorded as "pending" in Cheque Management. Update status to "cleared" when cashed.'
+                                          : 'چیک "زیر التواء" کے طور پر چیک مینجمنٹ میں ریکارڈ کیا جائے گا۔ کیش ہونے پر حالت "کلئیر شدہ" میں تبدیل کریں۔',
+                                      style: TextStyle(fontSize: 11, color: const Color(0xFFF59E0B),
+                                          fontFamily: languageProvider.fontFamily),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          _lbl(languageProvider.isEnglish ? 'Reference # (optional)' : 'حوالہ نمبر (اختیاری)', languageProvider),
+                          const SizedBox(height: 6),
+                          TextFormField(
+                            controller: _refCtrl,
+                            style: TextStyle(fontFamily: languageProvider.fontFamily),
+                            decoration: _inp(hint: languageProvider.isEnglish ? 'e.g. TXN-001, CHQ-123' : 'مثال: TXN-001, CHQ-123', lp: languageProvider),
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
+                          const SizedBox(height: 16),
 
-                      // Reference number (optional)
-                      _lbl('Reference # (optional)'),
-                      const SizedBox(height: 6),
-                      TextFormField(
-                        controller: _refCtrl,
-                        decoration: _inp(hint: 'e.g. TXN-001, CHQ-123'),
-                      ),
-                      const SizedBox(height: 16),
+                          _lbl(languageProvider.isEnglish ? 'Description (optional)' : 'تفصیل (اختیاری)', languageProvider),
+                          const SizedBox(height: 6),
+                          TextFormField(
+                            controller: _descCtrl,
+                            maxLines: 2,
+                            style: TextStyle(fontFamily: languageProvider.fontFamily),
+                            decoration: _inp(hint: languageProvider.isEnglish ? 'e.g. Monthly payment for goods received' : 'مثال: موصولہ سامان کی ماہانہ ادائیگی', lp: languageProvider),
+                          ),
+                          const SizedBox(height: 16),
 
-                      // Description (optional)
-                      _lbl('Description (optional)'),
-                      const SizedBox(height: 6),
-                      TextFormField(
-                        controller: _descCtrl,
-                        maxLines: 2,
-                        decoration: _inp(hint: 'e.g. Monthly payment for goods received'),
+                          _lbl(languageProvider.isEnglish ? 'Payment Date' : 'ادائیگی کی تاریخ', languageProvider),
+                          const SizedBox(height: 6),
+                          _dateTile(
+                            val: _df.format(_paymentDate),
+                            filled: true,
+                            onTap: _pickPaymentDate,
+                            icon: Icons.calendar_today_outlined,
+                            lp: languageProvider,
+                          ),
+                          const SizedBox(height: 24),
+                          _buildSubmitBtn(languageProvider),
+                        ],
                       ),
-                      const SizedBox(height: 16),
-
-                      // Payment date
-                      _lbl('Payment Date'),
-                      const SizedBox(height: 6),
-                      _dateTile(
-                        val: _df.format(_paymentDate),
-                        filled: true,
-                        onTap: _pickPaymentDate,
-                        icon: Icons.calendar_today_outlined,
-                      ),
-                      const SizedBox(height: 24),
-                      _buildSubmitBtn(),
-                    ],
+                    ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
   // ── UI Widgets ─────────────────────────────────────────────────────────
 
-  Widget _buildHeader() {
+  Widget _buildHeader(LanguageProvider lp) {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 12, 16),
       decoration: BoxDecoration(
@@ -474,8 +477,8 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Record Payment',
-                    style: TextStyle(
+                Text(lp.isEnglish ? 'Record Payment' : 'ادائیگی ریکارڈ کریں',
+                    style: const TextStyle(
                         fontSize: 17, fontWeight: FontWeight.bold)),
                 Text(widget.supplier.name,
                     style: const TextStyle(
@@ -491,11 +494,11 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
     );
   }
 
-  Widget _buildAmountField() {
+  Widget _buildAmountField(LanguageProvider lp) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _lbl('Amount *'),
+        _lbl(lp.isEnglish ? 'Amount *' : 'رقم *', lp),
         const SizedBox(height: 6),
         Container(
           decoration: BoxDecoration(
@@ -522,8 +525,8 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))
                   ],
-                  style: const TextStyle(
-                      fontSize: 22, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                      fontSize: 22, fontWeight: FontWeight.bold, fontFamily: lp.fontFamily),
                   decoration: const InputDecoration(
                     hintText: '0.00',
                     hintStyle: TextStyle(
@@ -535,8 +538,8 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
                     EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   ),
                   validator: (v) {
-                    if (v == null || v.isEmpty) return 'Amount required';
-                    if ((double.tryParse(v) ?? 0) <= 0) return 'Enter valid amount';
+                    if (v == null || v.isEmpty) return lp.isEnglish ? 'Amount required' : 'رقم ضروری ہے';
+                    if ((double.tryParse(v) ?? 0) <= 0) return lp.isEnglish ? 'Enter valid amount' : 'درست رقم درج کریں';
                     return null;
                   },
                 ),
@@ -548,14 +551,14 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
     );
   }
 
-  Widget _buildMethodSelector() {
+  Widget _buildMethodSelector(LanguageProvider lp, List<Map<String, dynamic>> methods) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _lbl('Payment Method *'),
+        _lbl(lp.isEnglish ? 'Payment Method *' : 'ادائیگی کا طریقہ *', lp),
         const SizedBox(height: 8),
         Row(
-          children: _methods.map((m) {
+          children: methods.map((m) {
             final val = m['value'] as String;
             final selected = _paymentMethod == val;
             final col = _methodColors[val]!;
@@ -563,7 +566,6 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
               child: GestureDetector(
                 onTap: () => setState(() {
                   _paymentMethod = val;
-                  // Reset bank selection when changing method
                   _selectedBankId = null;
                   _selectedBankName = null;
                   _selectedBankIcon = null;
@@ -592,7 +594,8 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
                             fontWeight: selected
                                 ? FontWeight.bold
                                 : FontWeight.normal,
-                            color: selected ? col : const Color(0xFF8E8E93))),
+                            color: selected ? col : const Color(0xFF8E8E93),
+                            fontFamily: lp.fontFamily)),
                   ]),
                 ),
               ),
@@ -603,7 +606,7 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
     );
   }
 
-  Widget _buildBankTile() {
+  Widget _buildBankTile(LanguageProvider lp) {
     final hasBank = _selectedBankName != null;
     return GestureDetector(
       onTap: _openBankPicker,
@@ -632,15 +635,17 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
               const SizedBox(width: 10),
               Expanded(
                 child: Text(_selectedBankName!,
-                    style: const TextStyle(fontSize: 14,
-                        fontWeight: FontWeight.w500, color: Color(0xFF1C1C1E))),
+                    style: TextStyle(fontSize: 14,
+                        fontWeight: FontWeight.w500, color: const Color(0xFF1C1C1E),
+                        fontFamily: lp.fontFamily)),
               ),
               Icon(Icons.check_circle_rounded, color: _activeColor, size: 18),
             ] else ...[
               Icon(Icons.account_balance_outlined, size: 20, color: Colors.grey[400]),
               const SizedBox(width: 10),
-              const Expanded(child: Text('Select bank',
-                  style: TextStyle(fontSize: 14, color: Color(0xFFC7C7CC)))),
+              Expanded(child: Text(lp.isEnglish ? 'Select bank' : 'بینک منتخب کریں',
+                  style: TextStyle(fontSize: 14, color: const Color(0xFFC7C7CC),
+                      fontFamily: lp.fontFamily))),
               Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.grey[400]),
             ],
           ],
@@ -649,7 +654,7 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
     );
   }
 
-  Widget _buildSubmitBtn() {
+  Widget _buildSubmitBtn(LanguageProvider lp) {
     return SizedBox(
       width: double.infinity,
       height: 52,
@@ -690,9 +695,9 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
               const Icon(Icons.check_circle_outline,
                   color: Colors.white, size: 20),
               const SizedBox(width: 8),
-              const Text(
-                'Confirm Payment',
-                style: TextStyle(
+              Text(
+                lp.isEnglish ? 'Confirm Payment' : 'ادائیگی کی تصدیق کریں',
+                style: const TextStyle(
                     color: Colors.white,
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -710,6 +715,7 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
     required bool filled,
     required VoidCallback onTap,
     IconData icon = Icons.calendar_today_outlined,
+    required LanguageProvider lp,
   }) =>
       GestureDetector(
         onTap: onTap,
@@ -736,21 +742,23 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog>
                       fontSize: 13,
                       color: filled
                           ? const Color(0xFF1C1C1E)
-                          : const Color(0xFFC7C7CC))),
+                          : const Color(0xFFC7C7CC),
+                      fontFamily: lp.fontFamily)),
             ],
           ),
         ),
       );
 
-  Widget _lbl(String t) => Text(t,
-      style: const TextStyle(
+  Widget _lbl(String t, LanguageProvider lp) => Text(t,
+      style: TextStyle(
           fontSize: 12,
-          color: Color(0xFF8E8E93),
-          fontWeight: FontWeight.w600));
+          color: const Color(0xFF8E8E93),
+          fontWeight: FontWeight.w600,
+          fontFamily: lp.fontFamily));
 
-  InputDecoration _inp({required String hint}) => InputDecoration(
+  InputDecoration _inp({required String hint, required LanguageProvider lp}) => InputDecoration(
     hintText: hint,
-    hintStyle: const TextStyle(color: Color(0xFFC7C7CC), fontSize: 13),
+    hintStyle: TextStyle(color: const Color(0xFFC7C7CC), fontSize: 13, fontFamily: lp.fontFamily),
     isDense: true,
     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
     filled: true,

@@ -38,7 +38,8 @@ class CustomerProvider with ChangeNotifier {
     String search = '',
     bool? active,
     String? customerType,
-  }) async {
+  })
+  async {
     _isLoading = true;
     _error = '';
     notifyListeners();
@@ -294,7 +295,8 @@ class CustomerProvider with ChangeNotifier {
     double? balance,
     bool? isActive,
     double? discountPercent, // Add this parameter
-  }) async {
+  })
+  async {
     _isLoading = true;
     notifyListeners();
 
@@ -442,7 +444,8 @@ class CustomerProvider with ChangeNotifier {
     required int id,
     required double amount,
     required String operation, // 'add' or 'subtract'
-  }) async {
+  })
+  async {
     try {
       final url = '${ApiConfig.baseUrl}/customers/$id/update-balance';
 

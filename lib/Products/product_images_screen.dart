@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../providers/product_image_provider.dart';
 import '../../models/product_image_model.dart';
 import '../components/loading_indicator.dart';
+import '../providers/lanprovider.dart';
 
 class ProductImagesScreen extends StatefulWidget {
   final int productId;
@@ -37,6 +38,8 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
   }
 
   Future<void> _pickImages() async {
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+
     try {
       final List<XFile>? pickedFiles = await _picker.pickMultiImage(
         maxWidth: 1920,
@@ -61,14 +64,20 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
         if (result['success']) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('${imageFiles.length} image(s) uploaded successfully'),
+              content: Text(
+                languageProvider.isEnglish
+                    ? '${imageFiles.length} image(s) uploaded successfully'
+                    : '${imageFiles.length} تصویر(یں) کامیابی سے اپ لوڈ ہوگئیں',
+              ),
               backgroundColor: Colors.green,
             ),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(result['error'] ?? 'Failed to upload images'),
+              content: Text(
+                result['error'] ?? (languageProvider.isEnglish ? 'Failed to upload images' : 'تصاویر اپ لوڈ کرنے میں ناکامی'),
+              ),
               backgroundColor: Colors.red,
             ),
           );
@@ -80,7 +89,11 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error picking images: $e'),
+          content: Text(
+            languageProvider.isEnglish
+                ? 'Error picking images: $e'
+                : 'تصاویر منتخب کرنے میں خرابی: $e',
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -88,6 +101,8 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
   }
 
   Future<void> _takePhoto() async {
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+
     try {
       final XFile? pickedFile = await _picker.pickImage(
         source: ImageSource.camera,
@@ -112,15 +127,21 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
 
         if (result['success']) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Image uploaded successfully'),
+            SnackBar(
+              content: Text(
+                languageProvider.isEnglish
+                    ? 'Image uploaded successfully'
+                    : 'تصویر کامیابی سے اپ لوڈ ہوگئی',
+              ),
               backgroundColor: Colors.green,
             ),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(result['error'] ?? 'Failed to upload image'),
+              content: Text(
+                result['error'] ?? (languageProvider.isEnglish ? 'Failed to upload image' : 'تصویر اپ لوڈ کرنے میں ناکامی'),
+              ),
               backgroundColor: Colors.red,
             ),
           );
@@ -132,7 +153,11 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error taking photo: $e'),
+          content: Text(
+            languageProvider.isEnglish
+                ? 'Error taking photo: $e'
+                : 'تصویر لینے میں خرابی: $e',
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -140,6 +165,8 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
   }
 
   void _showImageSourceDialog() {
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -150,9 +177,9 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Add Images',
-              style: TextStyle(
+            Text(
+              languageProvider.isEnglish ? 'Add Images' : 'تصاویر شامل کریں',
+              style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
                 color: Color(0xFF2D3142),
@@ -168,8 +195,8 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
                 ),
                 child: const Icon(Icons.photo_library, color: Color(0xFF7C3AED)),
               ),
-              title: const Text('Choose from Gallery'),
-              subtitle: const Text('Select multiple images'),
+              title: Text(languageProvider.isEnglish ? 'Choose from Gallery' : 'گیلری سے منتخب کریں'),
+              subtitle: Text(languageProvider.isEnglish ? 'Select multiple images' : 'متعدد تصاویر منتخب کریں'),
               onTap: () {
                 Navigator.pop(context);
                 _pickImages();
@@ -184,8 +211,8 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
                 ),
                 child: const Icon(Icons.camera_alt, color: Color(0xFF7C3AED)),
               ),
-              title: const Text('Take Photo'),
-              subtitle: const Text('Use camera'),
+              title: Text(languageProvider.isEnglish ? 'Take Photo' : 'تصویر لیں'),
+              subtitle: Text(languageProvider.isEnglish ? 'Use camera' : 'کیمرہ استعمال کریں'),
               onTap: () {
                 Navigator.pop(context);
                 _takePhoto();
@@ -198,22 +225,28 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
   }
 
   Future<void> _confirmDeleteImage(ProductImage image) async {
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+
     final shouldDelete = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Image'),
-        content: Text('Are you sure you want to delete this image?'),
+        title: Text(languageProvider.isEnglish ? 'Delete Image' : 'تصویر حذف کریں'),
+        content: Text(
+          languageProvider.isEnglish
+              ? 'Are you sure you want to delete this image?'
+              : 'کیا آپ واقعی اس تصویر کو حذف کرنا چاہتے ہیں؟',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(languageProvider.isEnglish ? 'Cancel' : 'منسوخ کریں'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
             ),
-            child: const Text('Delete'),
+            child: Text(languageProvider.isEnglish ? 'Delete' : 'حذف کریں'),
           ),
         ],
       ),
@@ -225,15 +258,21 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
 
       if (result['success']) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Image deleted successfully'),
+          SnackBar(
+            content: Text(
+              languageProvider.isEnglish
+                  ? 'Image deleted successfully'
+                  : 'تصویر کامیابی سے حذف ہوگئی',
+            ),
             backgroundColor: Colors.green,
           ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result['error'] ?? 'Failed to delete image'),
+            content: Text(
+              result['error'] ?? (languageProvider.isEnglish ? 'Failed to delete image' : 'تصویر حذف کرنے میں ناکامی'),
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -242,20 +281,27 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
   }
 
   Future<void> _setAsPrimary(ProductImage image) async {
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
     final provider = Provider.of<ProductImageProvider>(context, listen: false);
     final result = await provider.setPrimaryImage(image.id);
 
     if (result['success']) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Primary image updated'),
+        SnackBar(
+          content: Text(
+            languageProvider.isEnglish
+                ? 'Primary image updated'
+                : 'مرکزی تصویر اپ ڈیٹ ہوگئی',
+          ),
           backgroundColor: Colors.green,
         ),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(result['error'] ?? 'Failed to set primary image'),
+          content: Text(
+            result['error'] ?? (languageProvider.isEnglish ? 'Failed to set primary image' : 'مرکزی تصویر سیٹ کرنے میں ناکامی'),
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -263,6 +309,8 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
   }
 
   void _showImageOptions(ProductImage image) {
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+
     showModalBottomSheet(
       context: context,
       builder: (context) => Container(
@@ -272,7 +320,7 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.star, color: Color(0xFF7C3AED)),
-              title: const Text('Set as Primary'),
+              title: Text(languageProvider.isEnglish ? 'Set as Primary' : 'بطور مرکزی سیٹ کریں'),
               onTap: () {
                 Navigator.pop(context);
                 _setAsPrimary(image);
@@ -280,7 +328,7 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.delete, color: Colors.red),
-              title: const Text('Delete Image'),
+              title: Text(languageProvider.isEnglish ? 'Delete Image' : 'تصویر حذف کریں'),
               onTap: () {
                 Navigator.pop(context);
                 _confirmDeleteImage(image);
@@ -294,81 +342,87 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFC),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Product Images',
-              style: TextStyle(
-                color: Color(0xFF2D3142),
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
-            Text(
-              widget.productName,
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add_photo_alternate_outlined, color: Color(0xFF7C3AED)),
-            onPressed: _showImageSourceDialog,
-          ),
-        ],
-      ),
-      body: Consumer<ProductImageProvider>(
-        builder: (context, provider, child) {
-          if (provider.isLoading && provider.images.isEmpty) {
-            return const LoadingIndicator();
-          }
-
-          final images = provider.getImagesForProduct(widget.productId);
-
-          if (images.isEmpty && !_isUploading) {
-            return _buildEmptyState();
-          }
-
-          return Stack(
-            children: [
-              GridView.builder(
-                padding: const EdgeInsets.all(16),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 5,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 1,
-                ),
-                itemCount: images.length,
-                itemBuilder: (context, index) {
-                  final image = images[index];
-                  return _buildImageCard(image);
-                },
-              ),
-              if (_isUploading)
-                Container(
-                  color: Colors.black.withOpacity(0.3),
-                  child: const Center(
-                    child: CircularProgressIndicator(color: Color(0xFF7C3AED)),
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        return Scaffold(
+          backgroundColor: const Color(0xFFFAFAFC),
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            elevation: 0,
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  languageProvider.isEnglish ? 'Product Images' : 'پروڈکٹ کی تصاویر',
+                  style: const TextStyle(
+                    color: Color(0xFF2D3142),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
                   ),
                 ),
+                Text(
+                  widget.productName,
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 12,
+                    fontFamily: languageProvider.fontFamily,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.add_photo_alternate_outlined, color: Color(0xFF7C3AED)),
+                onPressed: _showImageSourceDialog,
+                tooltip: languageProvider.isEnglish ? 'Add Images' : 'تصاویر شامل کریں',
+              ),
             ],
-          );
-        },
-      ),
+          ),
+          body: Consumer<ProductImageProvider>(
+            builder: (context, provider, child) {
+              if (provider.isLoading && provider.images.isEmpty) {
+                return const LoadingIndicator();
+              }
+
+              final images = provider.getImagesForProduct(widget.productId);
+
+              if (images.isEmpty && !_isUploading) {
+                return _buildEmptyState(languageProvider);
+              }
+
+              return Stack(
+                children: [
+                  GridView.builder(
+                    padding: const EdgeInsets.all(16),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 5,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: 1,
+                    ),
+                    itemCount: images.length,
+                    itemBuilder: (context, index) {
+                      final image = images[index];
+                      return _buildImageCard(image, languageProvider);
+                    },
+                  ),
+                  if (_isUploading)
+                    Container(
+                      color: Colors.black.withOpacity(0.3),
+                      child: const Center(
+                        child: CircularProgressIndicator(color: Color(0xFF7C3AED)),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildImageCard(ProductImage image) {
+  Widget _buildImageCard(ProductImage image, LanguageProvider languageProvider) {
     return GestureDetector(
       onTap: () => _showFullScreenImage(image),
       onLongPress: () => _showImageOptions(image),
@@ -421,14 +475,14 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
                     color: const Color(0xFF7C3AED),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.star, color: Colors.white, size: 12),
-                      SizedBox(width: 4),
+                      const Icon(Icons.star, color: Colors.white, size: 12),
+                      const SizedBox(width: 4),
                       Text(
-                        'Primary',
-                        style: TextStyle(
+                        languageProvider.isEnglish ? 'Primary' : 'مرکزی',
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
@@ -463,7 +517,7 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(LanguageProvider languageProvider) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -475,23 +529,30 @@ class _ProductImagesScreenState extends State<ProductImagesScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'No Images',
+            languageProvider.isEnglish ? 'No Images' : 'کوئی تصویر نہیں',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w600,
               color: Colors.grey[600],
+              fontFamily: languageProvider.fontFamily,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Add images to showcase your product',
-            style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+            languageProvider.isEnglish
+                ? 'Add images to showcase your product'
+                : 'اپنی پروڈکٹ دکھانے کے لیے تصاویر شامل کریں',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[500],
+              fontFamily: languageProvider.fontFamily,
+            ),
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
             onPressed: _showImageSourceDialog,
             icon: const Icon(Icons.add_photo_alternate),
-            label: const Text('Add Images'),
+            label: Text(languageProvider.isEnglish ? 'Add Images' : 'تصاویر شامل کریں'),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF7C3AED),
               foregroundColor: Colors.white,

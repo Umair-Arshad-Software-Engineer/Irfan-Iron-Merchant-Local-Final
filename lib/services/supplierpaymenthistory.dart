@@ -9,6 +9,7 @@ import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/supplier.dart';
+import '../providers/lanprovider.dart';
 
 class PdfService {
   static const PdfColor primaryGreen = PdfColor.fromInt(0xFF10B981);
@@ -30,6 +31,7 @@ class PdfService {
     required double totalPaid,
     required String filterMethod,
     required DateTimeRange? dateRange,
+    required LanguageProvider languageProvider,
   }) async {
     final pdf = pw.Document();
 
@@ -40,18 +42,18 @@ class PdfService {
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(32),
-        header: (context) => _buildHeader(supplier, fontBold),
-        footer: (context) => _buildFooter(context, font),
+        header: (context) => _buildHeader(supplier, fontBold, languageProvider),
+        footer: (context) => _buildFooter(context, font, languageProvider),
         build: (context) => [
-          _buildTitle(supplier, filterMethod, dateRange, fontBold),
+          _buildTitle(supplier, filterMethod, dateRange, fontBold, languageProvider),
           pw.SizedBox(height: 20),
-          _buildSummaryCards(payments.length, totalPaid, font, fontBold),
+          _buildSummaryCards(payments.length, totalPaid, font, fontBold, languageProvider),
           pw.SizedBox(height: 24),
-          _buildPaymentsTable(payments, font, fontBold),
+          _buildPaymentsTable(payments, font, fontBold, languageProvider),
           pw.SizedBox(height: 20),
-          _buildSignatureSection(font),
+          _buildSignatureSection(font, languageProvider),
           pw.SizedBox(height: 10),
-          _buildDisclaimer(font),
+          _buildDisclaimer(font, languageProvider),
         ],
       ),
     );
@@ -66,6 +68,7 @@ class PdfService {
     required double totalPaid,
     required String filterMethod,
     required DateTimeRange? dateRange,
+    required LanguageProvider languageProvider,
   }) async {
     try {
       final pdf = await _generatePdfDocument(
@@ -74,9 +77,10 @@ class PdfService {
         totalPaid: totalPaid,
         filterMethod: filterMethod,
         dateRange: dateRange,
+        languageProvider: languageProvider,
       );
 
-      await _sharePdf(pdf, supplier);
+      await _sharePdf(pdf, supplier, languageProvider);
     } catch (e) {
       debugPrint('Error generating PDF: $e');
       rethrow;
@@ -91,15 +95,15 @@ class PdfService {
     required String filterMethod,
     required DateTimeRange? dateRange,
     required BuildContext context,
+    required LanguageProvider languageProvider,
   }) async {
     try {
-      // Check and request storage permission for Android
       if (Platform.isAndroid) {
         var status = await Permission.storage.status;
         if (!status.isGranted) {
           status = await Permission.storage.request();
           if (!status.isGranted) {
-            _showSnackBar(context, 'Storage permission is required to download PDF', isError: true);
+            _showSnackBar(context, languageProvider.isEnglish ? 'Storage permission is required to download PDF' : 'PDF ڈاؤن لوڈ کرنے کے لیے اسٹوریج کی اجازت درکار ہے', isError: true);
             return null;
           }
         }
@@ -111,12 +115,13 @@ class PdfService {
         totalPaid: totalPaid,
         filterMethod: filterMethod,
         dateRange: dateRange,
+        languageProvider: languageProvider,
       );
 
-      return await _savePdfToDownloads(pdf, supplier, context);
+      return await _savePdfToDownloads(pdf, supplier, context, languageProvider);
     } catch (e) {
       debugPrint('Error downloading PDF: $e');
-      _showSnackBar(context, 'Error downloading PDF: $e', isError: true);
+      _showSnackBar(context, '${languageProvider.isEnglish ? 'Error downloading PDF' : 'PDF ڈاؤن لوڈ کرنے میں خرابی'}: $e', isError: true);
       rethrow;
     }
   }
@@ -128,6 +133,7 @@ class PdfService {
     required double totalPaid,
     required String filterMethod,
     required DateTimeRange? dateRange,
+    required LanguageProvider languageProvider,
   }) async {
     try {
       final pdf = await _generatePdfDocument(
@@ -136,6 +142,7 @@ class PdfService {
         totalPaid: totalPaid,
         filterMethod: filterMethod,
         dateRange: dateRange,
+        languageProvider: languageProvider,
       );
 
       await Printing.layoutPdf(
@@ -153,50 +160,45 @@ class PdfService {
       pw.Document pdf,
       Supplier supplier,
       BuildContext context,
+      LanguageProvider languageProvider,
       ) async {
     try {
       final bytes = await pdf.save();
 
-      // For Android 10+ and all iOS, use getExternalStorageDirectory
-      // For older Android, you might need different approach
       Directory? downloadsDir;
 
       if (Platform.isAndroid) {
-        // Try to get the Downloads directory
         downloadsDir = Directory('/storage/emulated/0/Download');
 
-        // If not accessible, fallback to external storage directory
         if (!await downloadsDir.exists()) {
           downloadsDir = await getExternalStorageDirectory();
         }
       } else {
-        // For iOS, use documents directory
         downloadsDir = await getApplicationDocumentsDirectory();
       }
 
       if (downloadsDir == null) {
-        _showSnackBar(context, 'Could not access downloads folder', isError: true);
+        _showSnackBar(context, languageProvider.isEnglish ? 'Could not access downloads folder' : 'ڈاؤن لوڈ فولڈر تک رسائی نہیں ہو سکی', isError: true);
         return null;
       }
 
-      // Create filename with timestamp
       final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final fileName = 'Payment_Report_${supplier.name.replaceAll(' ', '_')}_$timestamp.pdf';
       final file = File('${downloadsDir.path}/$fileName');
 
       await file.writeAsBytes(bytes);
 
-      _showSnackBar(context, 'PDF downloaded successfully to Downloads folder');
+      _showSnackBar(context, languageProvider.isEnglish ? 'PDF downloaded successfully to Downloads folder' : 'PDF کامیابی سے ڈاؤن لوڈ فولڈر میں ڈاؤن لوڈ ہوگئی');
       return file.path;
     } catch (e) {
       debugPrint('Error saving PDF: $e');
-      _showSnackBar(context, 'Error saving PDF: $e', isError: true);
+      _showSnackBar(context, '${languageProvider.isEnglish ? 'Error saving PDF' : 'PDF محفوظ کرنے میں خرابی'}: $e', isError: true);
       rethrow;
     }
   }
 
   // Share PDF
-  static Future<void> _sharePdf(pw.Document pdf, Supplier supplier) async {
+  static Future<void> _sharePdf(pw.Document pdf, Supplier supplier, LanguageProvider languageProvider) async {
     try {
       final bytes = await pdf.save();
       final directory = await getApplicationDocumentsDirectory();
@@ -207,11 +209,10 @@ class PdfService {
       try {
         await Share.shareXFiles(
           [XFile(file.path)],
-          text: 'Supplier Payment Report',
+          text: languageProvider.isEnglish ? 'Supplier Payment Report' : 'سپلائر ادائیگی رپورٹ',
         );
       } catch (e) {
         debugPrint('Share error: $e');
-        // Fallback - show file location
         debugPrint('PDF saved at: ${file.path}');
       }
     } catch (e) {
@@ -220,7 +221,6 @@ class PdfService {
     }
   }
 
-  // Helper method to show snackbar
   static void _showSnackBar(BuildContext context, String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -232,7 +232,6 @@ class PdfService {
     );
   }
 
-  // Helper method to show download options
   static Future<void> showDownloadOptions({
     required BuildContext context,
     required Supplier supplier,
@@ -240,6 +239,7 @@ class PdfService {
     required double totalPaid,
     required String filterMethod,
     required DateTimeRange? dateRange,
+    required LanguageProvider languageProvider,
   }) async {
     showModalBottomSheet(
       context: context,
@@ -260,9 +260,9 @@ class PdfService {
               ),
             ),
             const SizedBox(height: 20),
-            const Text(
-              'Export Payment Report',
-              style: TextStyle(
+            Text(
+              languageProvider.isEnglish ? 'Export Payment Report' : 'ادائیگی رپورٹ ایکسپورٹ کریں',
+              style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
@@ -285,8 +285,8 @@ class PdfService {
                 ),
                 child: const Icon(Icons.picture_as_pdf, color: Color(0xFF10B981)),
               ),
-              title: const Text('Preview PDF'),
-              subtitle: const Text('View before saving'),
+              title: Text(languageProvider.isEnglish ? 'Preview PDF' : 'PDF دیکھیں'),
+              subtitle: Text(languageProvider.isEnglish ? 'View before saving' : 'محفوظ کرنے سے پہلے دیکھیں'),
               onTap: () async {
                 Navigator.pop(context);
                 await previewPdf(
@@ -295,6 +295,7 @@ class PdfService {
                   totalPaid: totalPaid,
                   filterMethod: filterMethod,
                   dateRange: dateRange,
+                  languageProvider: languageProvider,
                 );
               },
             ),
@@ -307,8 +308,8 @@ class PdfService {
                 ),
                 child: const Icon(Icons.share, color: Color(0xFF10B981)),
               ),
-              title: const Text('Share PDF'),
-              subtitle: const Text('Share via email, messaging, etc.'),
+              title: Text(languageProvider.isEnglish ? 'Share PDF' : 'PDF شیئر کریں'),
+              subtitle: Text(languageProvider.isEnglish ? 'Share via email, messaging, etc.' : 'ای میل، میسجنگ وغیرہ کے ذریعے شیئر کریں'),
               onTap: () async {
                 Navigator.pop(context);
                 await generatePaymentReport(
@@ -317,6 +318,7 @@ class PdfService {
                   totalPaid: totalPaid,
                   filterMethod: filterMethod,
                   dateRange: dateRange,
+                  languageProvider: languageProvider,
                 );
               },
             ),
@@ -329,11 +331,11 @@ class PdfService {
                 ),
                 child: const Icon(Icons.download, color: Color(0xFF10B981)),
               ),
-              title: const Text('Download PDF'),
+              title: Text(languageProvider.isEnglish ? 'Download PDF' : 'PDF ڈاؤن لوڈ کریں'),
               subtitle: Text(
                   Platform.isAndroid
-                      ? 'Save to Downloads folder'
-                      : 'Save to Documents folder'
+                      ? (languageProvider.isEnglish ? 'Save to Downloads folder' : 'ڈاؤن لوڈ فولڈر میں محفوظ کریں')
+                      : (languageProvider.isEnglish ? 'Save to Documents folder' : 'دستاویزات فولڈر میں محفوظ کریں')
               ),
               onTap: () async {
                 Navigator.pop(context);
@@ -344,6 +346,7 @@ class PdfService {
                   filterMethod: filterMethod,
                   dateRange: dateRange,
                   context: context,
+                  languageProvider: languageProvider,
                 );
                 if (filePath != null) {
                   debugPrint('PDF downloaded to: $filePath');
@@ -357,8 +360,7 @@ class PdfService {
     );
   }
 
-  // All the existing building methods remain the same...
-  static pw.Widget _buildHeader(Supplier supplier, pw.Font fontBold) {
+  static pw.Widget _buildHeader(Supplier supplier, pw.Font fontBold, LanguageProvider languageProvider) {
     return pw.Container(
       decoration: pw.BoxDecoration(
         border: pw.Border(bottom: pw.BorderSide(color: primaryGreen, width: 2)),
@@ -371,11 +373,13 @@ class PdfService {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text(
-                'SUPPLIER PAYMENT REPORT',
+                languageProvider.isEnglish ? 'SUPPLIER PAYMENT REPORT' : 'سپلائر ادائیگی رپورٹ',
                 style: pw.TextStyle(font: fontBold, fontSize: 16, color: primaryGreen),
               ),
               pw.Text(
-                'Generated on ${_dtf.format(DateTime.now())}',
+                languageProvider.isEnglish
+                    ? 'Generated on ${_dtf.format(DateTime.now())}'
+                    : 'تیار کردہ: ${_dtf.format(DateTime.now())}',
                 style: pw.TextStyle(fontSize: 8, color: textLight),
               ),
             ],
@@ -396,7 +400,7 @@ class PdfService {
     );
   }
 
-  static pw.Widget _buildFooter(pw.Context context, pw.Font font) {
+  static pw.Widget _buildFooter(pw.Context context, pw.Font font, LanguageProvider languageProvider) {
     return pw.Container(
       padding: const pw.EdgeInsets.only(top: 10),
       decoration: pw.BoxDecoration(
@@ -406,11 +410,11 @@ class PdfService {
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(
-            'This is a computer-generated document',
+            languageProvider.isEnglish ? 'This is a computer-generated document' : 'یہ کمپیوٹر سے تیار کردہ دستاویز ہے',
             style: pw.TextStyle(fontSize: 8, color: textLight, font: font),
           ),
           pw.Text(
-            'Page ${context.pageNumber} of ${context.pagesCount}',
+            languageProvider.isEnglish ? 'Page ${context.pageNumber} of ${context.pagesCount}' : 'صفحہ ${context.pageNumber} / ${context.pagesCount}',
             style: pw.TextStyle(fontSize: 8, color: textLight, font: font),
           ),
         ],
@@ -423,6 +427,7 @@ class PdfService {
       String filterMethod,
       DateTimeRange? dateRange,
       pw.Font fontBold,
+      LanguageProvider languageProvider,
       ) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -432,7 +437,7 @@ class PdfService {
           style: pw.TextStyle(font: fontBold, fontSize: 24, color: textDark),
         ),
         pw.Text(
-          supplier.address ?? 'No address provided',
+          supplier.address ?? (languageProvider.isEnglish ? 'No address provided' : 'کوئی پتہ فراہم نہیں کیا گیا'),
           style: pw.TextStyle(fontSize: 10, color: textMedium),
         ),
         pw.SizedBox(height: 4),
@@ -443,11 +448,11 @@ class PdfService {
         pw.SizedBox(height: 8),
         pw.Row(
           children: [
-            _buildFilterChip('Payment Method: ${_getMethodLabel(filterMethod)}'),
+            _buildFilterChip('${languageProvider.isEnglish ? 'Payment Method' : 'ادائیگی کا طریقہ'}: ${_getMethodLabel(filterMethod, languageProvider)}'),
             if (dateRange != null) ...[
               pw.SizedBox(width: 8),
               _buildFilterChip(
-                  'Period: ${_df.format(dateRange.start)} - ${_df.format(dateRange.end)}'),
+                  '${languageProvider.isEnglish ? 'Period' : 'مدت'}: ${_df.format(dateRange.start)} - ${_df.format(dateRange.end)}'),
             ],
           ],
         ),
@@ -474,11 +479,12 @@ class PdfService {
       double totalPaid,
       pw.Font font,
       pw.Font fontBold,
+      LanguageProvider languageProvider,
       ) {
     return pw.Row(
       children: [
         _buildSummaryCard(
-          label: 'Total Payments',
+          label: languageProvider.isEnglish ? 'Total Payments' : 'کل ادائیگیاں',
           value: paymentCount.toString(),
           color: primaryGreen,
           font: font,
@@ -486,7 +492,7 @@ class PdfService {
         ),
         pw.SizedBox(width: 16),
         _buildSummaryCard(
-          label: 'Total Paid',
+          label: languageProvider.isEnglish ? 'Total Paid' : 'کل ادا شدہ',
           value: 'Rs ${_cf.format(totalPaid)}',
           color: darkGreen,
           font: font,
@@ -507,7 +513,7 @@ class PdfService {
       child: pw.Container(
         padding: const pw.EdgeInsets.all(16),
         decoration: pw.BoxDecoration(
-          color: PdfColor.fromInt(0x1A10B981), // 10% opacity
+          color: PdfColor.fromInt(0x1A10B981),
           borderRadius: pw.BorderRadius.circular(12),
           border: pw.Border.all(color: color),
         ),
@@ -522,7 +528,7 @@ class PdfService {
               ),
               child: pw.Center(
                 child: pw.Text(
-                  label == 'Total Payments' ? '#' : 'Rs',
+                  label == 'Total Payments' || label == 'کل ادائیگیاں' ? '#' : 'Rs',
                   style: pw.TextStyle(
                     color: PdfColors.white,
                     fontSize: 12,
@@ -559,6 +565,7 @@ class PdfService {
       List<Map<String, dynamic>> payments,
       pw.Font font,
       pw.Font fontBold,
+      LanguageProvider languageProvider,
       ) {
     return pw.Container(
       decoration: pw.BoxDecoration(
@@ -578,11 +585,11 @@ class PdfService {
             ),
             child: pw.Row(
               children: [
-                _buildHeaderCell('Date', flex: 2, fontBold: fontBold),
-                _buildHeaderCell('Method', flex: 1, fontBold: fontBold),
-                _buildHeaderCell('Reference', flex: 2, fontBold: fontBold),
-                _buildHeaderCell('Bank/Chq', flex: 2, fontBold: fontBold),
-                _buildHeaderCell('Amount', flex: 1, fontBold: fontBold, align: pw.TextAlign.right),
+                _buildHeaderCell(languageProvider.isEnglish ? 'Date' : 'تاریخ', flex: 2, fontBold: fontBold),
+                _buildHeaderCell(languageProvider.isEnglish ? 'Method' : 'طریقہ', flex: 1, fontBold: fontBold),
+                _buildHeaderCell(languageProvider.isEnglish ? 'Reference' : 'حوالہ', flex: 2, fontBold: fontBold),
+                _buildHeaderCell(languageProvider.isEnglish ? 'Bank/Chq' : 'بینک/چیک', flex: 2, fontBold: fontBold),
+                _buildHeaderCell(languageProvider.isEnglish ? 'Amount' : 'رقم', flex: 1, fontBold: fontBold, align: pw.TextAlign.right),
               ],
             ),
           ),
@@ -602,7 +609,7 @@ class PdfService {
                     font: font,
                   ),
                   _buildCell(
-                    payment['payment_method']?.toString().toUpperCase() ?? '—',
+                    _getMethodLabelForPayment(payment['payment_method']?.toString() ?? '—', languageProvider),
                     flex: 1,
                     font: font,
                   ),
@@ -639,7 +646,7 @@ class PdfService {
                 pw.Expanded(
                   flex: 1,
                   child: pw.Text(
-                    'Total:',
+                    languageProvider.isEnglish ? 'Total:' : 'کل:',
                     style: pw.TextStyle(font: fontBold, fontSize: 10),
                     textAlign: pw.TextAlign.right,
                   ),
@@ -662,6 +669,20 @@ class PdfService {
         ],
       ),
     );
+  }
+
+  static String _getMethodLabelForPayment(String method, LanguageProvider languageProvider) {
+    if (languageProvider.isEnglish) {
+      const labels = {
+        'cash': 'Cash', 'bank': 'Bank', 'cheque': 'Cheque', 'slip': 'Slip',
+      };
+      return labels[method.toLowerCase()] ?? method;
+    } else {
+      const labels = {
+        'cash': 'نقد', 'bank': 'بینک', 'cheque': 'چیک', 'slip': 'سلیپ',
+      };
+      return labels[method.toLowerCase()] ?? method;
+    }
   }
 
   static pw.Widget _buildHeaderCell(
@@ -706,7 +727,7 @@ class PdfService {
     );
   }
 
-  static pw.Widget _buildSignatureSection(pw.Font font) {
+  static pw.Widget _buildSignatureSection(pw.Font font, LanguageProvider languageProvider) {
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
@@ -715,7 +736,7 @@ class PdfService {
           children: [
             pw.Text('_________________________',
                 style: pw.TextStyle(fontSize: 12, color: textLight)),
-            pw.Text('Authorized Signature',
+            pw.Text(languageProvider.isEnglish ? 'Authorized Signature' : 'مجاز دستخط',
                 style: pw.TextStyle(fontSize: 8, color: textLight, font: font)),
           ],
         ),
@@ -724,7 +745,7 @@ class PdfService {
           children: [
             pw.Text('_________________________',
                 style: pw.TextStyle(fontSize: 12, color: textLight)),
-            pw.Text('Supplier Acknowledgment',
+            pw.Text(languageProvider.isEnglish ? 'Supplier Acknowledgment' : 'سپلائر کا اعتراف',
                 style: pw.TextStyle(fontSize: 8, color: textLight, font: font)),
           ],
         ),
@@ -732,7 +753,7 @@ class PdfService {
     );
   }
 
-  static pw.Widget _buildDisclaimer(pw.Font font) {
+  static pw.Widget _buildDisclaimer(pw.Font font, LanguageProvider languageProvider) {
     return pw.Container(
       padding: const pw.EdgeInsets.all(8),
       decoration: pw.BoxDecoration(
@@ -740,8 +761,9 @@ class PdfService {
         borderRadius: pw.BorderRadius.circular(4),
       ),
       child: pw.Text(
-        'This payment report is system generated and does not require a physical signature. '
-            'All amounts are in Pakistani Rupees (Rs). For any discrepancies, please contact support.',
+        languageProvider.isEnglish
+            ? 'This payment report is system generated and does not require a physical signature. All amounts are in Pakistani Rupees (Rs). For any discrepancies, please contact support.'
+            : 'یہ ادائیگی رپورٹ سسٹم سے تیار کردہ ہے اور اس کے لیے جسمانی دستخط کی ضرورت نہیں ہے۔ تمام رقم پاکستانی روپے (Rs) میں ہے۔ کسی بھی فرق کی صورت میں، براہ کرم سپورٹ سے رابطہ کریں۔',
         style: pw.TextStyle(fontSize: 7, color: textMedium, font: font),
         textAlign: pw.TextAlign.center,
       ),
@@ -776,14 +798,25 @@ class PdfService {
     return total;
   }
 
-  static String _getMethodLabel(String method) {
-    const labels = {
-      'all': 'All Methods',
-      'cash': 'Cash',
-      'bank': 'Bank Transfer',
-      'cheque': 'Cheque',
-      'slip': 'Pay Slip',
-    };
-    return labels[method.toLowerCase()] ?? method;
+  static String _getMethodLabel(String method, LanguageProvider languageProvider) {
+    if (languageProvider.isEnglish) {
+      const labels = {
+        'all': 'All Methods',
+        'cash': 'Cash',
+        'bank': 'Bank Transfer',
+        'cheque': 'Cheque',
+        'slip': 'Pay Slip',
+      };
+      return labels[method.toLowerCase()] ?? method;
+    } else {
+      const labels = {
+        'all': 'تمام طریقے',
+        'cash': 'نقد',
+        'bank': 'بینک ٹرانسفر',
+        'cheque': 'چیک',
+        'slip': 'پے سلیپ',
+      };
+      return labels[method.toLowerCase()] ?? method;
+    }
   }
 }

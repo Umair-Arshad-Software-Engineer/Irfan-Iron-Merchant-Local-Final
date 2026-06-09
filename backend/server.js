@@ -24,7 +24,14 @@ const saleRoutes = require('./src/routes/saleRoutes');
 const customerLedgerRoutes = require('./src/routes/customerLedgerRoutes');
 const bankRoutes = require('./src/routes/bankRoutes');
 const chequeRoutes = require('./src/routes/cheque_routes');
-const cashbookRoutes = require('./src/routes/cashbookRoutes');   // ADD
+const cashbookRoutes = require('./src/routes/cashbookRoutes');
+const simpleCashbookRoutes = require('./src/routes/simpleCashbookRoutes');     // ADD Simple Cashbook routes
+const expenseRoutes = require('./src/routes/expenseRoutes');
+const employeeRoutes   = require('./src/routes/employeeRoutes');
+const attendanceRoutes = require('./src/routes/attendanceRoutes');
+const salaryRoutes     = require('./src/routes/salaryRoutes');
+const advanceRoutes    = require('./src/routes/advanceRoutes');
+const empExpenseRoutes = require('./src/routes/empExpenseRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -56,7 +63,14 @@ app.use('/api/sales', saleRoutes);
 app.use('/api/customer-ledger', customerLedgerRoutes);
 app.use('/api/banks', bankRoutes);
 app.use('/api/cheques', chequeRoutes);
-app.use('/api/cashbook', cashbookRoutes);                        // ADD
+app.use('/api/cashbook', cashbookRoutes);
+app.use('/api/simple-cashbook', simpleCashbookRoutes);                    // ADD Simple Cashbook route
+app.use('/api/expense-sessions', expenseRoutes);
+app.use('/api/employees',   employeeRoutes);
+app.use('/api/attendance',  attendanceRoutes);
+app.use('/api/salary',      salaryRoutes);
+app.use('/api/advances',     advanceRoutes);
+app.use('/api/emp-expenses', empExpenseRoutes);
 
 const uploadsPath = path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(uploadsPath)) {
@@ -91,7 +105,7 @@ async function seedAdminUser() {
     await sequelize.authenticate();
     console.log('✅ Database connected');
 
-    // This will auto-create the cashbook table via alter
+    // This will auto-create both cashbook and simple_cashbook tables via alter
     await sequelize.sync({ alter: true });
     console.log('✅ Database & tables synced');
 

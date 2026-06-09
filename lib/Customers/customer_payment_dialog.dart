@@ -9,12 +9,18 @@ import '../../config/api_config.dart';
 import '../../models/customer.dart';
 import '../../providers/auth_provider.dart';
 import '../Banks/banknames.dart';
-import '../components/bankpicker.dart'; // Use the same DbBankSheet
+import '../components/bankpicker.dart';
+import '../providers/lanprovider.dart';
 
 class CustomerPaymentDialog extends StatefulWidget {
   final Customer customer;
+  final LanguageProvider languageProvider;
 
-  const CustomerPaymentDialog({super.key, required this.customer});
+  const CustomerPaymentDialog({
+    super.key,
+    required this.customer,
+    required this.languageProvider,
+  });
 
   @override
   State<CustomerPaymentDialog> createState() => _CustomerPaymentDialogState();
@@ -41,13 +47,6 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
   late Animation<double> _fadeAnim;
 
   final _df = DateFormat('MMM dd, yyyy');
-
-  static const _methods = [
-    {'value': 'cash', 'label': 'Cash', 'icon': Icons.payments_outlined},
-    {'value': 'bank', 'label': 'Bank', 'icon': Icons.account_balance_outlined},
-    {'value': 'cheque', 'label': 'Cheque', 'icon': Icons.receipt_long_outlined},
-    {'value': 'slip', 'label': 'Slip', 'icon': Icons.receipt_outlined},
-  ];
 
   static const _methodColors = {
     'cash': Color(0xFF10B981),
@@ -77,6 +76,13 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
 
   Color get _activeColor => _methodColors[_paymentMethod] ?? const Color(0xFF10B981);
 
+  List<Map<String, dynamic>> _getMethods(LanguageProvider lp) => [
+    {'value': 'cash',   'label': lp.isEnglish ? 'Cash' : 'نقد',   'icon': Icons.payments_outlined},
+    {'value': 'bank',   'label': lp.isEnglish ? 'Bank' : 'بینک',   'icon': Icons.account_balance_outlined},
+    {'value': 'cheque', 'label': lp.isEnglish ? 'Cheque' : 'چیک',   'icon': Icons.receipt_long_outlined},
+    {'value': 'slip',   'label': lp.isEnglish ? 'Slip' : 'سلیپ',   'icon': Icons.receipt_outlined},
+  ];
+
   String? _getToken() {
     try {
       return Provider.of<AuthProvider>(context, listen: false).user?.token;
@@ -85,27 +91,24 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // ✅ SUBMIT PAYMENT - WITH CHEQUE CREATION
-  // ═══════════════════════════════════════════════════════════════════════════
   Future<void> _submit() async {
+    final lp = widget.languageProvider;
+
     if (!_formKey.currentState!.validate()) return;
 
-    // ── Validate bank selection for bank/cheque payments ──
     if ((_paymentMethod == 'bank' || _paymentMethod == 'cheque') &&
         _selectedBankName == null) {
-      _err('Please select a bank');
+      _err(lp.isEnglish ? 'Please select a bank' : 'براہ کرم بینک منتخب کریں');
       return;
     }
 
-    // ── Validate cheque fields ──
     if (_paymentMethod == 'cheque') {
       if (_chequeNumCtrl.text.trim().isEmpty) {
-        _err('Please enter cheque number');
+        _err(lp.isEnglish ? 'Please enter cheque number' : 'براہ کرم چیک نمبر درج کریں');
         return;
       }
       if (_chequeDate == null) {
-        _err('Please select cheque date');
+        _err(lp.isEnglish ? 'Please select cheque date' : 'براہ کرم چیک کی تاریخ منتخب کریں');
         return;
       }
     }
@@ -117,9 +120,6 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
       final description = _descCtrl.text.trim();
       final referenceNumber = _refCtrl.text.trim().isEmpty ? null : _refCtrl.text.trim();
 
-      // ═════════════════════════════════════════════════════════════════════
-      // STEP 1: Create Cheque Record (if payment method is cheque)
-      // ═════════════════════════════════════════════════════════════════════
       int? chequeId;
       if (_paymentMethod == 'cheque') {
         final chequeResponse = await http.post(
@@ -131,9 +131,9 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
           body: json.encode({
             'bank_id': _selectedBankId,
             'cheque_number': _chequeNumCtrl.text.trim(),
-            'cheque_type': 'received', // We are receiving cheque FROM customer
+            'cheque_type': 'received',
             'amount': amount,
-            'payee_payer_name': widget.customer.name, // Customer name as payer
+            'payee_payer_name': widget.customer.name,
             'description': description.isEmpty
                 ? 'Payment received from customer: ${widget.customer.name}'
                 : description,
@@ -150,15 +150,12 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
           chequeId = chequeData['data']['id'];
           debugPrint('Cheque created with ID: $chequeId');
         } else {
-          _err(chequeData['message'] ?? 'Failed to create cheque record');
+          _err(chequeData['message'] ?? (lp.isEnglish ? 'Failed to create cheque record' : 'چیک ریکارڈ بنانے میں ناکامی'));
           setState(() => _isLoading = false);
           return;
         }
       }
 
-      // ═════════════════════════════════════════════════════════════════════
-      // STEP 2: Record customer payment
-      // ═════════════════════════════════════════════════════════════════════
       final paymentResponse = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/customers/${widget.customer.id}/payments'),
         headers: {
@@ -171,7 +168,7 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
           'bank_id': _selectedBankId,
           'bank_name': _selectedBankName,
           'cheque_number': _paymentMethod == 'cheque' ? _chequeNumCtrl.text.trim() : null,
-          'cheque_id': chequeId, // ✅ Pass cheque_id to link payment with cheque
+          'cheque_id': chequeId,
           'cheque_date': _chequeDate != null
               ? "${_chequeDate!.year}-${_chequeDate!.month.toString().padLeft(2, '0')}-${_chequeDate!.day.toString().padLeft(2, '0')}"
               : null,
@@ -185,21 +182,22 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
 
       if (paymentResponse.statusCode == 201 && paymentData['success'] == true) {
         if (mounted) {
-          // Close dialog and return success
           Navigator.pop(context, true);
 
-          // Show success message with cheque info
-          String successMessage = 'Payment recorded successfully!\n'
-              'Amount: Rs ${amount.toStringAsFixed(2)}\n'
-              'Method: ${_paymentMethod.toUpperCase()}';
+          String successMessage = lp.isEnglish
+              ? 'Payment recorded successfully!\nAmount: Rs ${amount.toStringAsFixed(2)}\nMethod: ${_paymentMethod.toUpperCase()}'
+              : 'ادائیگی کامیابی سے ریکارڈ ہوگئی!\nرقم: Rs ${amount.toStringAsFixed(2)}\nطریقہ: ${_getMethodLabel(_paymentMethod, lp)}';
 
           if (_paymentMethod == 'cheque') {
-            successMessage += '\nCheque #${_chequeNumCtrl.text.trim()} created\n'
-                'Status: Pending (awaiting clearing)';
+            successMessage += lp.isEnglish
+                ? '\nCheque #${_chequeNumCtrl.text.trim()} created\nStatus: Pending (awaiting clearing)'
+                : '\nچیک نمبر #${_chequeNumCtrl.text.trim()} بن گیا\nحالت: زیر التواء (کلئیرنگ کے انتظار میں)';
           }
 
           if (_selectedBankName != null) {
-            successMessage += '\nBank: $_selectedBankName';
+            successMessage += lp.isEnglish
+                ? '\nBank: $_selectedBankName'
+                : '\nبینک: $_selectedBankName';
           }
 
           ScaffoldMessenger.of(context).showSnackBar(
@@ -211,7 +209,6 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
           );
         }
       } else {
-        // If payment fails but cheque was created, we should clean up the cheque
         if (chequeId != null) {
           await http.delete(
             Uri.parse('${ApiConfig.baseUrl}/cheques/$chequeId'),
@@ -221,13 +218,23 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
             },
           );
         }
-        _err(paymentData['message'] ?? 'Failed to record payment');
+        _err(paymentData['message'] ?? (lp.isEnglish ? 'Failed to record payment' : 'ادائیگی ریکارڈ کرنے میں ناکامی'));
       }
     } catch (e) {
-      _err('Error: $e');
+      _err('${lp.isEnglish ? 'Error' : 'خرابی'}: $e');
     }
 
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  String _getMethodLabel(String method, LanguageProvider lp) {
+    if (lp.isEnglish) {
+      const labels = {'cash': 'Cash', 'bank': 'Bank', 'cheque': 'Cheque', 'slip': 'Slip'};
+      return labels[method] ?? method;
+    } else {
+      const labels = {'cash': 'نقد', 'bank': 'بینک', 'cheque': 'چیک', 'slip': 'سلیپ'};
+      return labels[method] ?? method;
+    }
   }
 
   void _err(String msg) => ScaffoldMessenger.of(context).showSnackBar(
@@ -267,6 +274,7 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
   );
 
   Future<void> _openBankPicker() async {
+    final lp = widget.languageProvider;
     final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
@@ -275,6 +283,7 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
       builder: (_) => DbBankSheet(
         accentColor: _activeColor,
         token: _getToken(),
+        languageProvider: lp,
       ),
     );
     if (result != null) {
@@ -288,7 +297,9 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
 
   @override
   Widget build(BuildContext context) {
+    final lp = widget.languageProvider;
     final outstandingBalance = widget.customer.balance;
+    final methods = _getMethods(lp);
 
     return FadeTransition(
       opacity: _fadeAnim,
@@ -299,7 +310,7 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildHeader(outstandingBalance),
+              _buildHeader(outstandingBalance, lp),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                 child: Form(
@@ -307,20 +318,18 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildAmountField(),
+                      _buildAmountField(lp),
                       const SizedBox(height: 20),
-                      _buildMethodSelector(),
+                      _buildMethodSelector(lp, methods),
                       const SizedBox(height: 16),
 
-                      // Bank selector (for bank/cheque methods)
                       if (_paymentMethod == 'bank' || _paymentMethod == 'cheque') ...[
-                        _lbl('Bank *'),
+                        _lbl(lp.isEnglish ? 'Bank *' : 'بینک *', lp),
                         const SizedBox(height: 6),
-                        _buildBankTile(),
+                        _buildBankTile(lp),
                         const SizedBox(height: 16),
                       ],
 
-                      // Cheque fields (only for cheque method)
                       if (_paymentMethod == 'cheque') ...[
                         Row(
                           children: [
@@ -328,14 +337,15 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _lbl('Cheque No. *'),
+                                  _lbl(lp.isEnglish ? 'Cheque No. *' : 'چیک نمبر *', lp),
                                   const SizedBox(height: 6),
                                   TextFormField(
                                     controller: _chequeNumCtrl,
-                                    decoration: _inp(hint: 'e.g. 001234'),
+                                    style: TextStyle(fontFamily: lp.fontFamily),
+                                    decoration: _inp(hint: lp.isEnglish ? 'e.g. 001234' : 'مثال: 001234', lp: lp),
                                     validator: (v) {
                                       if (_paymentMethod == 'cheque' && (v == null || v.isEmpty)) {
-                                        return 'Required';
+                                        return lp.isEnglish ? 'Required' : 'ضروری';
                                       }
                                       return null;
                                     },
@@ -348,14 +358,15 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _lbl('Cheque Date *'),
+                                  _lbl(lp.isEnglish ? 'Cheque Date *' : 'چیک کی تاریخ *', lp),
                                   const SizedBox(height: 6),
                                   _dateTile(
                                     val: _chequeDate != null
                                         ? _df.format(_chequeDate!)
-                                        : 'Pick date',
+                                        : (lp.isEnglish ? 'Pick date' : 'تاریخ منتخب کریں'),
                                     filled: _chequeDate != null,
                                     onTap: _pickChequeDate,
+                                    lp: lp,
                                   ),
                                 ],
                               ),
@@ -364,7 +375,6 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
                         ),
                         const SizedBox(height: 16),
 
-                        // Info note about cheque
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
@@ -378,9 +388,11 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'Cheque will be recorded as "pending" in Cheque Management. '
-                                      'Update status to "cleared" when cashed.',
-                                  style: TextStyle(fontSize: 11, color: const Color(0xFFF59E0B)),
+                                  lp.isEnglish
+                                      ? 'Cheque will be recorded as "pending" in Cheque Management. Update status to "cleared" when cashed.'
+                                      : 'چیک "زیر التواء" کے طور پر چیک مینجمنٹ میں ریکارڈ کیا جائے گا۔ کیش ہونے پر حالت "کلئیر شدہ" میں تبدیل کریں۔',
+                                  style: TextStyle(fontSize: 11, color: const Color(0xFFF59E0B),
+                                      fontFamily: lp.fontFamily),
                                 ),
                               ),
                             ],
@@ -389,36 +401,36 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
                         const SizedBox(height: 16),
                       ],
 
-                      // Reference number (optional)
-                      _lbl('Reference # (optional)'),
+                      _lbl(lp.isEnglish ? 'Reference # (optional)' : 'حوالہ نمبر (اختیاری)', lp),
                       const SizedBox(height: 6),
                       TextFormField(
                         controller: _refCtrl,
-                        decoration: _inp(hint: 'e.g. TXN-001, CHQ-123'),
+                        style: TextStyle(fontFamily: lp.fontFamily),
+                        decoration: _inp(hint: lp.isEnglish ? 'e.g. TXN-001, CHQ-123' : 'مثال: TXN-001, CHQ-123', lp: lp),
                       ),
                       const SizedBox(height: 16),
 
-                      // Description (optional)
-                      _lbl('Description (optional)'),
+                      _lbl(lp.isEnglish ? 'Description (optional)' : 'تفصیل (اختیاری)', lp),
                       const SizedBox(height: 6),
                       TextFormField(
                         controller: _descCtrl,
                         maxLines: 2,
-                        decoration: _inp(hint: 'e.g. Payment received for goods'),
+                        style: TextStyle(fontFamily: lp.fontFamily),
+                        decoration: _inp(hint: lp.isEnglish ? 'e.g. Payment received for goods' : 'مثال: سامان کی وصول کردہ ادائیگی', lp: lp),
                       ),
                       const SizedBox(height: 16),
 
-                      // Payment date
-                      _lbl('Payment Date'),
+                      _lbl(lp.isEnglish ? 'Payment Date' : 'ادائیگی کی تاریخ', lp),
                       const SizedBox(height: 6),
                       _dateTile(
                         val: _df.format(_paymentDate),
                         filled: true,
                         onTap: _pickPaymentDate,
                         icon: Icons.calendar_today_outlined,
+                        lp: lp,
                       ),
                       const SizedBox(height: 24),
-                      _buildSubmitBtn(),
+                      _buildSubmitBtn(lp),
                     ],
                   ),
                 ),
@@ -430,7 +442,7 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
     );
   }
 
-  Widget _buildHeader(double outstandingBalance) {
+  Widget _buildHeader(double outstandingBalance, LanguageProvider lp) {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 12, 16),
       decoration: BoxDecoration(
@@ -456,8 +468,8 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Record Payment',
-                    style: TextStyle(
+                Text(lp.isEnglish ? 'Record Payment' : 'ادائیگی ریکارڈ کریں',
+                    style: const TextStyle(
                         fontSize: 17, fontWeight: FontWeight.bold)),
                 Text(widget.customer.name,
                     style: const TextStyle(
@@ -474,13 +486,14 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              'Due: Rs ${NumberFormat('#,##0.00').format(outstandingBalance)}',
+              '${lp.isEnglish ? 'Due' : 'بقایا'}: Rs ${NumberFormat('#,##0.00').format(outstandingBalance)}',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
                 color: outstandingBalance > 0
                     ? const Color(0xFFEF4444)
                     : const Color(0xFF10B981),
+                fontFamily: lp.fontFamily,
               ),
             ),
           ),
@@ -493,11 +506,11 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
     );
   }
 
-  Widget _buildAmountField() {
+  Widget _buildAmountField(LanguageProvider lp) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _lbl('Amount *'),
+        _lbl(lp.isEnglish ? 'Amount *' : 'رقم *', lp),
         const SizedBox(height: 6),
         Container(
           decoration: BoxDecoration(
@@ -524,8 +537,9 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))
                   ],
-                  style: const TextStyle(
-                      fontSize: 22, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                      fontSize: 22, fontWeight: FontWeight.bold,
+                      fontFamily: lp.fontFamily),
                   decoration: const InputDecoration(
                     hintText: '0.00',
                     hintStyle: TextStyle(
@@ -537,8 +551,8 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
                     EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   ),
                   validator: (v) {
-                    if (v == null || v.isEmpty) return 'Amount required';
-                    if ((double.tryParse(v) ?? 0) <= 0) return 'Enter valid amount';
+                    if (v == null || v.isEmpty) return lp.isEnglish ? 'Amount required' : 'رقم ضروری ہے';
+                    if ((double.tryParse(v) ?? 0) <= 0) return lp.isEnglish ? 'Enter valid amount' : 'درست رقم درج کریں';
                     return null;
                   },
                 ),
@@ -550,14 +564,14 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
     );
   }
 
-  Widget _buildMethodSelector() {
+  Widget _buildMethodSelector(LanguageProvider lp, List<Map<String, dynamic>> methods) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _lbl('Payment Method *'),
+        _lbl(lp.isEnglish ? 'Payment Method *' : 'ادائیگی کا طریقہ *', lp),
         const SizedBox(height: 8),
         Row(
-          children: _methods.map((m) {
+          children: methods.map((m) {
             final val = m['value'] as String;
             final selected = _paymentMethod == val;
             final col = _methodColors[val]!;
@@ -565,7 +579,6 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
               child: GestureDetector(
                 onTap: () => setState(() {
                   _paymentMethod = val;
-                  // Reset bank selection when changing method
                   _selectedBankId = null;
                   _selectedBankName = null;
                   _selectedBankIcon = null;
@@ -594,7 +607,8 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
                             fontWeight: selected
                                 ? FontWeight.bold
                                 : FontWeight.normal,
-                            color: selected ? col : const Color(0xFF8E8E93))),
+                            color: selected ? col : const Color(0xFF8E8E93),
+                            fontFamily: lp.fontFamily)),
                   ]),
                 ),
               ),
@@ -605,7 +619,7 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
     );
   }
 
-  Widget _buildBankTile() {
+  Widget _buildBankTile(LanguageProvider lp) {
     final hasBank = _selectedBankName != null;
     return GestureDetector(
       onTap: _openBankPicker,
@@ -634,15 +648,17 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
               const SizedBox(width: 10),
               Expanded(
                 child: Text(_selectedBankName!,
-                    style: const TextStyle(fontSize: 14,
-                        fontWeight: FontWeight.w500, color: Color(0xFF1C1C1E))),
+                    style: TextStyle(fontSize: 14,
+                        fontWeight: FontWeight.w500, color: const Color(0xFF1C1C1E),
+                        fontFamily: lp.fontFamily)),
               ),
               Icon(Icons.check_circle_rounded, color: _activeColor, size: 18),
             ] else ...[
               Icon(Icons.account_balance_outlined, size: 20, color: Colors.grey[400]),
               const SizedBox(width: 10),
-              const Expanded(child: Text('Select bank',
-                  style: TextStyle(fontSize: 14, color: Color(0xFFC7C7CC)))),
+              Expanded(child: Text(lp.isEnglish ? 'Select bank' : 'بینک منتخب کریں',
+                  style: TextStyle(fontSize: 14, color: const Color(0xFFC7C7CC),
+                      fontFamily: lp.fontFamily))),
               Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.grey[400]),
             ],
           ],
@@ -651,7 +667,7 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
     );
   }
 
-  Widget _buildSubmitBtn() {
+  Widget _buildSubmitBtn(LanguageProvider lp) {
     return SizedBox(
       width: double.infinity,
       height: 52,
@@ -692,9 +708,9 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
               const Icon(Icons.check_circle_outline,
                   color: Colors.white, size: 20),
               const SizedBox(width: 8),
-              const Text(
-                'Confirm Payment',
-                style: TextStyle(
+              Text(
+                lp.isEnglish ? 'Confirm Payment' : 'ادائیگی کی تصدیق کریں',
+                style: const TextStyle(
                     color: Colors.white,
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -712,6 +728,7 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
     required bool filled,
     required VoidCallback onTap,
     IconData icon = Icons.calendar_today_outlined,
+    required LanguageProvider lp,
   }) =>
       GestureDetector(
         onTap: onTap,
@@ -738,21 +755,23 @@ class _CustomerPaymentDialogState extends State<CustomerPaymentDialog>
                       fontSize: 13,
                       color: filled
                           ? const Color(0xFF1C1C1E)
-                          : const Color(0xFFC7C7CC))),
+                          : const Color(0xFFC7C7CC),
+                      fontFamily: lp.fontFamily)),
             ],
           ),
         ),
       );
 
-  Widget _lbl(String t) => Text(t,
-      style: const TextStyle(
+  Widget _lbl(String t, LanguageProvider lp) => Text(t,
+      style: TextStyle(
           fontSize: 12,
-          color: Color(0xFF8E8E93),
-          fontWeight: FontWeight.w600));
+          color: const Color(0xFF8E8E93),
+          fontWeight: FontWeight.w600,
+          fontFamily: lp.fontFamily));
 
-  InputDecoration _inp({required String hint}) => InputDecoration(
+  InputDecoration _inp({required String hint, required LanguageProvider lp}) => InputDecoration(
     hintText: hint,
-    hintStyle: const TextStyle(color: Color(0xFFC7C7CC), fontSize: 13),
+    hintStyle: TextStyle(color: const Color(0xFFC7C7CC), fontSize: 13, fontFamily: lp.fontFamily),
     isDense: true,
     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
     filled: true,

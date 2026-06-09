@@ -34,7 +34,8 @@ class CustomerLedgerProvider with ChangeNotifier {
     String? transactionType,
     String? sortBy = 'created_at', // Add this parameter to specify which field to sort by
     String? sortOrder = 'desc', // Add this parameter with default 'desc'
-  }) async {
+  })
+  async {
     _isLoading = true;
     _error = null;
     _currentPage = page;
@@ -113,7 +114,8 @@ class CustomerLedgerProvider with ChangeNotifier {
     double debit = 0,
     double credit = 0,
     DateTime? date,
-  }) async {
+  })
+  async {
     try {
       final response = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/customer-ledger/$customerId/adjustment'),

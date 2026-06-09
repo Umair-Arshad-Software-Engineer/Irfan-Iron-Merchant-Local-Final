@@ -3,11 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/customer.dart';
 import '../providers/customer_provider.dart';
+import '../providers/lanprovider.dart';
 
 class CustomerFormDialog extends StatefulWidget {
   final Customer? customer;
+  final LanguageProvider languageProvider;
 
-  const CustomerFormDialog({Key? key, this.customer}) : super(key: key);
+  const CustomerFormDialog({
+    Key? key,
+    this.customer,
+    required this.languageProvider,
+  }) : super(key: key);
 
   @override
   _CustomerFormDialogState createState() => _CustomerFormDialogState();
@@ -24,6 +30,12 @@ class _CustomerFormDialogState extends State<CustomerFormDialog> {
   String _selectedType = 'regular';
   double _balance      = 0.0;
 
+  List<Map<String, dynamic>> get _customerTypes => [
+    {'value': 'regular', 'label': widget.languageProvider.isEnglish ? 'Regular Customer' : 'عام کسٹمر', 'icon': Icons.person, 'color': Colors.blue},
+    {'value': 'retail',  'label': widget.languageProvider.isEnglish ? 'Retail Customer' : 'خوردہ کسٹمر',  'icon': Icons.shopping_cart, 'color': Colors.green},
+    {'value': 'wholesale','label': widget.languageProvider.isEnglish ? 'Wholesale Customer' : 'تھوک کسٹمر', 'icon': Icons.business, 'color': Colors.orange},
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -35,7 +47,6 @@ class _CustomerFormDialogState extends State<CustomerFormDialog> {
       _emailController.text   = c.email   ?? '';
       _selectedType           = c.customerType;
       _balance                = c.balance;
-      // Pre-fill discount – omit trailing ".0" for cleanliness
       _discountController.text = c.discountPercent == 0
           ? ''
           : c.discountPercent % 1 == 0
@@ -102,9 +113,13 @@ class _CustomerFormDialogState extends State<CustomerFormDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final lp = widget.languageProvider;
+
     return AlertDialog(
       title: Text(
-        widget.customer == null ? 'Add New Customer' : 'Edit Customer',
+        widget.customer == null
+            ? (lp.isEnglish ? 'Add New Customer' : 'نیا کسٹمر شامل کریں')
+            : (lp.isEnglish ? 'Edit Customer' : 'کسٹمر میں ترمیم کریں'),
         style: const TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.bold,
@@ -117,119 +132,115 @@ class _CustomerFormDialogState extends State<CustomerFormDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // ── Name ─────────────────────────────────
               TextFormField(
                 controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Customer Name *',
-                  prefixIcon: Icon(Icons.person),
-                  border: OutlineInputBorder(),
+                style: TextStyle(fontFamily: lp.fontFamily),
+                decoration: InputDecoration(
+                  labelText: lp.isEnglish ? 'Customer Name *' : 'کسٹمر کا نام *',
+                  prefixIcon: const Icon(Icons.person),
+                  border: const OutlineInputBorder(),
                 ),
                 validator: (value) {
-                  if (value == null || value.isEmpty) return 'Please enter customer name';
-                  if (value.length < 2) return 'Name must be at least 2 characters';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-
-              // ── Contact ───────────────────────────────
-              TextFormField(
-                controller: _contactController,
-                decoration: const InputDecoration(
-                  labelText: 'Contact Number *',
-                  prefixIcon: Icon(Icons.phone),
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.phone,
-                validator: (value) {
-                  if (value == null || value.isEmpty) return 'Please enter contact number';
-                  if (value.length < 10) return 'Enter a valid contact number';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-
-              // ── Email ─────────────────────────────────
-              TextFormField(
-                controller: _emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email Address',
-                  prefixIcon: Icon(Icons.email),
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.emailAddress,
-                validator: (value) {
-                  if (value != null && value.isNotEmpty) {
-                    final emailRegex = RegExp(
-                        r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
-                    if (!emailRegex.hasMatch(value)) return 'Enter a valid email address';
+                  if (value == null || value.isEmpty) {
+                    return lp.isEnglish ? 'Please enter customer name' : 'براہ کرم کسٹمر کا نام درج کریں';
+                  }
+                  if (value.length < 2) {
+                    return lp.isEnglish ? 'Name must be at least 2 characters' : 'نام کم از کم 2 حروف کا ہونا چاہیے';
                   }
                   return null;
                 },
               ),
               const SizedBox(height: 16),
 
-              // ── Address ───────────────────────────────
+              TextFormField(
+                controller: _contactController,
+                style: TextStyle(fontFamily: lp.fontFamily),
+                decoration: InputDecoration(
+                  labelText: lp.isEnglish ? 'Contact Number *' : 'رابطہ نمبر *',
+                  prefixIcon: const Icon(Icons.phone),
+                  border: const OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.phone,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return lp.isEnglish ? 'Please enter contact number' : 'براہ کرم رابطہ نمبر درج کریں';
+                  }
+                  if (value.length < 10) {
+                    return lp.isEnglish ? 'Enter a valid contact number' : 'ایک درست رابطہ نمبر درج کریں';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+
+              TextFormField(
+                controller: _emailController,
+                style: TextStyle(fontFamily: lp.fontFamily),
+                decoration: InputDecoration(
+                  labelText: lp.isEnglish ? 'Email Address' : 'ای میل پتہ',
+                  prefixIcon: const Icon(Icons.email),
+                  border: const OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.emailAddress,
+                validator: (value) {
+                  if (value != null && value.isNotEmpty) {
+                    final emailRegex = RegExp(
+                        r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+                    if (!emailRegex.hasMatch(value)) {
+                      return lp.isEnglish ? 'Enter a valid email address' : 'ایک درست ای میل پتہ درج کریں';
+                    }
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+
               TextFormField(
                 controller: _addressController,
-                decoration: const InputDecoration(
-                  labelText: 'Address',
-                  prefixIcon: Icon(Icons.location_on),
-                  border: OutlineInputBorder(),
+                style: TextStyle(fontFamily: lp.fontFamily),
+                decoration: InputDecoration(
+                  labelText: lp.isEnglish ? 'Address' : 'پتہ',
+                  prefixIcon: const Icon(Icons.location_on),
+                  border: const OutlineInputBorder(),
                 ),
                 maxLines: 3,
               ),
               const SizedBox(height: 16),
 
-              // ── Customer Type ─────────────────────────
               DropdownButtonFormField<String>(
                 value: _selectedType,
-                decoration: const InputDecoration(
-                  labelText: 'Customer Type',
-                  prefixIcon: Icon(Icons.category),
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: lp.isEnglish ? 'Customer Type' : 'کسٹمر کی قسم',
+                  prefixIcon: const Icon(Icons.category),
+                  border: const OutlineInputBorder(),
                 ),
-                items: [
-                  DropdownMenuItem(
-                    value: 'regular',
-                    child: Row(children: [
-                      const Icon(Icons.person, color: Colors.blue),
-                      const SizedBox(width: 8),
-                      const Text('Regular Customer'),
-                    ]),
-                  ),
-                  DropdownMenuItem(
-                    value: 'retail',
-                    child: Row(children: [
-                      const Icon(Icons.shopping_cart, color: Colors.green),
-                      const SizedBox(width: 8),
-                      const Text('Retail Customer'),
-                    ]),
-                  ),
-                  DropdownMenuItem(
-                    value: 'wholesale',
-                    child: Row(children: [
-                      const Icon(Icons.business, color: Colors.orange),
-                      const SizedBox(width: 8),
-                      const Text('Wholesale Customer'),
-                    ]),
-                  ),
-                ],
+                items: _customerTypes.map((type) {
+                  return DropdownMenuItem(
+                    value: type['value'] as String,
+                    child: Row(
+                      children: [
+                        Icon(type['icon'] as IconData, color: type['color'] as Color),
+                        const SizedBox(width: 8),
+                        Text(type['label'] as String,
+                            style: TextStyle(fontFamily: lp.fontFamily)),
+                      ],
+                    ),
+                  );
+                }).toList(),
                 onChanged: (value) => setState(() => _selectedType = value!),
+                style: TextStyle(fontFamily: lp.fontFamily),
               ),
               const SizedBox(height: 16),
 
-              // ── Discount Percent ──────────────────────
               TextFormField(
                 controller: _discountController,
+                style: TextStyle(fontFamily: lp.fontFamily),
                 decoration: InputDecoration(
-                  labelText: 'Default Discount (%)',
-                  hintText: 'e.g. 10  →  10% off every sale',
+                  labelText: lp.isEnglish ? 'Default Discount (%)' : 'پہلے سے طے شدہ چھوٹ (%)',
+                  hintText: lp.isEnglish ? 'e.g. 10  →  10% off every sale' : 'مثال: 10  →  ہر فروخت پر 10% چھوٹ',
                   prefixIcon: const Icon(Icons.local_offer_outlined),
                   suffixText: '%',
                   border: const OutlineInputBorder(),
-                  // Subtle green tint when a discount is entered
                   fillColor: _discountController.text.isNotEmpty &&
                       (double.tryParse(_discountController.text) ?? 0) > 0
                       ? Colors.green.withOpacity(0.05)
@@ -238,13 +249,19 @@ class _CustomerFormDialogState extends State<CustomerFormDialog> {
                       (double.tryParse(_discountController.text) ?? 0) > 0,
                 ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                onChanged: (_) => setState(() {}), // rebuild to update fill color
+                onChanged: (_) => setState(() {}),
                 validator: (value) {
                   if (value != null && value.isNotEmpty) {
                     final parsed = double.tryParse(value);
-                    if (parsed == null) return 'Enter a valid number';
-                    if (parsed < 0)   return 'Discount cannot be negative';
-                    if (parsed > 100) return 'Discount cannot exceed 100%';
+                    if (parsed == null) {
+                      return lp.isEnglish ? 'Enter a valid number' : 'ایک درست نمبر درج کریں';
+                    }
+                    if (parsed < 0) {
+                      return lp.isEnglish ? 'Discount cannot be negative' : 'چھوٹ منفی نہیں ہو سکتی';
+                    }
+                    if (parsed > 100) {
+                      return lp.isEnglish ? 'Discount cannot exceed 100%' : 'چھوٹ 100% سے زیادہ نہیں ہو سکتی';
+                    }
                   }
                   return null;
                 },
@@ -253,20 +270,22 @@ class _CustomerFormDialogState extends State<CustomerFormDialog> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'This discount auto-applies when creating a sale for this customer.',
-                  style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                  lp.isEnglish
+                      ? 'This discount auto-applies when creating a sale for this customer.'
+                      : 'یہ چھوٹ اس کسٹمر کے لیے فروخت بناتے وقت خود بخود لاگو ہوتی ہے۔',
+                  style: TextStyle(fontSize: 11, color: Colors.grey[600], fontFamily: lp.fontFamily),
                 ),
               ),
 
-              // ── Balance (edit mode only) ───────────────
               if (widget.customer != null) ...[
                 const SizedBox(height: 16),
                 TextFormField(
                   initialValue: _balance.toString(),
-                  decoration: const InputDecoration(
-                    labelText: 'Balance',
-                    prefixIcon: Icon(Icons.account_balance_wallet),
-                    border: OutlineInputBorder(),
+                  style: TextStyle(fontFamily: lp.fontFamily),
+                  decoration: InputDecoration(
+                    labelText: lp.isEnglish ? 'Balance' : 'بیلنس',
+                    prefixIcon: const Icon(Icons.account_balance_wallet),
+                    border: const OutlineInputBorder(),
                   ),
                   keyboardType: TextInputType.number,
                   onChanged: (value) => _balance = double.tryParse(value) ?? 0.0,
@@ -279,14 +298,16 @@ class _CustomerFormDialogState extends State<CustomerFormDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(lp.isEnglish ? 'Cancel' : 'منسوخ کریں'),
         ),
         ElevatedButton(
           onPressed: _submitForm,
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF7C3AED),
           ),
-          child: Text(widget.customer == null ? 'Add Customer' : 'Update'),
+          child: Text(widget.customer == null
+              ? (lp.isEnglish ? 'Add Customer' : 'کسٹمر شامل کریں')
+              : (lp.isEnglish ? 'Update' : 'اپ ڈیٹ کریں')),
         ),
       ],
     );

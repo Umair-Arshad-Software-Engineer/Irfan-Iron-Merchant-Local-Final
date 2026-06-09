@@ -220,6 +220,109 @@ exports.addManualEntry = async (req, res) => {
   }
 };
 
+// ── PUT /cashbook/:id ─────────────────────────────────────────────────────
+exports.editManualEntry = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { id } = req.params;
+    const { entry_date, entry_type, description, amount, reference_number } = req.body;
+
+    // Find existing entry
+    const entry = await Cashbook.findByPk(id, { transaction: t });
+
+    if (!entry) {
+      await t.rollback();
+      return res.status(404).json({ success: false, message: 'Entry not found' });
+    }
+
+    if (entry.source_type !== 'manual') {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Only manual entries can be edited.',
+      });
+    }
+
+    // Validate inputs
+    if (!entry_type || !['cash_in', 'cash_out'].includes(entry_type)) {
+      await t.rollback();
+      return res.status(400).json({ success: false, message: 'entry_type must be cash_in or cash_out' });
+    }
+
+    if (!amount || parseFloat(amount) <= 0) {
+      await t.rollback();
+      return res.status(400).json({ success: false, message: 'Valid amount required' });
+    }
+
+    if (!description?.trim()) {
+      await t.rollback();
+      return res.status(400).json({ success: false, message: 'Description is required' });
+    }
+
+    if (!entry_date) {
+      await t.rollback();
+      return res.status(400).json({ success: false, message: 'Entry date is required' });
+    }
+
+    // For cash_out: Check sufficient cash excluding current entry
+    if (entry_type === 'cash_out') {
+      // Get balance up to entry date, excluding this entry if it's being edited
+      const allEntries = await Cashbook.findAll({
+        where: {
+          entry_date: {
+            [Op.lte]: entry_date
+          },
+          id: { [Op.ne]: id } // Exclude current entry
+        },
+        order: [['entry_date', 'ASC'], ['id', 'ASC']],
+        attributes: ['entry_type', 'amount'],
+        raw: true,
+        transaction: t,
+      });
+      
+      const balanceBeforeEntry = allEntries.reduce((balance, e) => {
+        return balance + (e.entry_type === 'cash_in' 
+          ? parseFloat(e.amount) 
+          : -parseFloat(e.amount));
+      }, 0);
+
+      if (balanceBeforeEntry < parseFloat(amount)) {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient cash on ${entry_date}. Available: Rs ${balanceBeforeEntry.toFixed(2)}`,
+        });
+      }
+    }
+
+    // Update the entry
+    await entry.update({
+      entry_date: entry_date,
+      entry_type: entry_type,
+      description: description.trim(),
+      amount: parseFloat(amount).toFixed(2),
+      reference_number: reference_number || null,
+    }, { transaction: t });
+
+    // Recalculate all balances
+    await recalculateBalances(t);
+    await t.commit();
+
+    // Get the updated entry
+    const updatedEntry = await Cashbook.findByPk(id);
+    
+    res.json({
+      success: true,
+      message: 'Entry updated successfully',
+      data: updatedEntry,
+    });
+  } catch (error) {
+    await t.rollback();
+    console.error('Edit entry error:', error);
+    res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
+};
+
 // ── DELETE /cashbook/:id ─────────────────────────────────────────────────────
 exports.deleteEntry = async (req, res) => {
   const t = await sequelize.transaction();

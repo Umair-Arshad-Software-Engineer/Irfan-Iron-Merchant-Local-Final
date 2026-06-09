@@ -1,4 +1,3 @@
-// lib/screens/products/products_list_screen.dart
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -15,6 +14,7 @@ import '../../models/product_model.dart';
 import '../models/category.dart';
 import '../models/supplier.dart';
 import '../models/unit.dart';
+import '../providers/lanprovider.dart';
 import '../providers/product_image_provider.dart';
 import '../services/product_pdf_generator.dart';
 import 'add_edit_product_screen.dart';
@@ -30,6 +30,7 @@ class ProductsListScreen extends StatefulWidget {
 class _ProductsListScreenState extends State<ProductsListScreen> {
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ScrollController _horizontalScrollController = ScrollController();
 
   bool _showFilters = false;
   String? _selectedCategory;
@@ -37,34 +38,48 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
   String? _selectedUnit;
   bool? _lowStockOnly;
   bool? _activeOnly;
-  bool _isInitialized = false; // Add this flag
+  bool _isInitialized = false;
+
+  // Column sort state
+  int _sortColumnIndex = 0;
+  bool _sortAscending = true;
+
+  static const _purple = Color(0xFF7C3AED);
+  static const _red = Color(0xFFDC2626);
+  static const _teal = Color(0xFF059669);
+  static const _amber = Color(0xFFD97706);
+  static const _bgPurple = Color(0xFFF5F3FF);
+  static const _bgRed = Color(0xFFFEF2F2);
+  static const _bgTeal = Color(0xFFECFDF5);
+  static const _bgAmber = Color(0xFFFFFBEB);
+  static const _border = Color(0xFFE5E7EB);
+  static const _surface = Color(0xFFF9FAFB);
+  static const _textPrimary = Color(0xFF111827);
+  static const _textSecondary = Color(0xFF6B7280);
+  static const _textTertiary = Color(0xFF9CA3AF);
 
   @override
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
-    // Initialize data after first frame build
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initializeData();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initializeData());
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     _scrollController.dispose();
+    _horizontalScrollController.dispose();
+    _debounceTimer?.cancel();
     super.dispose();
   }
 
   Future<void> _initializeData() async {
-    // Prevent double initialization
     if (_isInitialized) return;
-
     final productProvider = Provider.of<ProductProvider>(context, listen: false);
     final categoryProvider = Provider.of<CategoryProvider>(context, listen: false);
     final unitProvider = Provider.of<UnitProvider>(context, listen: false);
     final supplierProvider = Provider.of<SupplierProvider>(context, listen: false);
-
     try {
       await Future.wait([
         productProvider.fetchProducts(),
@@ -72,135 +87,151 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
         unitProvider.loadUnits(),
         supplierProvider.fetchSuppliers(context: context),
       ]);
-
-      if (mounted) {
-        setState(() {
-          _isInitialized = true;
-        });
-      }
+      if (mounted) setState(() => _isInitialized = true);
     } catch (e) {
-      print(e);
       debugPrint('Error initializing data: $e');
     }
   }
 
+  Timer? _debounceTimer;
   void _onSearchChanged() {
-    final productProvider = Provider.of<ProductProvider>(context, listen: false);
-    // Debounce search to avoid too many requests
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 500), () {
-      productProvider.fetchProducts(search: _searchController.text);
+      Provider.of<ProductProvider>(context, listen: false)
+          .fetchProducts(search: _searchController.text);
     });
   }
 
-  Timer? _debounceTimer;
+  // ─── BUILD ────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFC),
-      body: Column(
-        children: [
-          _buildHeader(),
-          _buildStatsCards(),
-          _buildSearchAndFilterBar(),
-          if (_showFilters) _buildFiltersPanel(),
-          Expanded(
-            child: Consumer<ProductProvider>(
-              builder: (context, productProvider, child) {
-                if (productProvider.isLoading && productProvider.products.isEmpty) {
-                  return const LoadingIndicator();
-                }
-
-                if (productProvider.errorMessage != null) {
-                  return CustomErrorWidget(
-                    message: productProvider.errorMessage!,
-                    onRetry: () => productProvider.fetchProducts(refresh: true),
-                  );
-                }
-
-                if (productProvider.products.isEmpty) {
-                  return _buildEmptyState();
-                }
-
-                return _buildProductsList(productProvider);
-              },
-            ),
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        return Scaffold(
+          backgroundColor: _surface,
+          body: Column(
+            children: [
+              _buildHeader(languageProvider),
+              _buildStatsRow(languageProvider),
+              _buildToolbar(languageProvider),
+              if (_showFilters) _buildFiltersPanel(languageProvider),
+              Expanded(
+                child: Consumer<ProductProvider>(
+                  builder: (context, provider, _) {
+                    if (provider.isLoading && provider.products.isEmpty) {
+                      return const LoadingIndicator();
+                    }
+                    if (provider.errorMessage != null) {
+                      return CustomErrorWidget(
+                        message: provider.errorMessage!,
+                        onRetry: () => provider.fetchProducts(refresh: true),
+                      );
+                    }
+                    if (provider.products.isEmpty) return _buildEmptyState(languageProvider);
+                    return _buildTableView(provider, languageProvider);
+                  },
+                ),
+              ),
+              _buildPagination(languageProvider),
+            ],
           ),
-          _buildPagination(),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _navigateToAddProduct(),
-        label: const Text('Add Product',style: TextStyle(color: Colors.white),),
-        icon: const Icon(Icons.add,color: Colors.white),
-        backgroundColor: const Color(0xFF7C3AED),
-      ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: _navigateToAddProduct,
+            label: Text(
+              languageProvider.isEnglish ? 'Add Product' : 'پروڈکٹ شامل کریں',
+              style: const TextStyle(color: Colors.white),
+            ),
+            icon: const Icon(Icons.add, color: Colors.white),
+            backgroundColor: _purple,
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildHeader() {
+  // ─── HEADER ───────────────────────────────────────────────────────────────
+
+  Widget _buildHeader(LanguageProvider languageProvider) {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+      color: Colors.white,
       child: Row(
         children: [
-          const Text(
-            'Products',
+          Text(
+            languageProvider.isEnglish ? 'Products' : 'پروڈکٹس',
             style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF2D3142),
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
+              color: _textPrimary,
+              fontFamily: languageProvider.fontFamily,
             ),
           ),
           const Spacer(),
-          IconButton(
-            onPressed: () => _showBulkOperations(),
-            icon: const Icon(Icons.inventory_2_outlined),
-            tooltip: 'Bulk Operations',
+          _headerIconBtn(
+            Icons.inventory_2_outlined,
+            languageProvider.isEnglish ? 'Bulk Operations' : 'بلک آپریشنز',
+            _showBulkOperations,
           ),
-          IconButton(
-            onPressed: () => _showExportOptions(),
-            icon: const Icon(Icons.download_outlined),
-            tooltip: 'Export',
+          const SizedBox(width: 8),
+          _headerIconBtn(
+            Icons.download_outlined,
+            languageProvider.isEnglish ? 'Export' : 'ایکسپورٹ',
+            _showExportOptions,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStatsCards() {
+  Widget _headerIconBtn(IconData icon, String tooltip, VoidCallback onTap) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            border: Border.all(color: _border),
+            borderRadius: BorderRadius.circular(8),
+            color: Colors.white,
+          ),
+          child: Icon(icon, size: 18, color: _textSecondary),
+        ),
+      ),
+    );
+  }
+
+  // ─── STATS ────────────────────────────────────────────────────────────────
+
+  Widget _buildStatsRow(LanguageProvider languageProvider) {
     return Consumer<ProductProvider>(
-      builder: (context, provider, child) {
+      builder: (context, provider, _) {
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
           child: Row(
             children: [
-              Expanded(
-                child: _buildStatCard(
-                  'Total Products',
-                  provider.totalProducts.toString(),
-                  Icons.inventory_2,
-                  const Color(0xFF7C3AED),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildStatCard(
-                  'Low Stock',
-                  provider.lowStockCount.toString(),
-                  Icons.warning_amber_rounded,
-                  const Color(0xFFFF6B6B),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildStatCard(
-                  'Inventory Value',
-                  NumberFormat.currency(symbol: 'PKR ').format(provider.totalInventoryValue),
-                  Icons.attach_money,
-                  const Color(0xFF10B981),
-                ),
-              ),
+              Expanded(child: _statCard(
+                languageProvider.isEnglish ? 'Total Products' : 'کل پروڈکٹس',
+                provider.totalProducts.toString(),
+                Icons.inventory_2_rounded, _purple, _bgPurple, languageProvider,
+              )),
+              const SizedBox(width: 12),
+              Expanded(child: _statCard(
+                languageProvider.isEnglish ? 'Low Stock' : 'کم اسٹاک',
+                provider.lowStockCount.toString(),
+                Icons.warning_amber_rounded, _red, _bgRed, languageProvider,
+              )),
+              const SizedBox(width: 12),
+              Expanded(child: _statCard(
+                languageProvider.isEnglish ? 'Inventory Value' : 'انوینٹری ویلیو',
+                NumberFormat.compactCurrency(symbol: 'PKR ', decimalDigits: 2)
+                    .format(provider.totalInventoryValue),
+                Icons.account_balance_wallet_outlined, _teal, _bgTeal, languageProvider,
+              )),
             ],
           ),
         );
@@ -208,43 +239,46 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+  Widget _statCard(String label, String value, IconData icon, Color color, Color bg, LanguageProvider languageProvider) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFF0F0F5), width: 1.5),
+        color: bg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.15)),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            width: 38,
+            height: 38,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
+              color: color.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, color: color, size: 24),
+            child: Icon(icon, color: color, size: 20),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF6B7280),
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: _textSecondary,
+                    fontFamily: languageProvider.fontFamily,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   value,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF2D3142),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: _textPrimary,
+                    fontFamily: languageProvider.fontFamily,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -256,67 +290,62 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
     );
   }
 
-  Widget _buildSearchAndFilterBar() {
+  // ─── TOOLBAR ──────────────────────────────────────────────────────────────
+
+  Widget _buildToolbar(LanguageProvider languageProvider) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
       child: Row(
         children: [
           Expanded(
             child: Container(
-              height: 45,
+              height: 38,
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFF0F0F5), width: 1.5),
+                color: _surface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _border),
               ),
               child: TextField(
                 controller: _searchController,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: _textPrimary,
+                  fontFamily: languageProvider.fontFamily,
+                ),
                 decoration: InputDecoration(
-                  hintText: 'Search products by name, barcode...',
-                  hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
-                  prefixIcon: Icon(Icons.search, color: Colors.grey[400], size: 20),
+                  hintText: languageProvider.isEnglish
+                      ? 'Search by name or barcode…'
+                      : 'نام یا بارکوڈ سے تلاش کریں…',
+                  hintStyle: const TextStyle(color: _textTertiary, fontSize: 13),
+                  prefixIcon: const Icon(Icons.search, size: 18, color: _textTertiary),
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 ),
               ),
             ),
           ),
-          const SizedBox(width: 12),
-          Container(
-            height: 45,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _showFilters ? const Color(0xFF7C3AED) : const Color(0xFFF0F0F5),
-                width: 1.5,
-              ),
-            ),
-            child: IconButton(
-              onPressed: () {
-                setState(() {
-                  _showFilters = !_showFilters;
-                });
-              },
-              icon: Icon(
-                Icons.filter_list,
-                color: _showFilters ? const Color(0xFF7C3AED) : Colors.grey[600],
-              ),
-              tooltip: 'Toggle Filters',
-            ),
+          const SizedBox(width: 10),
+          _toolbarBtn(
+            icon: Icons.tune_rounded,
+            label: languageProvider.isEnglish ? 'Filters' : 'فلٹرز',
+            active: _showFilters,
+            onTap: () => setState(() => _showFilters = !_showFilters),
+            languageProvider: languageProvider,
           ),
-          const SizedBox(width: 12),
-          Container(
-            height: 45,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFF0F0F5), width: 1.5),
-            ),
-            child: IconButton(
-              onPressed: _refreshProducts,
-              icon: Icon(Icons.refresh, color: Colors.grey[600]),
-              tooltip: 'Refresh',
+          const SizedBox(width: 8),
+          InkWell(
+            onTap: _refreshProducts,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                border: Border.all(color: _border),
+                borderRadius: BorderRadius.circular(8),
+                color: Colors.white,
+              ),
+              child: const Icon(Icons.refresh, size: 18, color: _textSecondary),
             ),
           ),
         ],
@@ -324,169 +353,175 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
     );
   }
 
-  Widget _buildFiltersPanel() {
+  Widget _toolbarBtn({
+    required IconData icon,
+    required String label,
+    required bool active,
+    required VoidCallback onTap,
+    required LanguageProvider languageProvider,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: active ? _bgPurple : Colors.white,
+          border: Border.all(color: active ? _purple : _border),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: active ? _purple : _textSecondary),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                color: active ? _purple : _textSecondary,
+                fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+                fontFamily: languageProvider.fontFamily,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── FILTERS ──────────────────────────────────────────────────────────────
+
+  Widget _buildFiltersPanel(LanguageProvider languageProvider) {
     return Consumer3<CategoryProvider, SupplierProvider, UnitProvider>(
-      builder: (context, categoryProvider, supplierProvider, unitProvider, child) {
+      builder: (context, catProvider, supProvider, unitProvider, _) {
         return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFF0F0F5), width: 1.5),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Filters',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF2D3142),
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 14),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: _surface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _border),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _filterDropdown<String>(
+                        languageProvider.isEnglish ? 'Category' : 'کیٹگری',
+                        _selectedCategory,
+                        [
+                          DropdownMenuItem(
+                              value: null,
+                              child: Text(languageProvider.isEnglish ? 'All categories' : 'تمام کیٹگریز')
+                          ),
+                          ...catProvider.categories.map((c) =>
+                              DropdownMenuItem(value: c.id, child: Text(c.name))),
+                        ],
+                            (v) { setState(() => _selectedCategory = v); _applyFilters(); },
+                        languageProvider,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _filterDropdown<String>(
+                        languageProvider.isEnglish ? 'Supplier' : 'سپلائر',
+                        _selectedSupplier,
+                        [
+                          DropdownMenuItem(
+                              value: null,
+                              child: Text(languageProvider.isEnglish ? 'All suppliers' : 'تمام سپلائرز')
+                          ),
+                          ...supProvider.suppliers.map((s) =>
+                              DropdownMenuItem(value: s.id.toString(), child: Text(s.name))),
+                        ],
+                            (v) { setState(() => _selectedSupplier = v); _applyFilters(); },
+                        languageProvider,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _filterDropdown<String>(
+                        languageProvider.isEnglish ? 'Unit' : 'یونٹ',
+                        _selectedUnit,
+                        [
+                          DropdownMenuItem(
+                              value: null,
+                              child: Text(languageProvider.isEnglish ? 'All units' : 'تمام یونٹس')
+                          ),
+                          ...unitProvider.units.map((u) =>
+                              DropdownMenuItem(value: u.id, child: Text('${u.name} (${u.symbol})'))),
+                        ],
+                            (v) { setState(() => _selectedUnit = v); _applyFilters(); },
+                        languageProvider,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildFilterDropdown<String>(
-                      label: 'Category',
-                      value: _selectedCategory,
-                      items: [
-                        const DropdownMenuItem<String>(
-                          value: null,
-                          child: Text('All Categories'),
-                        ),
-                        ...categoryProvider.categories.map((c) => DropdownMenuItem<String>(
-                          value: c.id,
-                          child: Text(c.name),
-                        )),
-                      ],
-                      onChanged: (value) {
-                        setState(() => _selectedCategory = value);
-                        _applyFilters();
-                      },
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    _filterChip(
+                      Icons.warning_amber_rounded,
+                      languageProvider.isEnglish ? 'Low Stock' : 'کم اسٹاک',
+                      _lowStockOnly ?? false,
+                          (v) { setState(() => _lowStockOnly = v); _applyFilters(); },
+                      languageProvider,
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildFilterDropdown<String>(
-                      label: 'Supplier',
-                      value: _selectedSupplier,
-                      items: [
-                        const DropdownMenuItem<String>(
-                          value: null,
-                          child: Text('All Suppliers'),
-                        ),
-                        ...supplierProvider.suppliers.map((s) => DropdownMenuItem<String>(
-                          value: s.id.toString(),
-                          child: Text(s.name),
-                        )),
-                      ],
-                      onChanged: (value) {
-                        setState(() => _selectedSupplier = value);
-                        _applyFilters();
-                      },
+                    const SizedBox(width: 8),
+                    _filterChip(
+                      Icons.check_circle_outline,
+                      languageProvider.isEnglish ? 'Active Only' : 'صرف فعال',
+                      _activeOnly ?? false,
+                          (v) { setState(() => _activeOnly = v); _applyFilters(); },
+                      languageProvider,
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildFilterDropdown<String>(
-                      label: 'Unit',
-                      value: _selectedUnit,
-                      items: [
-                        const DropdownMenuItem<String>(
-                          value: null,
-                          child: Text('All Units'),
-                        ),
-                        ...unitProvider.units.map((u) => DropdownMenuItem<String>(
-                          value: u.id,
-                          child: Text('${u.name} (${u.symbol})'),
-                        )),
-                      ],
-                      onChanged: (value) {
-                        setState(() => _selectedUnit = value);
-                        _applyFilters();
-                      },
+                    const Spacer(),
+                    TextButton(
+                      onPressed: _clearFilters,
+                      child: Text(
+                        languageProvider.isEnglish ? 'Clear all' : 'سب صاف کریں',
+                        style: const TextStyle(fontSize: 13),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: FilterChip(
-                            selected: _lowStockOnly ?? false,
-                            onSelected: (value) {
-                              setState(() => _lowStockOnly = value);
-                              _applyFilters();
-                            },
-                            label: const Text('Low Stock'),
-                            backgroundColor: Colors.white,
-                            selectedColor: const Color(0xFF7C3AED).withOpacity(0.1),
-                            checkmarkColor: const Color(0xFF7C3AED),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: FilterChip(
-                            selected: _activeOnly ?? false,
-                            onSelected: (value) {
-                              setState(() => _activeOnly = value);
-                              _applyFilters();
-                            },
-                            label: const Text('Active Only'),
-                            backgroundColor: Colors.white,
-                            selectedColor: const Color(0xFF7C3AED).withOpacity(0.1),
-                            checkmarkColor: const Color(0xFF7C3AED),
-                          ),
-                        ),
-                      ],
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _applyFilters,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _purple,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        textStyle: const TextStyle(fontSize: 13),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: Text(languageProvider.isEnglish ? 'Apply' : 'لاگو کریں'),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: _clearFilters,
-                    child: const Text('Clear All'),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton(
-                    onPressed: _applyFilters,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF7C3AED),
-                      foregroundColor: Colors.white,
-                    ),
-                    child: const Text('Apply Filters'),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         );
       },
     );
   }
 
-  Widget _buildFilterDropdown<T>({
-    required String label,
-    required T? value,
-    required List<DropdownMenuItem<T>> items,
-    required void Function(T?) onChanged,
-  }) {
+  Widget _filterDropdown<T>(
+      String label,
+      T? value,
+      List<DropdownMenuItem<T>> items,
+      void Function(T?) onChanged,
+      LanguageProvider languageProvider,
+      ) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      height: 38,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFF0F0F5), width: 1.5),
+        color: Colors.white,
+        border: Border.all(color: _border),
         borderRadius: BorderRadius.circular(8),
       ),
       child: DropdownButtonHideUnderline(
@@ -494,328 +529,180 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
           value: value,
           items: items,
           onChanged: onChanged,
-          hint: Text(label),
-          isExpanded: true,
-          icon: const Icon(Icons.keyboard_arrow_down),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProductsList(ProductProvider provider) {
-    return RefreshIndicator(
-      onRefresh: () => provider.fetchProducts(refresh: true),
-      child: ListView.builder(
-        controller: _scrollController,
-        padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-        itemCount: provider.products.length,
-        itemBuilder: (context, index) {
-          final product = provider.products[index];
-          return _buildProductCard(product);
-        },
-      ),
-    );
-  }
-
-  Widget _buildProductCard(ProductModel product) {
-    final isLowStock = product.physicalQty <= product.minStock;
-    final formatter = NumberFormat.currency(symbol: 'Pkr ');
-    final isBomProduct = product.isBom;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isBomProduct
-              ? const Color(0xFF7C3AED).withOpacity(0.5)
-              : (isLowStock ? const Color(0xFFFF6B6B).withOpacity(0.3) : const Color(0xFFF0F0F5)),
-          width: isBomProduct ? 2 : 1.5,
-        ),
-        boxShadow: isBomProduct ? [
-          BoxShadow(
-            color: const Color(0xFF7C3AED).withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+          hint: Text(
+              label,
+              style: TextStyle(
+                  fontSize: 13,
+                  color: _textTertiary,
+                  fontFamily: languageProvider.fontFamily
+              )
           ),
-        ] : null,
+          isExpanded: true,
+          style: TextStyle(
+              fontSize: 13,
+              color: _textPrimary,
+              fontFamily: languageProvider.fontFamily
+          ),
+          icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+        ),
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => _navigateToProductDetail(product.id),
-          borderRadius: BorderRadius.circular(12),
-          child: Column(
-            children: [
-              // BOM Banner
-              if (isBomProduct)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF7C3AED), Color(0xFF9F67FF)],
-                    ),
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(12),
-                      topRight: Radius.circular(12),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.inventory, color: Colors.white, size: 16),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'BILL OF MATERIALS (BOM)',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Spacer(),
-                      if (product.bomComponents != null)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '${product.bomComponents!.length} components',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        // Image section with Consumer for ProductImageProvider
-                        Consumer<ProductImageProvider>(
-                          builder: (context, imageProvider, child) {
-                            final primaryImage = imageProvider.getPrimaryImage(product.id);
+    );
+  }
 
-                            return Container(
-                              width: 50,
-                              height: 50,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF7C3AED).withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: primaryImage != null
-                                  ? ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.network(
-                                  primaryImage.imageUrl,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return const Icon(
-                                      Icons.inventory_2,
-                                      color: Color(0xFF7C3AED),
-                                      size: 30,
-                                    );
-                                  },
-                                ),
-                              )
-                                  : Icon(
-                                isBomProduct ? Icons.inventory : Icons.inventory_2,
-                                color: const Color(0xFF7C3AED),
-                                size: 30,
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      product.itemName,
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF2D3142),
-                                      ),
-                                    ),
-                                  ),
-                                  if (!product.isActive)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: const Text(
-                                        'Inactive',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.grey,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              // Barcode + Category row
-                              Row(
-                                children: [
-                                  if (product.barcode != null) ...[
-                                    Icon(Icons.qr_code, size: 12, color: Colors.grey[400]),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      product.barcode!,
-                                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                                    ),
-                                    const SizedBox(width: 12),
-                                  ],
-                                  Icon(Icons.category, size: 12, color: Colors.grey[400]),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: Text(
-                                      product.category?.name ?? 'N/A',
-                                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              // Lengths badge (only when hasMultipleLengths)
-                              if (product.hasMultipleLengths) ...[
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 7, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF7C3AED).withOpacity(0.08),
-                                        borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(
-                                            color: const Color(0xFF7C3AED).withOpacity(0.2)),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const Icon(Icons.straighten,
-                                              size: 10, color: Color(0xFF7C3AED)),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            '${product.lengthCombinations?.length ?? 0} lengths',
-                                            style: const TextStyle(
-                                                fontSize: 10,
-                                                color: Color(0xFF7C3AED),
-                                                fontWeight: FontWeight.w600),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                              // BOM badge
-                              if (isBomProduct && product.bomComponents != null) ...[
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 7, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF10B981).withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(
-                                            color: const Color(0xFF10B981).withOpacity(0.3)),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const Icon(Icons.factory,
-                                              size: 10, color: Color(0xFF10B981)),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            'Manufactured: ${_formatBomTotalCost(product.bomTotalCost)}',
-                                            style: const TextStyle(
-                                                fontSize: 10,
-                                                color: Color(0xFF10B981),
-                                                fontWeight: FontWeight.w600),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildInfoChip(
-                            label: 'Stock',
-                            value: '${product.physicalQty} ${product.unit?.symbol ?? ''}',
-                            color: isLowStock ? const Color(0xFFFF6B6B) : const Color(0xFF10B981),
-                          ),
-                        ),
-                        Expanded(
-                          child: _buildInfoChip(
-                            label: isBomProduct ? 'BOM Cost' : 'Cost',
-                            value: formatter.format(isBomProduct
-                                ? (product.bomTotalCost ?? product.costPrice)
-                                : product.costPrice),
-                            color: const Color(0xFF7C3AED),
-                          ),
-                        ),
-                        Expanded(
-                          child: _buildInfoChip(
-                            label: 'Sale',
-                            value: formatter.format(product.salePrice),
-                            color: const Color(0xFFF59E0B),
-                          ),
-                        ),
-                      ],
-                    ),
-                    // Profit margin indicator for BOM products
-                    if (isBomProduct && product.bomTotalCost != null) ...[
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF3F4F6),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.trending_up, size: 12, color: Color(0xFF6B7280)),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Margin: ${((product.salePrice - product.bomTotalCost!) / product.bomTotalCost! * 100).toStringAsFixed(1)}%',
-                              style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280)),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
+  Widget _filterChip(IconData icon, String label, bool selected, void Function(bool) onSelected, LanguageProvider languageProvider) {
+    return GestureDetector(
+      onTap: () => onSelected(!selected),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? _bgPurple : Colors.white,
+          border: Border.all(color: selected ? _purple.withOpacity(0.5) : _border),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (selected)
+              Icon(Icons.check, size: 13, color: _purple)
+            else
+              Icon(icon, size: 13, color: _textSecondary),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: selected ? _purple : _textSecondary,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                fontFamily: languageProvider.fontFamily,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── FULL WIDTH TABLE ────────────────────────────────────────────────────
+
+  Widget _buildTableView(ProductProvider provider, LanguageProvider languageProvider) {
+    return Column(
+      children: [
+        // Row count bar
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+          child: Row(
+            children: [
+              Text(
+                languageProvider.isEnglish
+                    ? 'Showing ${provider.products.length} of ${provider.totalProducts} products'
+                    : '${provider.products.length} میں سے ${provider.totalProducts} پروڈکٹس دکھا رہے ہیں',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: _textSecondary,
+                    fontFamily: languageProvider.fontFamily
                 ),
               ),
+            ],
+          ),
+        ),
+        const Divider(height: 1, color: _border),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () => provider.fetchProducts(refresh: true),
+            child: Scrollbar(
+              controller: _horizontalScrollController,
+              thumbVisibility: true,
+              child: SingleChildScrollView(
+                controller: _horizontalScrollController,
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: MediaQuery.of(context).size.width - 48,
+                  child: Column(
+                    children: [
+                      _buildTableHeader(languageProvider),
+                      Expanded(
+                        child: ListView.builder(
+                          controller: _scrollController,
+                          itemCount: provider.products.length,
+                          itemBuilder: (context, index) {
+                            final product = provider.products[index];
+                            return _buildTableRow(product, index, languageProvider);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTableHeader(LanguageProvider languageProvider) {
+    return Container(
+      color: _surface,
+      child: Row(
+        children: [
+          _thCell(languageProvider.isEnglish ? 'Product' : 'پروڈکٹ', flex: 28, sortIndex: 0, languageProvider: languageProvider),
+          _thCell(languageProvider.isEnglish ? 'Category' : 'کیٹگری', flex: 14, sortIndex: 1, languageProvider: languageProvider),
+          _thCell(languageProvider.isEnglish ? 'Stock' : 'اسٹاک', flex: 10, sortIndex: 2, languageProvider: languageProvider),
+          _thCell(languageProvider.isEnglish ? 'Cost' : 'لاگت', flex: 12, sortIndex: 3, languageProvider: languageProvider),
+          _thCell(languageProvider.isEnglish ? 'Sale Price' : 'فروخت قیمت', flex: 12, sortIndex: 4, languageProvider: languageProvider),
+          _thCell(languageProvider.isEnglish ? 'Margin' : 'مارجن', flex: 9, sortIndex: 5, languageProvider: languageProvider),
+          _thCell(languageProvider.isEnglish ? 'Status' : 'صورتحال', flex: 8, sortIndex: -1, languageProvider: languageProvider),
+          _thCell(languageProvider.isEnglish ? 'Actions' : 'ایکشنز', flex: 7, sortIndex: -1, languageProvider: languageProvider),
+        ],
+      ),
+    );
+  }
+
+  Widget _thCell(String label, {required int flex, required int sortIndex, required LanguageProvider languageProvider}) {
+    final isSorted = _sortColumnIndex == sortIndex && sortIndex >= 0;
+    return Expanded(
+      flex: flex,
+      child: InkWell(
+        onTap: sortIndex >= 0
+            ? () => setState(() {
+          if (_sortColumnIndex == sortIndex) {
+            _sortAscending = !_sortAscending;
+          } else {
+            _sortColumnIndex = sortIndex;
+            _sortAscending = true;
+          }
+        })
+            : null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: _border)),
+          ),
+          child: Row(
+            children: [
+              Text(
+                label.toUpperCase(),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: isSorted ? _purple : _textTertiary,
+                  letterSpacing: 0.5,
+                  fontFamily: languageProvider.fontFamily,
+                ),
+              ),
+              if (sortIndex >= 0) ...[
+                const SizedBox(width: 3),
+                Icon(
+                  isSorted
+                      ? (_sortAscending ? Icons.arrow_upward : Icons.arrow_downward)
+                      : Icons.unfold_more,
+                  size: 12,
+                  color: isSorted ? _purple : _textTertiary,
+                ),
+              ],
             ],
           ),
         ),
@@ -823,76 +710,389 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
     );
   }
 
-  String _formatBomTotalCost(double? cost) {
-    if (cost == null) return 'N/A';
-    final formatter = NumberFormat.currency(symbol: 'PKR ');
-    return formatter.format(cost);
+  Widget _buildTableRow(ProductModel product, int index, LanguageProvider languageProvider) {
+    final isLowStock = product.physicalQty <= product.minStock;
+    final isBom = product.isBom;
+    final formatter = NumberFormat.currency(symbol: 'PKR ', decimalDigits: 0);
+    final costForMargin = isBom ? (product.bomTotalCost ?? product.costPrice) : product.costPrice;
+    final margin = costForMargin > 0
+        ? ((product.salePrice - costForMargin) / product.salePrice * 100)
+        : 0.0;
+
+    return InkWell(
+      onTap: () => _navigateToProductDetail(product.id),
+      child: Container(
+        decoration: BoxDecoration(
+          color: index.isOdd ? Colors.white : _surface.withOpacity(0.5),
+          border: const Border(bottom: BorderSide(color: _border, width: 0.5)),
+        ),
+        child: Row(
+          children: [
+            // Product name + sku
+            Expanded(
+              flex: 28,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  children: [
+                    // Image / icon
+                    Consumer<ProductImageProvider>(
+                      builder: (context, imgProvider, _) {
+                        final img = imgProvider.getPrimaryImage(product.id);
+                        return Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: _bgPurple,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: img != null
+                              ? ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(
+                              img.imageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                              const Icon(Icons.inventory_2, color: _purple, size: 18),
+                            ),
+                          )
+                              : Icon(
+                            isBom ? Icons.precision_manufacturing_outlined : Icons.inventory_2_outlined,
+                            color: _purple,
+                            size: 18,
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  product.itemName,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: _textPrimary,
+                                    fontFamily: languageProvider.fontFamily,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (isBom) ...[
+                                const SizedBox(width: 6),
+                                _inlineBadge(
+                                    languageProvider.isEnglish ? 'BOM' : 'بی او ایم',
+                                    _purple,
+                                    _bgPurple,
+                                    languageProvider
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${product.barcode ?? ''} ${product.barcode != null ? '·' : ''} ${product.category?.name ?? (languageProvider.isEnglish ? 'Uncategorized' : 'غیر درجہ بند')}',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: _textTertiary,
+                                fontFamily: languageProvider.fontFamily
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Category
+            Expanded(
+              flex: 14,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  product.category?.name ?? '—',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: _textSecondary,
+                      fontFamily: languageProvider.fontFamily
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+            // Stock
+            Expanded(
+              flex: 10,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    Text(
+                      '${product.physicalQty} ${product.unit?.symbol ?? ''}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isLowStock ? _red : _teal,
+                        fontFamily: languageProvider.fontFamily,
+                      ),
+                    ),
+                    if (isLowStock) ...[
+                      const SizedBox(width: 4),
+                      const Icon(Icons.warning_amber_rounded, size: 14, color: _red),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            // Cost
+            Expanded(
+              flex: 12,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  formatter.format(isBom ? (product.bomTotalCost ?? product.costPrice) : product.costPrice),
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: _textPrimary,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                      fontFamily: languageProvider.fontFamily
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+            // Sale Price
+            Expanded(
+              flex: 12,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  formatter.format(product.salePrice),
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: _textPrimary,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                      fontFamily: languageProvider.fontFamily
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+            // Margin
+            Expanded(
+              flex: 9,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    Icon(
+                      margin >= 20 ? Icons.trending_up : Icons.trending_down,
+                      size: 14,
+                      color: margin >= 20 ? _teal : _amber,
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      '${margin.toStringAsFixed(1)}%',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: margin >= 20 ? _teal : _amber,
+                        fontFamily: languageProvider.fontFamily,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Status
+            Expanded(
+              flex: 8,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: product.isActive
+                    ? _inlineBadge(
+                    languageProvider.isEnglish ? 'Active' : 'فعال',
+                    _teal,
+                    _bgTeal,
+                    languageProvider
+                )
+                    : _inlineBadge(
+                    languageProvider.isEnglish ? 'Inactive' : 'غیر فعال',
+                    _textSecondary,
+                    const Color(0xFFF3F4F6),
+                    languageProvider
+                ),
+              ),
+            ),
+            // Actions
+            Expanded(
+              flex: 7,
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    color: _textSecondary,
+                    onPressed: () => _navigateToEditProduct(product),
+                    tooltip: languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    color: _red.withOpacity(0.7),
+                    onPressed: () => _showDeleteConfirmation(product, languageProvider),
+                    tooltip: languageProvider.isEnglish ? 'Delete' : 'حذف کریں',
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  Widget _buildInfoChip({required String label, required String value, required Color color}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(6),
+  // ─── NEW ACTION METHODS ───────────────────────────────────────────────────
+
+  void _navigateToEditProduct(ProductModel product) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddEditProductScreen(productId: product.id),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '$label: ',
-            style: TextStyle(
-              fontSize: 11,
-              color: color.withOpacity(0.7),
-              fontWeight: FontWeight.w500,
-            ),
+    ).then((refresh) {
+      if (refresh == true) _refreshProducts();
+    });
+  }
+
+  void _showDeleteConfirmation(ProductModel product, LanguageProvider languageProvider) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(languageProvider.isEnglish ? 'Delete Product' : 'پروڈکٹ حذف کریں'),
+        content: Text(
+          languageProvider.isEnglish
+              ? 'Are you sure you want to delete "${product.itemName}"?'
+              : 'کیا آپ واقعی "${product.itemName}" کو حذف کرنا چاہتے ہیں؟',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(languageProvider.isEnglish ? 'Cancel' : 'منسوخ کریں'),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 11,
-              color: color,
-              fontWeight: FontWeight.bold,
-            ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _deleteProduct(product.id, languageProvider);
+            },
+            style: TextButton.styleFrom(foregroundColor: _red),
+            child: Text(languageProvider.isEnglish ? 'Delete' : 'حذف کریں'),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildEmptyState() {
+  Future<void> _deleteProduct(int id, LanguageProvider languageProvider) async {
+    final productProvider = Provider.of<ProductProvider>(context, listen: false);
+    try {
+      await productProvider.deleteProduct(id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(
+                  languageProvider.isEnglish
+                      ? 'Product deleted successfully'
+                      : 'پروڈکٹ کامیابی سے حذف ہو گئی'
+              )
+          ),
+        );
+        _refreshProducts();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(
+                  languageProvider.isEnglish
+                      ? 'Error deleting product: $e'
+                      : 'پروڈکٹ حذف کرنے میں خرابی: $e'
+              ),
+              backgroundColor: _red
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _inlineBadge(String label, Color textColor, Color bg, LanguageProvider languageProvider) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: textColor,
+            fontFamily: languageProvider.fontFamily
+        ),
+      ),
+    );
+  }
+
+  // ─── EMPTY ────────────────────────────────────────────────────────────────
+
+  Widget _buildEmptyState(LanguageProvider languageProvider) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.inventory_2_outlined,
-            size: 80,
-            color: Colors.grey[300],
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(color: _bgPurple, borderRadius: BorderRadius.circular(18)),
+            child: const Icon(Icons.inventory_2_outlined, size: 36, color: _purple),
           ),
           const SizedBox(height: 16),
           Text(
-            'No Products Found',
+            languageProvider.isEnglish ? 'No Products Found' : 'کوئی پروڈکٹ نہیں ملی',
             style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey[600],
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                color: _textPrimary,
+                fontFamily: languageProvider.fontFamily
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
-            'Add your first product to get started',
-            style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+            languageProvider.isEnglish
+                ? 'Add your first product to get started'
+                : 'شروع کرنے کے لیے اپنی پہلی پروڈکٹ شامل کریں',
+            style: TextStyle(
+                fontSize: 13,
+                color: _textSecondary,
+                fontFamily: languageProvider.fontFamily
+            ),
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
             onPressed: _navigateToAddProduct,
             icon: const Icon(Icons.add),
-            label: const Text('Add Product'),
+            label: Text(languageProvider.isEnglish ? 'Add Product' : 'پروڈکٹ شامل کریں'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF7C3AED),
+              backgroundColor: _purple,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
           ),
         ],
@@ -900,39 +1100,78 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
     );
   }
 
-  Widget _buildPagination() {
-    return Consumer<ProductProvider>(
-      builder: (context, provider, child) {
-        if (provider.totalPages <= 1) return const SizedBox.shrink();
+  // ─── PAGINATION ───────────────────────────────────────────────────────────
 
+  Widget _buildPagination(LanguageProvider languageProvider) {
+    return Consumer<ProductProvider>(
+      builder: (context, provider, _) {
+        if (provider.totalPages <= 1) return const SizedBox.shrink();
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
           decoration: const BoxDecoration(
             color: Colors.white,
-            border: Border(top: BorderSide(color: Color(0xFFF0F0F5), width: 1)),
+            border: Border(top: BorderSide(color: _border)),
           ),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              IconButton(
-                onPressed: provider.currentPage > 1
-                    ? () => provider.setPage(provider.currentPage - 1)
-                    : null,
-                icon: const Icon(Icons.chevron_left),
-                color: provider.currentPage > 1 ? const Color(0xFF7C3AED) : Colors.grey,
-              ),
-              const SizedBox(width: 8),
               Text(
-                'Page ${provider.currentPage} of ${provider.totalPages}',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                languageProvider.isEnglish
+                    ? 'Page ${provider.currentPage} of ${provider.totalPages}  ·  ${provider.totalProducts} products'
+                    : 'صفحہ ${provider.currentPage} of ${provider.totalPages}  ·  ${provider.totalProducts} پروڈکٹس',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: _textSecondary,
+                    fontFamily: languageProvider.fontFamily
+                ),
               ),
-              const SizedBox(width: 8),
-              IconButton(
-                onPressed: provider.currentPage < provider.totalPages
-                    ? () => provider.setPage(provider.currentPage + 1)
-                    : null,
-                icon: const Icon(Icons.chevron_right),
-                color: provider.currentPage < provider.totalPages ? const Color(0xFF7C3AED) : Colors.grey,
+              const Spacer(),
+              Row(
+                children: [
+                  _pageBtn(
+                    icon: Icons.chevron_left,
+                    enabled: provider.currentPage > 1,
+                    onTap: () => provider.setPage(provider.currentPage - 1),
+                  ),
+                  const SizedBox(width: 4),
+                  ...List.generate(
+                    provider.totalPages.clamp(0, 5),
+                        (i) {
+                      final page = i + 1;
+                      final isCurrent = page == provider.currentPage;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: InkWell(
+                          onTap: isCurrent ? null : () => provider.setPage(page),
+                          borderRadius: BorderRadius.circular(6),
+                          child: Container(
+                            width: 30,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: isCurrent ? _purple : Colors.white,
+                              border: Border.all(color: isCurrent ? _purple : _border),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              '$page',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: isCurrent ? Colors.white : _textSecondary,
+                                fontFamily: languageProvider.fontFamily,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  _pageBtn(
+                    icon: Icons.chevron_right,
+                    enabled: provider.currentPage < provider.totalPages,
+                    onTap: () => provider.setPage(provider.currentPage + 1),
+                  ),
+                ],
               ),
             ],
           ),
@@ -941,19 +1180,32 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
     );
   }
 
+  Widget _pageBtn({required IconData icon, required bool enabled, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        width: 30,
+        height: 30,
+        margin: const EdgeInsets.only(right: 4),
+        decoration: BoxDecoration(
+          border: Border.all(color: _border),
+          borderRadius: BorderRadius.circular(6),
+          color: Colors.white,
+        ),
+        child: Icon(icon, size: 16, color: enabled ? _textSecondary : _textTertiary),
+      ),
+    );
+  }
+
+  // ─── ACTIONS ──────────────────────────────────────────────────────────────
+
   void _applyFilters() {
-    final provider = Provider.of<ProductProvider>(context, listen: false);
-
-    // Safe parsing helper
-    int? safeParseInt(String? value) {
-      if (value == null || value.isEmpty) return null;
-      return int.tryParse(value);
-    }
-
-    provider.fetchProducts(
-      categoryId: safeParseInt(_selectedCategory),
-      supplierId: safeParseInt(_selectedSupplier),
-      unitId: safeParseInt(_selectedUnit),
+    int? safeInt(String? v) => (v == null || v.isEmpty) ? null : int.tryParse(v);
+    Provider.of<ProductProvider>(context, listen: false).fetchProducts(
+      categoryId: safeInt(_selectedCategory),
+      supplierId: safeInt(_selectedSupplier),
+      unitId: safeInt(_selectedUnit),
       lowStock: _lowStockOnly,
       active: _activeOnly,
       refresh: true,
@@ -968,110 +1220,128 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
       _lowStockOnly = null;
       _activeOnly = null;
     });
-
-    final provider = Provider.of<ProductProvider>(context, listen: false);
-    provider.fetchProducts(refresh: true);
+    Provider.of<ProductProvider>(context, listen: false).fetchProducts(refresh: true);
   }
 
-  void _refreshProducts() {
-    final provider = Provider.of<ProductProvider>(context, listen: false);
-    provider.fetchProducts(refresh: true);
-  }
+  void _refreshProducts() =>
+      Provider.of<ProductProvider>(context, listen: false).fetchProducts(refresh: true);
 
   void _navigateToProductDetail(int id) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ProductDetailScreen(productId: id),
-      ),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (_) => ProductDetailScreen(productId: id)));
   }
 
   void _navigateToAddProduct() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const AddEditProductScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const AddEditProductScreen()),
     ).then((refresh) {
-      if (refresh == true) {
-        _refreshProducts();
-      }
+      if (refresh == true) _refreshProducts();
     });
   }
+
+  // ─── BULK / EXPORT ────────────────────────────────────────────────────────
 
   void _showBulkOperations() {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => _buildBulkOperationsSheet(),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => _buildBulkSheet(),
     );
   }
 
-  Widget _buildBulkOperationsSheet() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Bulk Operations',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF2D3142),
-            ),
+  Widget _buildBulkSheet() {
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        return Container(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(color: _border, borderRadius: BorderRadius.circular(2))
+              ),
+              Text(
+                languageProvider.isEnglish ? 'Bulk Operations' : 'بلک آپریشنز',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: _textPrimary,
+                    fontFamily: languageProvider.fontFamily
+                ),
+              ),
+              const SizedBox(height: 16),
+              _bulkTile(
+                Icons.download,
+                languageProvider.isEnglish ? 'Export Products' : 'پروڈکٹس ایکسپورٹ کریں',
+                languageProvider.isEnglish
+                    ? 'Download as CSV, Excel or PDF'
+                    : 'CSV، Excel یا PDF کے طور پر ڈاؤن لوڈ کریں',
+                _exportProducts,
+                languageProvider,
+              ),
+              _bulkTile(
+                Icons.upload,
+                languageProvider.isEnglish ? 'Import Products' : 'پروڈکٹس امپورٹ کریں',
+                languageProvider.isEnglish
+                    ? 'Upload CSV to add multiple products'
+                    : 'متعدد پروڈکٹس شامل کرنے کے لیے CSV اپ لوڈ کریں',
+                _importProducts,
+                languageProvider,
+              ),
+              _bulkTile(
+                Icons.price_change,
+                languageProvider.isEnglish ? 'Bulk Price Update' : 'بلک قیمت اپ ڈیٹ',
+                languageProvider.isEnglish
+                    ? 'Update prices for multiple products'
+                    : 'متعدد پروڈکٹس کی قیمتیں اپ ڈیٹ کریں',
+                _bulkPriceUpdate,
+                languageProvider,
+              ),
+              _bulkTile(
+                Icons.inventory,
+                languageProvider.isEnglish ? 'Bulk Stock Update' : 'بلک اسٹاک اپ ڈیٹ',
+                languageProvider.isEnglish
+                    ? 'Update quantities for multiple products'
+                    : 'متعدد پروڈکٹس کی مقدار اپ ڈیٹ کریں',
+                _bulkStockUpdate,
+                languageProvider,
+              ),
+            ],
           ),
-          const SizedBox(height: 20),
-          _buildBulkOperationTile(
-            icon: Icons.download,
-            title: 'Export Products',
-            subtitle: 'Download products list as CSV or Excel',
-            onTap: () => _exportProducts(),
-          ),
-          _buildBulkOperationTile(
-            icon: Icons.upload,
-            title: 'Import Products',
-            subtitle: 'Upload CSV file to add multiple products',
-            onTap: () => _importProducts(),
-          ),
-          _buildBulkOperationTile(
-            icon: Icons.price_change,
-            title: 'Bulk Price Update',
-            subtitle: 'Update prices for multiple products',
-            onTap: () => _bulkPriceUpdate(),
-          ),
-          _buildBulkOperationTile(
-            icon: Icons.inventory,
-            title: 'Bulk Stock Update',
-            subtitle: 'Update quantities for multiple products',
-            onTap: () => _bulkStockUpdate(),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildBulkOperationTile({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
+  Widget _bulkTile(IconData icon, String title, String subtitle, VoidCallback onTap, LanguageProvider languageProvider) {
     return ListTile(
+      contentPadding: EdgeInsets.zero,
       leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: const Color(0xFF7C3AED).withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(icon, color: const Color(0xFF7C3AED)),
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(color: _bgPurple, borderRadius: BorderRadius.circular(8)),
+        child: Icon(icon, color: _purple, size: 20),
       ),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+      title: Text(
+          title,
+          style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              fontFamily: languageProvider.fontFamily
+          )
+      ),
+      subtitle: Text(
+          subtitle,
+          style: TextStyle(
+              fontSize: 12,
+              color: _textSecondary,
+              fontFamily: languageProvider.fontFamily
+          )
+      ),
       onTap: () {
         Navigator.pop(context);
         onTap();
@@ -1079,21 +1349,115 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
     );
   }
 
-  Future<void> _exportProductsAsPdf() async {
+  void _showExportOptions() {
+    showDialog(
+      context: context,
+      builder: (ctx) => Consumer<LanguageProvider>(
+        builder: (context, languageProvider, _) {
+          return AlertDialog(
+            title: Text(
+              languageProvider.isEnglish ? 'Export Products' : 'پروڈکٹس ایکسپورٹ کریں',
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _exportTile(
+                  Icons.picture_as_pdf,
+                  languageProvider.isEnglish ? 'PDF Document' : 'PDF دستاویز',
+                  languageProvider.isEnglish
+                      ? 'Export with filters and formatting'
+                      : 'فلٹرز اور فارمیٹنگ کے ساتھ ایکسپورٹ کریں',
+                  _purple,
+                      () {
+                    Navigator.pop(ctx);
+                    _exportProductsAsPdf(languageProvider);
+                  },
+                  languageProvider,
+                ),
+                _exportTile(
+                  Icons.table_chart,
+                  languageProvider.isEnglish ? 'CSV File' : 'CSV فائل',
+                  languageProvider.isEnglish
+                      ? 'Export as spreadsheet data'
+                      : 'اسپریڈ شیٹ ڈیٹا کے طور پر ایکسپورٹ کریں',
+                  _teal,
+                      () {
+                    Navigator.pop(ctx);
+                    _exportAs('csv', languageProvider);
+                  },
+                  languageProvider,
+                ),
+                _exportTile(
+                  Icons.grid_on,
+                  languageProvider.isEnglish ? 'Excel File' : 'Excel فائل',
+                  languageProvider.isEnglish
+                      ? 'Export as Excel spreadsheet'
+                      : 'Excel اسپریڈ شیٹ کے طور پر ایکسپورٹ کریں',
+                  Colors.blue,
+                      () {
+                    Navigator.pop(ctx);
+                    _exportAs('excel', languageProvider);
+                  },
+                  languageProvider,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(languageProvider.isEnglish ? 'Cancel' : 'منسوخ کریں'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _exportTile(IconData icon, String title, String subtitle, Color color, VoidCallback onTap, LanguageProvider languageProvider) {
+    return ListTile(
+      leading: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+        child: Icon(icon, color: color, size: 20),
+      ),
+      title: Text(
+          title,
+          style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              fontFamily: languageProvider.fontFamily
+          )
+      ),
+      subtitle: Text(
+          subtitle,
+          style: TextStyle(
+              fontSize: 12,
+              fontFamily: languageProvider.fontFamily
+          )
+      ),
+      onTap: onTap,
+    );
+  }
+
+  Future<void> _exportProductsAsPdf(LanguageProvider languageProvider) async {
     final productProvider = Provider.of<ProductProvider>(context, listen: false);
     final products = productProvider.products;
-
     if (products.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No products to export'),
-          backgroundColor: Colors.red,
-        ),
+          SnackBar(
+              content: Text(
+                  languageProvider.isEnglish
+                      ? 'No products to export'
+                      : 'ایکسپورٹ کرنے کے لیے کوئی پروڈکٹ نہیں'
+              ),
+              backgroundColor: _red
+          )
       );
       return;
     }
-
-    // Calculate stats
     final stats = {
       'total': products.length,
       'low_stock': products.where((p) => p.physicalQty <= p.minStock).length,
@@ -1101,58 +1465,51 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
       'inactive': products.where((p) => !p.isActive).length,
     };
 
-    // Get filter information safely
-    String? categoryName;
+    String? categoryName, supplierName, unitName;
     if (_selectedCategory != null) {
-      final categoryProvider = Provider.of<CategoryProvider>(context, listen: false);
-      final category = categoryProvider.categories.firstWhere(
-            (c) => c.id.toString() == _selectedCategory,
-        orElse: () => Category(
-          id: '0',
-          name: 'Unknown',
-          createdAt: DateTime.now(), // Provide a default DateTime
-          updatedAt: DateTime.now(), // Provide a default DateTime
-        ),
-      );
-      categoryName = category.name;
+      final cp = Provider.of<CategoryProvider>(context, listen: false);
+      categoryName = cp.categories.firstWhere(
+              (c) => c.id.toString() == _selectedCategory,
+          orElse: () => Category(
+              id: '0',
+              name: languageProvider.isEnglish ? 'Unknown' : 'نامعلوم',
+              createdAt: DateTime.now(),
+              updatedAt: DateTime.now()
+          )
+      ).name;
     }
-
-    String? supplierName;
     if (_selectedSupplier != null) {
-      final supplierProvider = Provider.of<SupplierProvider>(context, listen: false);
-      final supplier = supplierProvider.suppliers.firstWhere(
-            (s) => s.id.toString() == _selectedSupplier,
-        orElse: () => Supplier(
-          id: 0,
-          name: 'Unknown',
-          contact: '', // Use empty string instead of null if contact is required
-          isActive: true, // Provide a default boolean
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-          discountPercent: 0.0, // Provide a default double
-        ),
-      );
-      supplierName = supplier.name;
+      final sp = Provider.of<SupplierProvider>(context, listen: false);
+      supplierName = sp.suppliers.firstWhere(
+              (s) => s.id.toString() == _selectedSupplier,
+          orElse: () => Supplier(
+              id: 0,
+              name: languageProvider.isEnglish ? 'Unknown' : 'نامعلوم',
+              contact: '',
+              isActive: true,
+              createdAt: DateTime.now(),
+              updatedAt: DateTime.now(),
+              discountPercent: 0.0
+          )
+      ).name;
+    }
+    if (_selectedUnit != null) {
+      final up = Provider.of<UnitProvider>(context, listen: false);
+      unitName = up.units.firstWhere(
+              (u) => u.id.toString() == _selectedUnit,
+          orElse: () => Unit(
+              id: '0',
+              name: languageProvider.isEnglish ? 'Unknown' : 'نامعلوم',
+              symbol: '',
+              type: '',
+              isActive: true,
+              conversionFactor: 1.0,
+              createdAt: DateTime.now(),
+              updatedAt: DateTime.now()
+          )
+      ).name;
     }
 
-    String? unitName;
-    if (_selectedUnit != null) {
-      final unitProvider = Provider.of<UnitProvider>(context, listen: false);
-      final unit = unitProvider.units.firstWhere(
-            (u) => u.id.toString() == _selectedUnit,
-        orElse: () => Unit(
-          id: '0',
-          name: 'Unknown',
-          symbol: '',
-          type: '',
-          isActive: true,
-          conversionFactor: 1.0, // Provide a default double
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        ),
-      );
-      unitName = unit.name;
-    }
     final filterInfo = {
       'total_count': products.length,
       'category': categoryName,
@@ -1169,96 +1526,91 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
         barrierDismissible: false,
         builder: (_) => const Center(child: CircularProgressIndicator()),
       );
-
       final pdfData = await ProductPdfGenerator.generateProductsListPdf(
-        products: products,
-        filterInfo: filterInfo,
-        stats: stats,
-      );
-
+          products: products, filterInfo: filterInfo, stats: stats);
       if (mounted) Navigator.pop(context);
-
-      _showPrintOptions(pdfData, 'products_list_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.pdf');
+      _showPrintOptions(pdfData,
+          'products_list_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.pdf',
+          languageProvider);
     } catch (e) {
       if (mounted) Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error generating PDF: $e'),
-          backgroundColor: Colors.red,
-        ),
+          SnackBar(
+              content: Text(
+                  languageProvider.isEnglish
+                      ? 'Error generating PDF: $e'
+                      : 'PDF بنانے میں خرابی: $e'
+              ),
+              backgroundColor: _red
+          )
       );
     }
   }
 
-
-  void _showPrintOptions(Uint8List pdfData, String filename) {
+  void _showPrintOptions(Uint8List pdfData, String filename, LanguageProvider languageProvider) {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE5E5EA),
-                borderRadius: BorderRadius.circular(2),
-              ),
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(color: _border, borderRadius: BorderRadius.circular(2))
             ),
-            const Text(
-              'Export Options',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Text(
+              languageProvider.isEnglish ? 'Export Options' : 'ایکسپورٹ آپشنز',
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: languageProvider.fontFamily
+              ),
             ),
             const SizedBox(height: 20),
             Row(
               children: [
-                Expanded(
-                  child: _buildPrintOption(
-                    icon: Icons.picture_as_pdf,
-                    label: 'Save PDF',
-                    color: const Color(0xFF7C3AED),
-                    onTap: () {
+                Expanded(child: _printOption(
+                    Icons.picture_as_pdf,
+                    languageProvider.isEnglish ? 'Save PDF' : 'PDF محفوظ کریں',
+                    _purple,
+                        () {
                       Navigator.pop(ctx);
                       ProductPdfGenerator.sharePdf(pdfData, filename);
                     },
-                  ),
-                ),
+                    languageProvider
+                )),
                 const SizedBox(width: 12),
-                Expanded(
-                  child: _buildPrintOption(
-                    icon: Icons.print,
-                    label: 'Print',
-                    color: const Color(0xFF10B981),
-                    onTap: () {
+                Expanded(child: _printOption(
+                    Icons.print,
+                    languageProvider.isEnglish ? 'Print' : 'پرنٹ کریں',
+                    _teal,
+                        () {
                       Navigator.pop(ctx);
                       ProductPdfGenerator.printPdf(pdfData);
                     },
-                  ),
-                ),
+                    languageProvider
+                )),
+                const SizedBox(width: 12),
+                Expanded(child: _printOption(
+                    Icons.visibility,
+                    languageProvider.isEnglish ? 'Preview' : 'پریوو',
+                    Colors.blue,
+                        () {
+                      Navigator.pop(ctx);
+                      _showPdfPreview(pdfData);
+                    },
+                    languageProvider
+                )),
               ],
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: _buildPrintOption(
-                icon: Icons.visibility,
-                label: 'Preview',
-                color: const Color(0xFF3B82F6),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _showPdfPreview(pdfData);
-                },
-              ),
             ),
             const SizedBox(height: 16),
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
+              child: Text(languageProvider.isEnglish ? 'Cancel' : 'منسوخ کریں'),
             ),
           ],
         ),
@@ -1266,32 +1618,28 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
     );
   }
 
-  Widget _buildPrintOption({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
+  Widget _printOption(IconData icon, String label, Color color, VoidCallback onTap, LanguageProvider languageProvider) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.3)),
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withOpacity(0.25)),
         ),
         child: Column(
           children: [
-            Icon(icon, color: color, size: 28),
+            Icon(icon, color: color, size: 26),
             const SizedBox(height: 8),
             Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
+                label,
+                style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    fontFamily: languageProvider.fontFamily
+                )
             ),
           ],
         ),
@@ -1299,100 +1647,30 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
     );
   }
 
-  Future<void> _showPdfPreview(Uint8List pdfData) async {
-    await Printing.layoutPdf(
-      onLayout: (_) => pdfData,
-    );
-  }
+  Future<void> _showPdfPreview(Uint8List pdfData) async =>
+      Printing.layoutPdf(onLayout: (_) => pdfData);
 
-  void _showExportOptions() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Export Products'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF7C3AED).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.picture_as_pdf, color: Color(0xFF7C3AED)),
-              ),
-              title: const Text('PDF Document'),
-              subtitle: const Text('Export with filters and formatting'),
-              onTap: () {
-                Navigator.pop(context);
-                _exportProductsAsPdf();
-              },
-            ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.table_chart, color: Colors.green),
-              ),
-              title: const Text('CSV File'),
-              subtitle: const Text('Export as spreadsheet data'),
-              onTap: () => _exportAs('csv'),
-            ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.grid_on, color: Colors.blue),
-              ),
-              title: const Text('Excel File'),
-              subtitle: const Text('Export as Excel spreadsheet'),
-              onTap: () => _exportAs('excel'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _exportAs(String format) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Exporting as $format...')),
-    );
-    Navigator.pop(context);
-  }
-
-  void _exportProducts() {
-    _showExportOptions();
-  }
-
-  void _importProducts() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Import functionality coming soon...')),
-    );
-  }
-
-  void _bulkPriceUpdate() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Bulk price update coming soon...')),
-    );
-  }
-
-  void _bulkStockUpdate() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Bulk stock update coming soon...')),
-    );
-  }
+  void _exportProducts() => _showExportOptions();
+  void _exportAs(String format, LanguageProvider languageProvider) =>
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(
+                  languageProvider.isEnglish
+                      ? 'Exporting as $format…'
+                      : '$format کے طور پر ایکسپورٹ ہو رہا ہے…'
+              )
+          )
+      );
+  void _importProducts() =>
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Import coming soon…'))
+      );
+  void _bulkPriceUpdate() =>
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Bulk price update coming soon…'))
+      );
+  void _bulkStockUpdate() =>
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Bulk stock update coming soon…'))
+      );
 }

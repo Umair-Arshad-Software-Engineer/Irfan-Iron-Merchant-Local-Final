@@ -8,13 +8,18 @@ import '../../providers/customer_provider.dart';
 import '../components/loading_indicator.dart';
 import '../components/error_widget.dart';
 import '../Banks/banknames.dart';
+import '../providers/lanprovider.dart';
 
 class CustomerInvoicePaymentScreen extends StatefulWidget {
   final Customer customer;
+  final bool fromSimpleCashbook;
+  final LanguageProvider languageProvider;
 
   const CustomerInvoicePaymentScreen({
     Key? key,
     required this.customer,
+    this.fromSimpleCashbook = false,
+    required this.languageProvider,
   }) : super(key: key);
 
   @override
@@ -27,10 +32,23 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
   String? _error;
   Set<int> _selectedSaleIds = {};
   bool _selectAll = false;
-  String _selectedType = 'all'; // 'all', 'invoice', 'pos'
+  String _selectedType = 'all';
 
   final DateFormat _dateFormat = DateFormat('MMM dd, yyyy');
   final NumberFormat _currencyFormat = NumberFormat.currency(symbol: 'Rs ');
+
+  List<Map<String, dynamic>> get _filterOptions => [
+    {'value': 'all', 'label': widget.languageProvider.isEnglish ? 'All' : 'سب'},
+    {'value': 'invoice', 'label': widget.languageProvider.isEnglish ? 'Invoices' : 'انوائسز'},
+    {'value': 'pos', 'label': widget.languageProvider.isEnglish ? 'POS Sales' : 'POS فروخت'},
+  ];
+
+  List<Map<String, dynamic>> get _methodOptions => [
+    {'value': 'cash', 'label': widget.languageProvider.isEnglish ? 'Cash' : 'نقد', 'icon': Icons.payments_outlined, 'color': const Color(0xFF10B981)},
+    {'value': 'bank', 'label': widget.languageProvider.isEnglish ? 'Bank' : 'بینک', 'icon': Icons.account_balance_outlined, 'color': const Color(0xFF3B82F6)},
+    {'value': 'cheque', 'label': widget.languageProvider.isEnglish ? 'Cheque' : 'چیک', 'icon': Icons.receipt_long_outlined, 'color': const Color(0xFFF59E0B)},
+    {'value': 'slip', 'label': widget.languageProvider.isEnglish ? 'Slip' : 'سلیپ', 'icon': Icons.receipt_outlined, 'color': const Color(0xFF8B5CF6)},
+  ];
 
   @override
   void initState() {
@@ -62,7 +80,7 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
       });
     } catch (e) {
       setState(() {
-        _error = 'Failed to load sales: $e';
+        _error = '${widget.languageProvider.isEnglish ? 'Failed to load sales' : 'فروخت لوڈ کرنے میں ناکامی'}: $e';
         _isLoading = false;
       });
     }
@@ -105,7 +123,6 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
     });
   }
 
-  // Helper to get bank ID by name
   int? _getBankIdByName(String? bankName) {
     if (bankName == null) return null;
     final index = pakistaniBanks.indexWhere((bank) => bank.name == bankName);
@@ -113,9 +130,14 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
   }
 
   Future<void> _recordPayment() async {
+    final lp = widget.languageProvider;
+
     if (_selectedSaleIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select at least one sale'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text(lp.isEnglish ? 'Please select at least one sale' : 'براہ کرم کم از کم ایک فروخت منتخب کریں'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
@@ -126,15 +148,10 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
     final amountController = TextEditingController(text: totalOutstanding.toStringAsFixed(2));
     String selectedMethod = 'cash';
 
-    // Bank fields (only destination bank where we receive money)
     Bank? selectedBank;
-
-    // Cheque fields
     final chequeNumberCtrl = TextEditingController();
     DateTime? chequeDate;
     Bank? selectedChequeBank;
-
-    // Slip fields
     final slipNumberCtrl = TextEditingController();
     DateTime? slipDate;
     Bank? selectedSlipBank;
@@ -146,12 +163,11 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Record Payment'),
+          title: Text(lp.isEnglish ? 'Record Payment' : 'ادائیگی ریکارڈ کریں'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Selected sales summary
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -164,7 +180,12 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
                         children: [
                           const Icon(Icons.receipt, color: Color(0xFF7C3AED)),
                           const SizedBox(width: 8),
-                          Text('${selectedSales.length} Sale(s) Selected', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          Text(
+                            lp.isEnglish
+                                ? '${selectedSales.length} Sale(s) Selected'
+                                : '${selectedSales.length} فروخت(یں) منتخب',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -198,7 +219,7 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Total Outstanding', style: TextStyle(fontWeight: FontWeight.bold)),
+                          Text(lp.isEnglish ? 'Total Outstanding' : 'کل بقایا', style: const TextStyle(fontWeight: FontWeight.bold)),
                           Text(_currencyFormat.format(totalOutstanding), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF7C3AED))),
                         ],
                       ),
@@ -207,19 +228,18 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
                 ),
                 const SizedBox(height: 16),
 
-                // Payment Amount
                 TextField(
                   controller: amountController,
                   keyboardType: TextInputType.number,
+                  style: TextStyle(fontFamily: lp.fontFamily),
                   decoration: InputDecoration(
-                    labelText: 'Payment Amount',
+                    labelText: lp.isEnglish ? 'Payment Amount' : 'ادائیگی کی رقم',
                     prefixText: 'Rs ',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                 ),
                 const SizedBox(height: 16),
 
-                // Payment Date
                 GestureDetector(
                   onTap: () async {
                     final picked = await showDatePicker(
@@ -241,63 +261,73 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
                       children: [
                         const Icon(Icons.calendar_today, size: 18, color: Color(0xFF7C3AED)),
                         const SizedBox(width: 12),
-                        Text('Payment Date: ${DateFormat('MMM dd, yyyy').format(paymentDate!)}'),
+                        Text(
+                          '${lp.isEnglish ? 'Payment Date' : 'ادائیگی کی تاریخ'}: ${DateFormat('MMM dd, yyyy').format(paymentDate!)}',
+                          style: TextStyle(fontFamily: lp.fontFamily),
+                        ),
                       ],
                     ),
                   ),
                 ),
                 const SizedBox(height: 16),
 
-                // Payment Method Selector
-                const Text('Payment Method', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                Text(lp.isEnglish ? 'Payment Method' : 'ادائیگی کا طریقہ',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
 
-                // Method chips
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
-                    children: [
-                      _buildMethodChip(label: 'Cash', icon: Icons.payments_outlined, color: const Color(0xFF10B981), isSelected: selectedMethod == 'cash', onTap: () => setState(() => selectedMethod = 'cash')),
-                      const SizedBox(width: 8),
-                      _buildMethodChip(label: 'Bank', icon: Icons.account_balance_outlined, color: const Color(0xFF3B82F6), isSelected: selectedMethod == 'bank', onTap: () => setState(() => selectedMethod = 'bank')),
-                      const SizedBox(width: 8),
-                      _buildMethodChip(label: 'Cheque', icon: Icons.receipt_long_outlined, color: const Color(0xFFF59E0B), isSelected: selectedMethod == 'cheque', onTap: () => setState(() => selectedMethod = 'cheque')),
-                      const SizedBox(width: 8),
-                      _buildMethodChip(label: 'Slip', icon: Icons.receipt_outlined, color: const Color(0xFF8B5CF6), isSelected: selectedMethod == 'slip', onTap: () => setState(() => selectedMethod = 'slip')),
-                    ],
+                    children: _methodOptions.map((opt) {
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: _buildMethodChip(
+                          label: opt['label'] as String,
+                          icon: opt['icon'] as IconData,
+                          color: opt['color'] as Color,
+                          isSelected: selectedMethod == opt['value'],
+                          onTap: () => setState(() => selectedMethod = opt['value'] as String),
+                          lp: lp,
+                        ),
+                      );
+                    }).toList(),
                   ),
                 ),
                 const SizedBox(height: 16),
 
-                // Method-specific fields
                 if (selectedMethod == 'bank') ...[
                   _buildBankSelector(
-                    label: 'Bank (Receiving) *',
+                    label: lp.isEnglish ? 'Bank (Receiving) *' : 'بینک (وصول کرنے والا) *',
                     selectedBank: selectedBank,
                     onTap: () => _openBankPicker(
                       context: context,
-                      title: 'Select Bank',
+                      title: lp.isEnglish ? 'Select Bank' : 'بینک منتخب کریں',
                       onSelected: (bank, index) => setState(() => selectedBank = bank),
                       currentSelection: selectedBank,
+                      lp: lp,
                     ),
+                    lp: lp,
                   ),
                 ] else if (selectedMethod == 'cheque') ...[
                   _buildBankSelector(
-                    label: 'Bank *',
+                    label: lp.isEnglish ? 'Bank *' : 'بینک *',
                     selectedBank: selectedChequeBank,
                     onTap: () => _openBankPicker(
                       context: context,
-                      title: 'Select Bank',
+                      title: lp.isEnglish ? 'Select Bank' : 'بینک منتخب کریں',
                       onSelected: (bank, index) => setState(() => selectedChequeBank = bank),
                       currentSelection: selectedChequeBank,
+                      lp: lp,
                     ),
+                    lp: lp,
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: chequeNumberCtrl,
+                    style: TextStyle(fontFamily: lp.fontFamily),
                     decoration: InputDecoration(
-                      labelText: 'Cheque Number *',
-                      hintText: 'e.g. 001234',
+                      labelText: lp.isEnglish ? 'Cheque Number *' : 'چیک نمبر *',
+                      hintText: lp.isEnglish ? 'e.g. 001234' : 'مثال: 001234',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
@@ -323,28 +353,36 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
                         children: [
                           const Icon(Icons.event, size: 18, color: Color(0xFFF59E0B)),
                           const SizedBox(width: 12),
-                          Text(chequeDate != null ? 'Cheque Date: ${DateFormat('MMM dd, yyyy').format(chequeDate!)}' : 'Select Cheque Date *'),
+                          Text(
+                            chequeDate != null
+                                ? '${lp.isEnglish ? 'Cheque Date' : 'چیک کی تاریخ'}: ${DateFormat('MMM dd, yyyy').format(chequeDate!)}'
+                                : (lp.isEnglish ? 'Select Cheque Date *' : 'چیک کی تاریخ منتخب کریں *'),
+                            style: TextStyle(fontFamily: lp.fontFamily),
+                          ),
                         ],
                       ),
                     ),
                   ),
                 ] else if (selectedMethod == 'slip') ...[
                   _buildBankSelector(
-                    label: 'Bank *',
+                    label: lp.isEnglish ? 'Bank *' : 'بینک *',
                     selectedBank: selectedSlipBank,
                     onTap: () => _openBankPicker(
                       context: context,
-                      title: 'Select Bank',
+                      title: lp.isEnglish ? 'Select Bank' : 'بینک منتخب کریں',
                       onSelected: (bank, index) => setState(() => selectedSlipBank = bank),
                       currentSelection: selectedSlipBank,
+                      lp: lp,
                     ),
+                    lp: lp,
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: slipNumberCtrl,
+                    style: TextStyle(fontFamily: lp.fontFamily),
                     decoration: InputDecoration(
-                      labelText: 'Slip Number *',
-                      hintText: 'e.g. SLIP-001',
+                      labelText: lp.isEnglish ? 'Slip Number *' : 'سلیپ نمبر *',
+                      hintText: lp.isEnglish ? 'e.g. SLIP-001' : 'مثال: SLIP-001',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
@@ -370,7 +408,12 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
                         children: [
                           const Icon(Icons.event, size: 18, color: Color(0xFF8B5CF6)),
                           const SizedBox(width: 12),
-                          Text(slipDate != null ? 'Slip Date: ${DateFormat('MMM dd, yyyy').format(slipDate!)}' : 'Select Slip Date *'),
+                          Text(
+                            slipDate != null
+                                ? '${lp.isEnglish ? 'Slip Date' : 'سلیپ کی تاریخ'}: ${DateFormat('MMM dd, yyyy').format(slipDate!)}'
+                                : (lp.isEnglish ? 'Select Slip Date *' : 'سلیپ کی تاریخ منتخب کریں *'),
+                            style: TextStyle(fontFamily: lp.fontFamily),
+                          ),
                         ],
                       ),
                     ),
@@ -380,46 +423,57 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(lp.isEnglish ? 'Cancel' : 'منسوخ کریں'),
+            ),
             ElevatedButton(
               onPressed: () {
                 final amount = double.tryParse(amountController.text);
                 if (amount == null || amount <= 0) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter valid amount'), backgroundColor: Colors.red));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(lp.isEnglish ? 'Enter valid amount' : 'درست رقم درج کریں'), backgroundColor: Colors.red),
+                  );
                   return;
                 }
                 if (amount > totalOutstanding) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Amount cannot exceed total outstanding'), backgroundColor: Colors.red));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(lp.isEnglish ? 'Amount cannot exceed total outstanding' : 'رقم کل بقایا سے زیادہ نہیں ہو سکتی'), backgroundColor: Colors.red),
+                  );
                   return;
                 }
 
-                // Validate method-specific fields
                 if (selectedMethod == 'bank') {
                   if (selectedBank == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a bank'), backgroundColor: Colors.red));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(lp.isEnglish ? 'Please select a bank' : 'براہ کرم بینک منتخب کریں'), backgroundColor: Colors.red),
+                    );
                     return;
                   }
                 } else if (selectedMethod == 'cheque') {
                   if (selectedChequeBank == null || chequeNumberCtrl.text.isEmpty || chequeDate == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all cheque details'), backgroundColor: Colors.red));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(lp.isEnglish ? 'Please fill all cheque details' : 'براہ کرم تمام چیک کی تفصیلات بھریں'), backgroundColor: Colors.red),
+                    );
                     return;
                   }
                 } else if (selectedMethod == 'slip') {
                   if (selectedSlipBank == null || slipNumberCtrl.text.isEmpty || slipDate == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all slip details'), backgroundColor: Colors.red));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(lp.isEnglish ? 'Please fill all slip details' : 'براہ کرم تمام سلیپ کی تفصیلات بھریں'), backgroundColor: Colors.red),
+                    );
                     return;
                   }
                 }
 
-                // Build payment details
                 Map<String, dynamic> paymentDetails = {
                   'amount': amount,
                   'method': selectedMethod,
                   'payment_date': paymentDate!.toIso8601String(),
                   'sale_ids': _selectedSaleIds.toList(),
+                  'from_simple_cashbook': widget.fromSimpleCashbook,
                 };
 
-                // Add method-specific details with bank_id
                 if (selectedMethod == 'bank') {
                   paymentDetails['bank'] = selectedBank?.name;
                   paymentDetails['bank_id'] = _getBankIdByName(selectedBank?.name);
@@ -437,8 +491,11 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
 
                 Navigator.pop(context, paymentDetails);
               },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-              child: const Text('Record Payment'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: Text(lp.isEnglish ? 'Record Payment' : 'ادائیگی ریکارڈ کریں'),
             ),
           ],
         ),
@@ -454,17 +511,16 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
       final paymentDate = DateTime.parse(result['payment_date']);
       final saleIds = List<int>.from(result['sale_ids']);
 
-      // Prepare additional parameters
       String? chequeNumber;
       String? bankName;
       int? bankId;
-      DateTime? chequeDate;
+      DateTime? chequeDateVal;
 
       if (method == 'cheque') {
         chequeNumber = result['cheque_number'];
         bankName = result['bank'];
         bankId = result['bank_id'];
-        chequeDate = result['cheque_date'] != null ? DateTime.parse(result['cheque_date']) : null;
+        chequeDateVal = result['cheque_date'] != null ? DateTime.parse(result['cheque_date']) : null;
       } else if (method == 'bank' || method == 'slip') {
         bankName = result['bank'];
         bankId = result['bank_id'];
@@ -482,7 +538,8 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
           chequeNumber: chequeNumber,
           bankName: bankName,
           bankId: bankId,
-          chequeDate: chequeDate,
+          chequeDate: chequeDateVal,
+          fromSimpleCashbook: widget.fromSimpleCashbook,
         );
 
         if (response['success'] != true) {
@@ -495,12 +552,19 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
       if (allSuccess && mounted) {
         await customerProvider.fetchCustomers();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(successMessage ?? 'Payment recorded successfully'), backgroundColor: Colors.green, duration: const Duration(seconds: 4)),
+          SnackBar(
+            content: Text(successMessage ?? (lp.isEnglish ? 'Payment recorded successfully' : 'ادائیگی کامیابی سے ریکارڈ ہوگئی')),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
         );
         Navigator.pop(context, true);
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to record payment for some sales'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(lp.isEnglish ? 'Failed to record payment for some sales' : 'کچھ فروختوں کے لیے ادائیگی ریکارڈ کرنے میں ناکامی'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -512,6 +576,7 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
     required Color color,
     required bool isSelected,
     required VoidCallback onTap,
+    required LanguageProvider lp,
   }) {
     return GestureDetector(
       onTap: onTap,
@@ -528,7 +593,13 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
           children: [
             Icon(icon, size: 16, color: isSelected ? color : Colors.grey.shade600),
             const SizedBox(width: 6),
-            Text(label, style: TextStyle(fontSize: 13, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, color: isSelected ? color : Colors.grey.shade700)),
+            Text(label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  color: isSelected ? color : Colors.grey.shade700,
+                  fontFamily: lp.fontFamily,
+                )),
           ],
         ),
       ),
@@ -539,11 +610,12 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
     required String label,
     required Bank? selectedBank,
     required VoidCallback onTap,
+    required LanguageProvider lp,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF8E8E93))),
+        Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF8E8E93), fontFamily: lp.fontFamily)),
         const SizedBox(height: 6),
         GestureDetector(
           onTap: onTap,
@@ -569,12 +641,15 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Expanded(child: Text(selectedBank.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500))),
+                  Expanded(child: Text(selectedBank.name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, fontFamily: lp.fontFamily))),
                   Icon(Icons.check_circle_rounded, color: Colors.blue, size: 18),
                 ] else ...[
                   Icon(Icons.account_balance_outlined, size: 20, color: Colors.grey[400]),
                   const SizedBox(width: 10),
-                  const Expanded(child: Text('Select bank', style: TextStyle(fontSize: 14, color: Color(0xFFC7C7CC)))),
+                  Expanded(
+                    child: Text(lp.isEnglish ? 'Select bank' : 'بینک منتخب کریں',
+                        style: TextStyle(fontSize: 14, color: const Color(0xFFC7C7CC), fontFamily: lp.fontFamily)),
+                  ),
                   Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.grey[400]),
                 ],
               ],
@@ -590,12 +665,18 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
     required String title,
     required Function(Bank, int) onSelected,
     Bank? currentSelection,
+    required LanguageProvider lp,
   }) async {
     final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (_) => _PaymentBankSheet(title: title, selected: currentSelection, accentColor: const Color(0xFF7C3AED)),
+      builder: (_) => _PaymentBankSheet(
+        title: title,
+        selected: currentSelection,
+        accentColor: const Color(0xFF7C3AED),
+        languageProvider: lp,
+      ),
     );
     if (result != null) {
       onSelected(result['bank'] as Bank, result['index'] as int);
@@ -604,17 +685,25 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
 
   @override
   Widget build(BuildContext context) {
+    final lp = widget.languageProvider;
+    final filterOptions = _filterOptions;
+
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFC),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(icon: const Icon(Icons.arrow_back, color: Color(0xFF2D3142)), onPressed: () => Navigator.pop(context)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF2D3142)),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Receive Payment', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
-            Text(widget.customer.name, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+            Text(lp.isEnglish ? 'Receive Payment' : 'ادائیگی وصول کریں',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
+            Text(widget.customer.name,
+                style: TextStyle(fontSize: 12, color: Colors.grey[600], fontFamily: lp.fontFamily)),
           ],
         ),
         actions: [
@@ -622,7 +711,10 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
             TextButton.icon(
               onPressed: _recordPayment,
               icon: const Icon(Icons.payment, color: Colors.green),
-              label: Text('Receive ${_currencyFormat.format(_selectedTotalAmount)}', style: const TextStyle(color: Colors.green)),
+              label: Text(
+                '${lp.isEnglish ? 'Receive' : 'وصول کریں'} ${_currencyFormat.format(_selectedTotalAmount)}',
+                style: const TextStyle(color: Colors.green),
+              ),
             ),
         ],
       ),
@@ -631,56 +723,31 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
           : _error != null
           ? CustomErrorWidget(message: _error!, onRetry: _loadCustomerSales)
           : _sales.isEmpty
-          ? _buildEmptyState()
+          ? _buildEmptyState(lp)
           : Column(
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             color: Colors.white,
             child: Row(
-              children: [
-                FilterChip(
-                  label: const Text('All'),
-                  selected: _selectedType == 'all',
-                  onSelected: (_) => setState(() {
-                    _selectedType = 'all';
-                    _selectedSaleIds.clear();
-                    _selectAll = false;
-                  }),
-                  backgroundColor: _selectedType == 'all' ? const Color(0xFF7C3AED) : Colors.grey[100],
-                  selectedColor: const Color(0xFF7C3AED),
-                  checkmarkColor: Colors.white,
-                  labelStyle: TextStyle(color: _selectedType == 'all' ? Colors.white : Colors.grey[700]),
-                ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  label: const Text('Invoices'),
-                  selected: _selectedType == 'invoice',
-                  onSelected: (_) => setState(() {
-                    _selectedType = 'invoice';
-                    _selectedSaleIds.clear();
-                    _selectAll = false;
-                  }),
-                  backgroundColor: _selectedType == 'invoice' ? Colors.blue : Colors.grey[100],
-                  selectedColor: Colors.blue,
-                  checkmarkColor: Colors.white,
-                  labelStyle: TextStyle(color: _selectedType == 'invoice' ? Colors.white : Colors.grey[700]),
-                ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  label: const Text('POS Sales'),
-                  selected: _selectedType == 'pos',
-                  onSelected: (_) => setState(() {
-                    _selectedType = 'pos';
-                    _selectedSaleIds.clear();
-                    _selectAll = false;
-                  }),
-                  backgroundColor: _selectedType == 'pos' ? const Color(0xFF7C3AED) : Colors.grey[100],
-                  selectedColor: const Color(0xFF7C3AED),
-                  checkmarkColor: Colors.white,
-                  labelStyle: TextStyle(color: _selectedType == 'pos' ? Colors.white : Colors.grey[700]),
-                ),
-              ],
+              children: filterOptions.map((opt) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterChip(
+                    label: Text(opt['label'] as String, style: TextStyle(fontFamily: lp.fontFamily)),
+                    selected: _selectedType == opt['value'],
+                    onSelected: (_) => setState(() {
+                      _selectedType = opt['value'] as String;
+                      _selectedSaleIds.clear();
+                      _selectAll = false;
+                    }),
+                    backgroundColor: _selectedType == opt['value'] ? const Color(0xFF7C3AED) : Colors.grey[100],
+                    selectedColor: const Color(0xFF7C3AED),
+                    checkmarkColor: Colors.white,
+                    labelStyle: TextStyle(color: _selectedType == opt['value'] ? Colors.white : Colors.grey[700], fontFamily: lp.fontFamily),
+                  ),
+                );
+              }).toList(),
             ),
           ),
           Container(
@@ -688,11 +755,17 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
             color: Colors.white,
             child: Row(
               children: [
-                Checkbox(value: _selectAll, onChanged: _filteredSales.isNotEmpty ? _toggleSelectAll : null, activeColor: const Color(0xFF7C3AED)),
+                Checkbox(
+                  value: _selectAll,
+                  onChanged: _filteredSales.isNotEmpty ? _toggleSelectAll : null,
+                  activeColor: const Color(0xFF7C3AED),
+                ),
                 const SizedBox(width: 8),
-                const Text('Select All', style: TextStyle(fontWeight: FontWeight.w500)),
+                Text(lp.isEnglish ? 'Select All' : 'سب منتخب کریں',
+                    style: TextStyle(fontWeight: FontWeight.w500, fontFamily: lp.fontFamily)),
                 const Spacer(),
-                Text('Total: ${_currencyFormat.format(_selectedTotalAmount)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF7C3AED))),
+                Text('${lp.isEnglish ? 'Total' : 'کل'}: ${_currencyFormat.format(_selectedTotalAmount)}',
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF7C3AED))),
               ],
             ),
           ),
@@ -712,7 +785,10 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: isSelected ? const Color(0xFF7C3AED) : isOverdue ? Colors.red.withOpacity(0.3) : const Color(0xFFF0F0F5), width: isSelected ? 2 : 1),
+                    border: Border.all(
+                      color: isSelected ? const Color(0xFF7C3AED) : isOverdue ? Colors.red.withOpacity(0.3) : const Color(0xFFF0F0F5),
+                      width: isSelected ? 2 : 1,
+                    ),
                   ),
                   child: InkWell(
                     onTap: () => _toggleSaleSelection(sale.id),
@@ -721,7 +797,11 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
                       padding: const EdgeInsets.all(16),
                       child: Row(
                         children: [
-                          Checkbox(value: isSelected, onChanged: (_) => _toggleSaleSelection(sale.id), activeColor: const Color(0xFF7C3AED)),
+                          Checkbox(
+                            value: isSelected,
+                            onChanged: (_) => _toggleSaleSelection(sale.id),
+                            activeColor: const Color(0xFF7C3AED),
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Column(
@@ -735,16 +815,21 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
                                         color: isPos ? const Color(0xFF7C3AED).withOpacity(0.1) : Colors.blue.withOpacity(0.1),
                                         borderRadius: BorderRadius.circular(4),
                                       ),
-                                      child: Text(isPos ? 'POS' : 'INVOICE', style: TextStyle(fontSize: 10, color: isPos ? const Color(0xFF7C3AED) : Colors.blue, fontWeight: FontWeight.w600)),
+                                      child: Text(
+                                        isPos ? 'POS' : 'INVOICE',
+                                        style: TextStyle(fontSize: 10, color: isPos ? const Color(0xFF7C3AED) : Colors.blue, fontWeight: FontWeight.w600),
+                                      ),
                                     ),
                                     const SizedBox(width: 8),
-                                    Text(sale.invoiceNumber, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
+                                    Text(sale.invoiceNumber,
+                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
                                     const SizedBox(width: 8),
                                     if (isOverdue)
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                         decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                                        child: const Text('OVERDUE', style: TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.w600)),
+                                        child: Text(lp.isEnglish ? 'OVERDUE' : 'زیر التواء',
+                                            style: const TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.w600)),
                                       ),
                                   ],
                                 ),
@@ -753,12 +838,15 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
                                   children: [
                                     Icon(Icons.calendar_today, size: 12, color: Colors.grey[400]),
                                     const SizedBox(width: 4),
-                                    Text(_dateFormat.format(sale.saleDate), style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                                    Text(_dateFormat.format(sale.saleDate),
+                                        style: TextStyle(fontSize: 12, color: Colors.grey[600], fontFamily: lp.fontFamily)),
                                     if (sale.dueDate != null) ...[
                                       const SizedBox(width: 12),
                                       Icon(Icons.event, size: 12, color: Colors.grey[400]),
                                       const SizedBox(width: 4),
-                                      Text(_dateFormat.format(sale.dueDate!), style: TextStyle(fontSize: 12, color: isOverdue ? Colors.red : Colors.grey[600])),
+                                      Text(_dateFormat.format(sale.dueDate!),
+                                          style: TextStyle(fontSize: 12, color: isOverdue ? Colors.red : Colors.grey[600],
+                                              fontFamily: lp.fontFamily)),
                                     ],
                                   ],
                                 ),
@@ -766,18 +854,24 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text('Total: ${_currencyFormat.format(sale.grandTotal)}', style: const TextStyle(fontSize: 13)),
+                                    Text('${lp.isEnglish ? 'Total' : 'کل'}: ${_currencyFormat.format(sale.grandTotal)}',
+                                        style: const TextStyle(fontSize: 13)),
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                       decoration: BoxDecoration(color: const Color(0xFF7C3AED).withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                                      child: Text('Due: ${_currencyFormat.format(sale.outstandingBalance)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF7C3AED))),
+                                      child: Text('${lp.isEnglish ? 'Due' : 'بقایا'}: ${_currencyFormat.format(sale.outstandingBalance)}',
+                                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF7C3AED))),
                                     ),
                                   ],
                                 ),
                                 if (sale.paymentStatus == 'partial')
                                   Padding(
                                     padding: const EdgeInsets.only(top: 8),
-                                    child: LinearProgressIndicator(value: sale.amountPaid / sale.grandTotal, backgroundColor: Colors.grey[200], valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF7C3AED))),
+                                    child: LinearProgressIndicator(
+                                      value: sale.amountPaid / sale.grandTotal,
+                                      backgroundColor: Colors.grey[200],
+                                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF7C3AED)),
+                                    ),
                                   ),
                               ],
                             ),
@@ -795,16 +889,23 @@ class _CustomerInvoicePaymentScreenState extends State<CustomerInvoicePaymentScr
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(LanguageProvider lp) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.receipt_outlined, size: 80, color: Colors.grey[300]),
           const SizedBox(height: 16),
-          Text('No Unpaid Sales', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.grey[600])),
+          Text(lp.isEnglish ? 'No Unpaid Sales' : 'کوئی غیر ادا شدہ فروخت نہیں',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.grey[600])),
           const SizedBox(height: 8),
-          Text('${widget.customer.name} has no outstanding invoices or POS sales', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Colors.grey[500])),
+          Text(
+            lp.isEnglish
+                ? '${widget.customer.name} has no outstanding invoices or POS sales'
+                : '${widget.customer.name} کی کوئی بقایا انوائس یا POS فروخت نہیں ہے',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14, color: Colors.grey[500], fontFamily: lp.fontFamily),
+          ),
         ],
       ),
     );
@@ -815,11 +916,13 @@ class _PaymentBankSheet extends StatefulWidget {
   final String title;
   final Bank? selected;
   final Color accentColor;
+  final LanguageProvider languageProvider;
 
   const _PaymentBankSheet({
     required this.title,
     required this.selected,
     required this.accentColor,
+    required this.languageProvider,
   });
 
   @override
@@ -851,6 +954,8 @@ class _PaymentBankSheetState extends State<_PaymentBankSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final lp = widget.languageProvider;
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.7,
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
@@ -872,8 +977,9 @@ class _PaymentBankSheetState extends State<_PaymentBankSheet> {
           const SizedBox(height: 12),
           TextField(
             controller: _searchCtrl,
+            style: TextStyle(fontFamily: lp.fontFamily),
             decoration: InputDecoration(
-              hintText: 'Search banks...',
+              hintText: lp.isEnglish ? 'Search banks...' : 'بینکس تلاش کریں...',
               prefixIcon: const Icon(Icons.search, size: 20),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
               filled: true,
@@ -901,7 +1007,10 @@ class _PaymentBankSheetState extends State<_PaymentBankSheet> {
                       errorBuilder: (_, __, ___) => Container(
                         width: 40,
                         height: 40,
-                        decoration: BoxDecoration(color: widget.accentColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                        decoration: BoxDecoration(
+                          color: widget.accentColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                         child: Icon(Icons.account_balance, color: widget.accentColor, size: 20),
                       ),
                     ),
@@ -911,6 +1020,7 @@ class _PaymentBankSheetState extends State<_PaymentBankSheet> {
                     style: TextStyle(
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                       color: isSelected ? widget.accentColor : null,
+                      fontFamily: lp.fontFamily,
                     ),
                   ),
                   trailing: isSelected ? Icon(Icons.check_circle, color: widget.accentColor) : null,

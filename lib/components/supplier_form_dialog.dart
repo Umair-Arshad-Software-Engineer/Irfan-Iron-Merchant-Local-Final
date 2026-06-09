@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/supplier.dart';
+import '../providers/lanprovider.dart';
 import '../providers/supplier_provider.dart';
 
 class SupplierFormDialog extends StatefulWidget {
   final Supplier? supplier;
+  final LanguageProvider languageProvider;
 
-  const SupplierFormDialog({Key? key, this.supplier}) : super(key: key);
+  const SupplierFormDialog({Key? key, this.supplier, required this.languageProvider}) : super(key: key);
 
   @override
   State<SupplierFormDialog> createState() => _SupplierFormDialogState();
@@ -20,6 +22,8 @@ class _SupplierFormDialogState extends State<SupplierFormDialog> {
   final _discountController = TextEditingController();
   bool _isActive = true;
 
+  LanguageProvider get lp => widget.languageProvider;
+
   @override
   void initState() {
     super.initState();
@@ -29,7 +33,6 @@ class _SupplierFormDialogState extends State<SupplierFormDialog> {
       _addressController.text = widget.supplier!.address ?? '';
       _isActive = widget.supplier!.isActive;
       _discountController.text = (widget.supplier?.discountPercent ?? 0).toString();
-
     }
   }
 
@@ -49,17 +52,14 @@ class _SupplierFormDialogState extends State<SupplierFormDialog> {
       Map<String, dynamic> result;
 
       if (widget.supplier == null) {
-        // Create new supplier - ADD CONTEXT PARAMETER
         result = await supplierProvider.createSupplier(
           context: context,
           name: _nameController.text.trim(),
           contact: _contactController.text.trim(),
           address: _addressController.text.trim().isEmpty ? null : _addressController.text.trim(),
-          discountPercent: double.tryParse(_discountController.text) ?? 0,  // ← camelCase
+          discountPercent: double.tryParse(_discountController.text) ?? 0,
         );
-
       } else {
-        // Update existing supplier - ADD CONTEXT PARAMETER
         result = await supplierProvider.updateSupplier(
           context: context,
           id: widget.supplier!.id,
@@ -67,7 +67,7 @@ class _SupplierFormDialogState extends State<SupplierFormDialog> {
           contact: _contactController.text.trim(),
           address: _addressController.text.trim(),
           isActive: _isActive,
-          discountPercent: double.tryParse(_discountController.text) ?? 0,  // ← camelCase
+          discountPercent: double.tryParse(_discountController.text) ?? 0,
         );
       }
 
@@ -76,7 +76,7 @@ class _SupplierFormDialogState extends State<SupplierFormDialog> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result['message']),
+            content: Text(result['message'], style: TextStyle(fontFamily: lp.fontFamily)),
             backgroundColor: Colors.red,
           ),
         );
@@ -87,9 +87,7 @@ class _SupplierFormDialogState extends State<SupplierFormDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
         padding: const EdgeInsets.all(24),
         constraints: const BoxConstraints(maxWidth: 500),
@@ -104,12 +102,12 @@ class _SupplierFormDialogState extends State<SupplierFormDialog> {
                 children: [
                   Text(
                     widget.supplier == null
-                        ? 'Add New Supplier'
-                        : 'Edit Supplier',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2D3142),
+                        ? (lp.isEnglish ? 'Add New Supplier' : 'نیا سپلائر شامل کریں')
+                        : (lp.isEnglish ? 'Edit Supplier' : 'سپلائر میں ترمیم کریں'),
+                    style: TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.bold,
+                      color: const Color(0xFF2D3142),
+                      fontFamily: lp.fontFamily,
                     ),
                   ),
                   IconButton(
@@ -120,107 +118,99 @@ class _SupplierFormDialogState extends State<SupplierFormDialog> {
               ),
               const SizedBox(height: 24),
 
-              // Name Field
               TextFormField(
                 controller: _nameController,
+                style: TextStyle(fontFamily: lp.fontFamily),
                 decoration: InputDecoration(
-                  labelText: 'Supplier Name',
-                  hintText: 'Enter supplier name',
+                  labelText: lp.isEnglish ? 'Supplier Name' : 'سپلائر کا نام',
+                  hintText: lp.isEnglish ? 'Enter supplier name' : 'سپلائر کا نام درج کریں',
                   prefixIcon: const Icon(Icons.business),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Supplier name is required';
+                    return lp.isEnglish ? 'Supplier name is required' : 'سپلائر کا نام ضروری ہے';
                   }
                   if (value.length < 2) {
-                    return 'Name must be at least 2 characters';
+                    return lp.isEnglish ? 'Name must be at least 2 characters' : 'نام کم از کم 2 حروف کا ہونا چاہیے';
                   }
                   return null;
                 },
               ),
               const SizedBox(height: 16),
 
-              // Contact Field
               TextFormField(
                 controller: _contactController,
+                style: TextStyle(fontFamily: lp.fontFamily),
                 decoration: InputDecoration(
-                  labelText: 'Contact',
-                  hintText: 'Enter contact information',
+                  labelText: lp.isEnglish ? 'Contact' : 'رابطہ',
+                  hintText: lp.isEnglish ? 'Enter contact information' : 'رابطہ کی معلومات درج کریں',
                   prefixIcon: const Icon(Icons.phone),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Contact information is required';
+                    return lp.isEnglish ? 'Contact information is required' : 'رابطہ کی معلومات ضروری ہیں';
                   }
                   if (value.length < 2) {
-                    return 'Contact must be at least 2 characters';
+                    return lp.isEnglish ? 'Contact must be at least 2 characters' : 'رابطہ کم از کم 2 حروف کا ہونا چاہیے';
                   }
                   return null;
                 },
               ),
               const SizedBox(height: 16),
 
-              // Address Field
               TextFormField(
                 controller: _addressController,
+                style: TextStyle(fontFamily: lp.fontFamily),
                 decoration: InputDecoration(
-                  labelText: 'Address (Optional)',
-                  hintText: 'Enter supplier address',
+                  labelText: lp.isEnglish ? 'Address (Optional)' : 'پتہ (اختیاری)',
+                  hintText: lp.isEnglish ? 'Enter supplier address' : 'سپلائر کا پتہ درج کریں',
                   prefixIcon: const Icon(Icons.location_on),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 maxLines: 3,
                 minLines: 2,
               ),
               const SizedBox(height: 16),
+
               TextFormField(
                 controller: _discountController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                style: TextStyle(fontFamily: lp.fontFamily),
                 decoration: InputDecoration(
-                  labelText: 'Discount (%)',
-                  hintText: 'e.g. 10',
+                  labelText: lp.isEnglish ? 'Discount (%)' : 'چھوٹ (%)',
+                  hintText: lp.isEnglish ? 'e.g. 10' : 'مثال: 10',
                   prefixIcon: const Icon(Icons.discount_outlined),
                   suffixText: '%',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 validator: (value) {
                   final v = double.tryParse(value ?? '');
-                  if (v == null) return 'Enter a valid number';
-                  if (v < 0 || v > 100) return 'Must be between 0 and 100';
+                  if (v == null) return lp.isEnglish ? 'Enter a valid number' : 'درست نمبر درج کریں';
+                  if (v < 0 || v > 100) return lp.isEnglish ? 'Must be between 0 and 100' : '0 اور 100 کے درمیان ہونا چاہیے';
                   return null;
                 },
               ),
-              // Status Toggle (only for edit)
+
               if (widget.supplier != null) ...[
                 const SizedBox(height: 16),
                 Row(
                   children: [
                     Switch(
                       value: _isActive,
-                      onChanged: (value) {
-                        setState(() {
-                          _isActive = value;
-                        });
-                      },
+                      onChanged: (value) => setState(() => _isActive = value),
                       activeColor: const Color(0xFF7C3AED),
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      _isActive ? 'Active' : 'Inactive',
+                      _isActive
+                          ? (lp.isEnglish ? 'Active' : 'فعال')
+                          : (lp.isEnglish ? 'Inactive' : 'غیر فعال'),
                       style: TextStyle(
-                        fontSize: 14,
+                        fontSize: 14, fontWeight: FontWeight.w500,
                         color: _isActive ? Colors.green : Colors.grey,
-                        fontWeight: FontWeight.w500,
+                        fontFamily: lp.fontFamily,
                       ),
                     ),
                   ],
@@ -229,7 +219,6 @@ class _SupplierFormDialogState extends State<SupplierFormDialog> {
 
               const SizedBox(height: 32),
 
-              // Submit Button
               SizedBox(
                 width: double.infinity,
                 height: 50,
@@ -238,16 +227,13 @@ class _SupplierFormDialogState extends State<SupplierFormDialog> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF7C3AED),
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   child: Text(
-                    widget.supplier == null ? 'Create Supplier' : 'Update Supplier',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    widget.supplier == null
+                        ? (lp.isEnglish ? 'Create Supplier' : 'سپلائر بنائیں')
+                        : (lp.isEnglish ? 'Update Supplier' : 'سپلائر اپ ڈیٹ کریں'),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, fontFamily: lp.fontFamily),
                   ),
                 ),
               ),

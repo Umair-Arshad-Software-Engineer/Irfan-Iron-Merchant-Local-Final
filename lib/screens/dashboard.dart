@@ -14,6 +14,9 @@ import '../Auth/register_screen.dart';
 import '../Banks/bank_management_screen.dart';
 import '../Banks/cheque_management_screen.dart'; // Add this import
 import '../Customers/customer_balance_report_screen.dart';
+import '../Employee Management/employee_screen.dart';
+import '../Expense Management/DailyExpenseScreen.dart';
+import '../Expense Management/bill_history_screen.dart';
 import '../Products/build_bom_screen.dart';
 import '../Sales/sale_reports.dart';
 import '../Sales/sales_list_screen.dart';
@@ -25,6 +28,8 @@ import '../config/api_config.dart';
 import '../models/category.dart';
 import '../models/product_model.dart';
 import '../providers/auth_provider.dart';
+import '../providers/employee_provider.dart';
+import '../providers/lanprovider.dart';
 import '../providers/product_provider.dart';
 import '../providers/category_provider.dart';
 import '../providers/unit_provider.dart';
@@ -37,6 +42,8 @@ import '../screens/UnitScreen.dart';
 import '../Suppliers/SupplierScreen.dart';
 import '../Auth/login_screen.dart';
 import 'package:intl/intl.dart';
+
+import '../simplecashbook/simplecashbookscreen.dart';
 
 // Add this enum for chart type selection
 enum SalesChartType {
@@ -69,7 +76,9 @@ class _InventoryDashboardScreenState extends State<InventoryDashboardScreen> {
     'categoryDistribution': {},
     'monthlyTrend': [],
     'pendingChequesTotal': 0.0,  // Add this
-    'chequesCount': 0,            // Add this
+    'chequesCount': 0,
+    'totalEmployees': 0,
+    'activeEmployees': 0,// Add this
   };
 
   bool _isDashboardLoading = true;
@@ -153,6 +162,22 @@ class _InventoryDashboardScreenState extends State<InventoryDashboardScreen> {
     }
   }
 
+  // ── Load employee stats for dashboard ────────────────────────────────────────
+  Future<void> _loadEmployeeStats() async {
+    try {
+      final empProvider = Provider.of<EmployeeProvider>(context, listen: false);
+      await empProvider.loadEmployees();
+      if (mounted) {
+        setState(() {
+          _dashboardData['totalEmployees']  = empProvider.employees.length;
+          _dashboardData['activeEmployees'] = empProvider.employees.where((e) => e.isActive).length;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading employee stats: $e');
+    }
+  }
+
   Future<void> _loadDashboardData() async {
     setState(() => _isDashboardLoading = true);
 
@@ -173,6 +198,7 @@ class _InventoryDashboardScreenState extends State<InventoryDashboardScreen> {
         customerProvider.fetchCustomers(),
         supplierProvider.fetchSuppliers(context: context),
         _loadChequeData(), // Add this line
+        _loadEmployeeStats(),   // ← ADD THIS
       ]);
 
       // Calculate category distribution
@@ -329,6 +355,8 @@ class _InventoryDashboardScreenState extends State<InventoryDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final languageProvider = Provider.of<LanguageProvider>(context);
+
     return Consumer<AuthProvider>(
       builder: (context, authProvider, child) {
         if (authProvider.isLoading) {
@@ -350,7 +378,7 @@ class _InventoryDashboardScreenState extends State<InventoryDashboardScreen> {
               Expanded(
                 child: Column(
                   children: [
-                    _buildTopBar(authProvider),
+                    _buildTopBar(authProvider,languageProvider),
                     Expanded(child: _getSelectedContent(authProvider)),
                   ],
                 ),
@@ -385,13 +413,139 @@ class _InventoryDashboardScreenState extends State<InventoryDashboardScreen> {
       case 14: return const BankManagementScreen();
       case 15: return const ChequeManagementScreen(); // Add Cheque Management at index 15
       case 16: return const CashbookScreen();  // Add CashbookScreen at index 16
+      case 17: return const DailyExpenseScreen();  // Add CashbookScreen at index 16
+      case 18: return const BillHistoryScreen();  // Add CashbookScreen at index 16
+      case 19: return const SimpleCashbookScreen();  // Add CashbookScreen at index 16
+      case 20: return const EmployeeScreen();
       case 99: return const RegisterScreen();
       default: return _buildMainContent(authProvider);
     }
   }
 
+  Widget _buildNavItemWithCount({
+    required IconData icon,
+    required IconData selectedIcon,
+    required String label,
+    required int index,
+    String? badge,
+    int count = 0,
+  }) {
+    final isSelected = _selectedIndex == index;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => setState(() => _selectedIndex = index),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: EdgeInsets.symmetric(
+                horizontal: _isSidePanelCollapsed ? 0 : 16, vertical: 11),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? const Color(0xFF7C3AED).withOpacity(0.1)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisAlignment: _isSidePanelCollapsed
+                  ? MainAxisAlignment.center
+                  : MainAxisAlignment.start,
+              children: [
+                // Icon with green dot indicator when there are employees
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Icon(
+                      isSelected ? selectedIcon : icon,
+                      color: isSelected
+                          ? const Color(0xFF7C3AED)
+                          : const Color(0xFF6B7280),
+                      size: 22,
+                    ),
+                    if (count > 0)
+                      Positioned(
+                        top: -3,
+                        right: -3,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF10B981),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                if (!_isSidePanelCollapsed) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight:
+                        isSelected ? FontWeight.w600 : FontWeight.w500,
+                        color: isSelected
+                            ? const Color(0xFF7C3AED)
+                            : const Color(0xFF6B7280),
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ),
+                  // Employee count pill
+                  if (count > 0)
+                    Container(
+                      margin: const EdgeInsets.only(right: 6),
+                      padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '$count',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF10B981),
+                        ),
+                      ),
+                    ),
+                  // NEW badge
+                  if (badge != null)
+                    Container(
+                      padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                            colors: [Color(0xFF7C3AED), Color(0xFF6366F1)]),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        badge,
+                        style: const TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildSidePanel(AuthProvider authProvider) {
     final user = authProvider.user!;
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
 
     return Container(
       width: _isSidePanelCollapsed ? 80 : 260,
@@ -477,137 +631,272 @@ class _InventoryDashboardScreenState extends State<InventoryDashboardScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               children: [
                 _buildNavItem(icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard,
-                    label: 'Overview', index: 0),
-                _buildNavItem(icon: Icons.inventory_2_outlined, selectedIcon: Icons.inventory_2,
-                    label: 'Products', index: 1),
-                _buildNavItem(icon: Icons.category_outlined, selectedIcon: Icons.category,
-                    label: 'Categories', index: 2),
-                _buildNavItem(icon: Icons.square_foot_outlined, selectedIcon: Icons.square_foot,
-                    label: 'Units', index: 3),
-                _buildNavItem(icon: Icons.shopping_cart_outlined, selectedIcon: Icons.shopping_cart,
-                    label: 'Sales', index: 4),
-                _buildNavItem(icon: Icons.people_outline, selectedIcon: Icons.people,
-                    label: 'Suppliers', index: 5),
-                _buildNavItem(icon: Icons.person_outline, selectedIcon: Icons.person,
-                    label: 'Customers', index: 6),
-                _buildNavItem(icon: Icons.shopping_bag_outlined, selectedIcon: Icons.shopping_bag,
-                    label: 'Purchase', index: 7),
+                    label: languageProvider.isEnglish
+                        ? 'Over View'
+                        : 'اورویو', index: 0),
+                _buildNavItem(
+                  icon: Icons.inventory_2_outlined,
+                  selectedIcon: Icons.inventory_2,
+                  label: languageProvider.isEnglish ? 'Products' : 'پروڈکٹس',
+                  index: 1,
+                ),
 
-                // Bank Management Section
+                _buildNavItem(
+                  icon: Icons.category_outlined,
+                  selectedIcon: Icons.category,
+                  label: languageProvider.isEnglish ? 'Categories' : 'کیٹیگریز',
+                  index: 2,
+                ),
+
+                _buildNavItem(
+                  icon: Icons.square_foot_outlined,
+                  selectedIcon: Icons.square_foot,
+                  label: languageProvider.isEnglish ? 'Units' : 'یونٹس',
+                  index: 3,
+                ),
+
+                _buildNavItem(
+                  icon: Icons.shopping_cart_outlined,
+                  selectedIcon: Icons.shopping_cart,
+                  label: languageProvider.isEnglish ? 'Sales' : 'سیلز',
+                  index: 4,
+                ),
+
+                _buildNavItem(
+                  icon: Icons.people_outline,
+                  selectedIcon: Icons.people,
+                  label: languageProvider.isEnglish ? 'Suppliers' : 'سپلائرز',
+                  index: 5,
+                ),
+
+                _buildNavItem(
+                  icon: Icons.person_outline,
+                  selectedIcon: Icons.person,
+                  label: languageProvider.isEnglish ? 'Customers' : 'کسٹمرز',
+                  index: 6,
+                ),
+                _buildNavItem(
+                  icon: Icons.shopping_bag_outlined,
+                  selectedIcon: Icons.shopping_bag,
+                  label: languageProvider.isEnglish ? 'Purchase' : 'پرچیز',
+                  index: 7,
+                ),
+                // ── HR separator ──────────────────────────────────────
                 const SizedBox(height: 8),
                 if (!_isSidePanelCollapsed)
                   Padding(
                     padding: const EdgeInsets.only(left: 16, bottom: 8, top: 4),
-                    child: Text('BANKING', style: TextStyle(fontSize: 11,
-                        fontWeight: FontWeight.w600, color: Colors.grey[400], letterSpacing: 1.2)),
+                    child: Text(
+                      languageProvider.isEnglish ? 'HR & PAYROLL' : 'ایچ آر',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[400],
+                        letterSpacing: 1.2,
+                      ),
+                    ),
                   )
                 else
-                  Padding(padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Divider(color: Colors.grey[200], height: 1)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Divider(color: Colors.grey[200], height: 1),
+                  ),
+
+                _buildNavItemWithCount(
+                  icon: Icons.badge_outlined,
+                  selectedIcon: Icons.badge,
+                  label: languageProvider.isEnglish ? 'Employees' : 'ملازمین',
+                  index: 20,
+                  badge: 'NEW',
+                  count: _dashboardData['totalEmployees'] as int? ?? 0,
+                ),
+
+
+
+                // ── Banking Section ──────────────────────────────────────
+                const SizedBox(height: 8),
+
+                if (!_isSidePanelCollapsed)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 16, bottom: 8, top: 4),
+                    child: Text(
+                      languageProvider.isEnglish ? 'BANKING' : 'بینکنگ',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[400],
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  )
+                else
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Divider(color: Colors.grey[200], height: 1),
+                  ),
 
                 _buildNavItem(
                   icon: Icons.account_balance_outlined,
                   selectedIcon: Icons.account_balance,
-                  label: 'Bank Management',
+                  label: languageProvider.isEnglish ? 'Bank Management' : 'بینک مینجمنٹ',
                   index: 14,
                   badge: 'NEW',
                 ),
+
                 _buildNavItem(
                   icon: Icons.receipt_outlined,
                   selectedIcon: Icons.receipt,
-                  label: 'Cheque Management',
+                  label: languageProvider.isEnglish ? 'Cheque Management' : 'چیک مینجمنٹ',
                   index: 15,
                   badge: 'NEW',
                 ),
+
                 _buildNavItem(
                   icon: Icons.account_balance_wallet_outlined,
                   selectedIcon: Icons.account_balance_wallet,
-                  label: 'Cashbook',
+                  label: languageProvider.isEnglish ? 'Cashbook' : 'کیش بک',
                   index: 16,
                   badge: 'NEW',
                 ),
 
-                // BOM Item
+                _buildNavItem(
+                  icon: Icons.account_balance_wallet_outlined,
+                  selectedIcon: Icons.account_balance_wallet,
+                  label: languageProvider.isEnglish ? 'Simple Cashbook' : 'سادہ کیش بک',
+                  index: 19,
+                  badge: 'NEW',
+                ),
+
+                _buildNavItem(
+                  icon: Icons.account_balance_wallet_outlined,
+                  selectedIcon: Icons.account_balance_wallet,
+                  label: languageProvider.isEnglish ? 'Expense Management' : 'اخراجات مینجمنٹ',
+                  index: 17,
+                  badge: 'NEW',
+                ),
+
+                _buildNavItem(
+                  icon: Icons.account_balance_wallet_outlined,
+                  selectedIcon: Icons.account_balance_wallet,
+                  label: languageProvider.isEnglish ? 'Bill History Page' : 'بل ہسٹری پیج',
+                  index: 18,
+                  badge: 'NEW',
+                ),
+
                 _buildNavItem(
                   icon: Icons.build_outlined,
                   selectedIcon: Icons.build,
-                  label: 'Build BOM',
+                  label: languageProvider.isEnglish ? 'Build BOM' : 'BOM بنائیں',
                   index: 12,
                   badge: 'BOM',
                 ),
 
-                // ── Reports section ──────────────────────────────────────
+// ── Reports Section ──────────────────────────────────────
                 const SizedBox(height: 8),
+
                 if (!_isSidePanelCollapsed)
                   Padding(
                     padding: const EdgeInsets.only(left: 16, bottom: 8, top: 4),
-                    child: Text('REPORTS', style: TextStyle(fontSize: 11,
-                        fontWeight: FontWeight.w600, color: Colors.grey[400], letterSpacing: 1.2)),
+                    child: Text(
+                      languageProvider.isEnglish ? 'REPORTS' : 'رپورٹس',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[400],
+                        letterSpacing: 1.2,
+                      ),
+                    ),
                   )
                 else
-                  Padding(padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Divider(color: Colors.grey[200], height: 1)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Divider(color: Colors.grey[200], height: 1),
+                  ),
 
                 _buildNavItem(
                   icon: Icons.assessment_outlined,
                   selectedIcon: Icons.assessment,
-                  label: 'Supplier Report',
+                  label: languageProvider.isEnglish ? 'Supplier Report' : 'سپلائر رپورٹ',
                   index: 8,
                   badge: 'NEW',
                 ),
+
                 _buildNavItem(
                   icon: Icons.assessment_outlined,
                   selectedIcon: Icons.assessment,
-                  label: 'Customer Report',
+                  label: languageProvider.isEnglish ? 'Customer Report' : 'کسٹمر رپورٹ',
                   index: 9,
                   badge: 'NEW',
                 ),
+
                 _buildNavItem(
                   icon: Icons.assessment_outlined,
                   selectedIcon: Icons.assessment,
-                  label: 'Sale Report',
+                  label: languageProvider.isEnglish ? 'Sale Report' : 'سیل رپورٹ',
                   index: 10,
                   badge: 'NEW',
                 ),
+
                 _buildNavItem(
                   icon: Icons.assessment_outlined,
                   selectedIcon: Icons.assessment,
-                  label: 'Purchase Report',
+                  label: languageProvider.isEnglish ? 'Purchase Report' : 'پرچیز رپورٹ',
                   index: 11,
                   badge: 'NEW',
                 ),
-                // ────────────────────────────────────────────────────────
 
+// ── Settings Section ──────────────────────────────────────
                 const SizedBox(height: 8),
+
                 if (!_isSidePanelCollapsed)
                   Padding(
                     padding: const EdgeInsets.only(left: 16, bottom: 8, top: 4),
-                    child: Text('SETTINGS', style: TextStyle(fontSize: 11,
-                        fontWeight: FontWeight.w600, color: Colors.grey[400], letterSpacing: 1.2)),
+                    child: Text(
+                      languageProvider.isEnglish ? 'SETTINGS' : 'سیٹنگز',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[400],
+                        letterSpacing: 1.2,
+                      ),
+                    ),
                   ),
+
                 _buildNavItem(
                   icon: Icons.trending_up_outlined,
                   selectedIcon: Icons.trending_up,
-                  label: 'Profit & Loss',
+                  label: languageProvider.isEnglish ? 'Profit & Loss' : 'منافع و نقصان',
                   index: 13,
                   badge: 'NEW',
                 ),
-                // ── Admin Only ───────────────────────────────────────────
+
+// ── Admin Section ──────────────────────────────────────
                 if (_isAdminUser) ...[
                   const SizedBox(height: 8),
+
                   if (!_isSidePanelCollapsed)
                     Padding(
                       padding: const EdgeInsets.only(left: 16, bottom: 8, top: 4),
-                      child: Text('ADMIN', style: TextStyle(fontSize: 11,
-                          fontWeight: FontWeight.w600, color: Colors.grey[400], letterSpacing: 1.2)),
+                      child: Text(
+                        languageProvider.isEnglish ? 'ADMIN' : 'ایڈمن',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[400],
+                          letterSpacing: 1.2,
+                        ),
+                      ),
                     )
                   else
-                    Padding(padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Divider(color: Colors.grey[200], height: 1)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Divider(color: Colors.grey[200], height: 1),
+                    ),
+
                   _buildNavItem(
                     icon: Icons.person_add_outlined,
                     selectedIcon: Icons.person_add,
-                    label: 'Register User',
+                    label: languageProvider.isEnglish ? 'Register User' : 'صارف رجسٹر کریں',
                     index: 99,
                     badge: 'ADMIN',
                   ),
@@ -712,7 +1001,7 @@ class _InventoryDashboardScreenState extends State<InventoryDashboardScreen> {
     );
   }
 
-  Widget _buildTopBar(AuthProvider authProvider) {
+  Widget _buildTopBar(AuthProvider authProvider,LanguageProvider languageProvider) {
     final user = authProvider.user!;
 
     return Container(
@@ -761,6 +1050,11 @@ class _InventoryDashboardScreenState extends State<InventoryDashboardScreen> {
               Text(user.name, style: const TextStyle(fontSize: 14,
                   fontWeight: FontWeight.w600, color: Color(0xFF2D3142))),
             ]),
+          ),
+          IconButton(
+            icon: const Icon(Icons.language),
+            onPressed: languageProvider.toggleLanguage,
+            tooltip: languageProvider.isEnglish ? 'Switch to Urdu' : 'انگریزی میں تبدیل کریں',
           ),
         ],
       ),
@@ -1629,10 +1923,12 @@ class _InventoryDashboardScreenState extends State<InventoryDashboardScreen> {
   }
 
   String _getPageTitle() {
+    final languageProvider = Provider.of<LanguageProvider>(context);
+
     switch (_selectedIndex) {
-      case 0:  return 'Dashboard Overview';
-      case 1:  return 'Products';
-      case 2:  return 'Categories';
+      case 0:  return languageProvider.isEnglish ? 'Dashboard' : 'ڈیش بورڈ';
+      case 1:  return languageProvider.isEnglish ? 'Products' : 'آئٹمز';
+      case 2:  return languageProvider.isEnglish ? 'Categories' : 'کیٹاگوریز';
       case 3:  return 'Units Management';
       case 4:  return 'Sales';
       case 5:  return 'Suppliers';
@@ -1647,6 +1943,10 @@ class _InventoryDashboardScreenState extends State<InventoryDashboardScreen> {
       case 14: return 'Bank Management';
       case 15: return 'Cheque Management';
       case 16: return 'Cashbook';  // Add this
+      case 19: return 'Simple Cashbook';  // Add this
+      case 17: return 'Expense Management';  // Add this
+      case 18: return 'Bill History Page';  // Add this
+      case 20: return languageProvider.isEnglish ? 'Employees' : 'ملازمین';
       case 99: return 'Register New User';
       default: return 'Dashboard';
     }
@@ -1671,6 +1971,10 @@ class _InventoryDashboardScreenState extends State<InventoryDashboardScreen> {
       case 14: return 'Manage bank accounts, track balances, and record transactions';
       case 15: return 'Track cheques, manage clearing, bouncing, and cancellation';
       case 16: return 'Track all cash transactions, inflows, and outflows';  // Add this
+      case 19: return 'Track all cash transactions, inflows, and outflows in Simple Cashbook';  // Add this
+      case 17: return 'Track all Expense transactions, inflows, and outflows';  // Add this
+      case 18: return 'Track all Bills, inflows, and outflows';  // Add this
+      case 20: return 'Manage employees, attendance, and salary calculations';
       case 99: return 'Create a new user account';
       default: return '';
     }

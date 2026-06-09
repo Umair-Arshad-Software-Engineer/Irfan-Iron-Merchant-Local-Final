@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../Banks/banknames.dart';
+import '../providers/lanprovider.dart';
 
 class CustomerLedgerPdfGenerator {
   static final NumberFormat _cf = NumberFormat('#,##0.00');
@@ -53,7 +54,7 @@ class CustomerLedgerPdfGenerator {
         int maxLines = 2,
       }) async {
     final txt = text.isEmpty ? ' ' : text;
-    const double sc = 3.0; // scale factor
+    const double sc = 3.0;
 
     final rec = ui.PictureRecorder();
     final canvas = Canvas(rec, Rect.fromLTWH(0, 0, maxW * sc, (fs * maxLines + 10) * sc));
@@ -80,29 +81,24 @@ class CustomerLedgerPdfGenerator {
     return pw.MemoryImage(bd!.buffer.asUint8List());
   }
 
-  // Helper to get description text based on transaction type
-  static String _getDescriptionText(Map<String, dynamic> entry) {
+  static String _getDescriptionText(Map<String, dynamic> entry, LanguageProvider lp) {
     final type = (entry['transaction_type'] as String?) ?? 'adjustment';
     final rawDesc = (entry['description'] as String?) ?? '';
 
-    // For sale, show "SALE" instead of the actual description
     if (type == 'sale') {
-      return 'SALE';
+      return lp.isEnglish ? 'SALE' : 'فروخت';
     }
 
-    // For other types, return the actual description
     return rawDesc;
   }
 
-  // Helper to get or create description image with caching
-  static Future<pw.MemoryImage> _getDescriptionImage(Map<String, dynamic> entry) async {
-    final descriptionText = _getDescriptionText(entry);
+  static Future<pw.MemoryImage> _getDescriptionImage(Map<String, dynamic> entry, LanguageProvider lp) async {
+    final descriptionText = _getDescriptionText(entry, lp);
 
     if (descriptionText.isEmpty) {
       return await _img(' ', fs: 5.5, maxW: 180, maxLines: 2);
     }
 
-    // Create cache key
     final cacheKey = descriptionText.substring(0, math.min(descriptionText.length, 100));
 
     if (_descriptionCache.containsKey(cacheKey)) {
@@ -123,7 +119,6 @@ class CustomerLedgerPdfGenerator {
     return image;
   }
 
-  // Load bank logo from assets with caching
   static Future<pw.MemoryImage?> _loadBankLogo(String bankName) async {
     if (_bankLogoCache.containsKey(bankName)) return _bankLogoCache[bankName];
     try {
@@ -165,17 +160,15 @@ class CustomerLedgerPdfGenerator {
     required String filterType,
     DateTimeRange? dateRange,
     Map<int, List<Map<String, dynamic>>>? saleItemsCache,
+    required LanguageProvider languageProvider,
   }) async {
-    // Clear description cache at start of generation
     _descriptionCache.clear();
 
-    // Pre-render all description images
     final Map<int, pw.MemoryImage> descriptionImages = {};
     for (int i = 0; i < entries.length; i++) {
-      descriptionImages[i] = await _getDescriptionImage(entries[i]);
+      descriptionImages[i] = await _getDescriptionImage(entries[i], languageProvider);
     }
 
-    // Raster the Urdu customer name (RTL) and meta line for the header
     final nameImg = await _img(
       customerName,
       fs: 13,
@@ -195,7 +188,6 @@ class CustomerLedgerPdfGenerator {
       maxW: 380,
     );
 
-    // Pre-load bank logos
     final uniqueBankNames = <String>{};
     for (final e in entries) {
       final b = e['bank_name'] as String?;
@@ -210,12 +202,12 @@ class CustomerLedgerPdfGenerator {
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       header: (ctx) => _pageHeader(
-        nameImg, metaImg, filterType, dateRange, summary, entries.length, ctx,
+        nameImg, metaImg, filterType, dateRange, summary, entries.length, ctx, languageProvider,
       ),
-      footer: (ctx) => _pageFooter(ctx),
+      footer: (ctx) => _pageFooter(ctx, languageProvider),
       build: (ctx) => [
         pw.SizedBox(height: 8),
-        _table(entries, summary, saleItemsCache ?? {}, descriptionImages),
+        _table(entries, summary, saleItemsCache ?? {}, descriptionImages, languageProvider),
       ],
     ));
     return pdf.save();
@@ -230,8 +222,8 @@ class CustomerLedgerPdfGenerator {
       Map<String, dynamic> summary,
       int entryCount,
       pw.Context ctx,
+      LanguageProvider lp,
       ) {
-    // Calculate totals
     double totalDebit = 0;
     double totalCredit = 0;
     double closingBalance = 0;
@@ -245,7 +237,6 @@ class CustomerLedgerPdfGenerator {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        // ── Purple banner ──
         pw.Container(
           width: double.infinity,
           padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -260,7 +251,7 @@ class CustomerLedgerPdfGenerator {
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text(
-                    'CUSTOMER LEDGER STATEMENT',
+                    lp.isEnglish ? 'CUSTOMER LEDGER STATEMENT' : 'کسٹمر لیجر سٹیٹمنٹ',
                     style: pw.TextStyle(
                       fontSize: 11,
                       fontWeight: pw.FontWeight.bold,
@@ -269,7 +260,6 @@ class CustomerLedgerPdfGenerator {
                     ),
                   ),
                   pw.SizedBox(height: 4),
-                  // Raster image for Urdu name (RTL script requires raster)
                   pw.Image(nameImg, height: 15),
                   pw.SizedBox(height: 2),
                   pw.Image(metaImg, height: 10),
@@ -286,7 +276,7 @@ class CustomerLedgerPdfGenerator {
                       borderRadius: pw.BorderRadius.circular(10),
                     ),
                     child: pw.Text(
-                      _filterLabel(filterType),
+                      _filterLabel(filterType, lp),
                       style: pw.TextStyle(
                         fontSize: 6.5,
                         color: _purple,
@@ -306,14 +296,16 @@ class CustomerLedgerPdfGenerator {
                   ],
                   pw.SizedBox(height: 4),
                   pw.Text(
-                    'Generated: ${_dtf.format(DateTime.now())}',
+                    lp.isEnglish
+                        ? 'Generated: ${_dtf.format(DateTime.now())}'
+                        : 'تیار کردہ: ${_dtf.format(DateTime.now())}',
                     style: pw.TextStyle(
                       fontSize: 6,
                       color: PdfColor.fromInt(0xFFDDD6FE),
                     ),
                   ),
                   pw.Text(
-                    'Page ${ctx.pageNumber}',
+                    '${lp.isEnglish ? 'Page' : 'صفحہ'} ${ctx.pageNumber}',
                     style: pw.TextStyle(
                       fontSize: 6,
                       color: PdfColor.fromInt(0xFFDDD6FE),
@@ -326,15 +318,35 @@ class CustomerLedgerPdfGenerator {
         ),
         pw.SizedBox(height: 6),
 
-        // ── Summary cards ──
         pw.Row(children: [
-          _sCard('TOTAL SALES',   'Rs ${_cf.format(totalDebit)}',   _red,    _redBg),
+          _sCard(
+            lp.isEnglish ? 'TOTAL SALES' : 'کل فروخت',
+            'Rs ${_cf.format(totalDebit)}',
+            _red, _redBg,
+            lp,
+          ),
           pw.SizedBox(width: 5),
-          _sCard('TOTAL PAYMENTS', 'Rs ${_cf.format(totalCredit)}',  _green,  _greenBg),
+          _sCard(
+            lp.isEnglish ? 'TOTAL PAYMENTS' : 'کل ادائیگیاں',
+            'Rs ${_cf.format(totalCredit)}',
+            _green, _greenBg,
+            lp,
+          ),
           pw.SizedBox(width: 5),
-          _sCard('OUTSTANDING',    'Rs ${_cf.format(closingBalance)}', _purple, _purpleL, bold: true),
+          _sCard(
+            lp.isEnglish ? 'OUTSTANDING' : 'بقایا',
+            'Rs ${_cf.format(closingBalance)}',
+            _purple, _purpleL,
+            lp,
+            bold: true,
+          ),
           pw.SizedBox(width: 5),
-          _sCard('ENTRIES',        '$entryCount',                    _t2,     _hdrBg),
+          _sCard(
+            lp.isEnglish ? 'ENTRIES' : 'اندراجات',
+            '$entryCount',
+            _t2, _hdrBg,
+            lp,
+          ),
         ]),
         pw.SizedBox(height: 6),
       ],
@@ -345,7 +357,8 @@ class CustomerLedgerPdfGenerator {
       String lbl,
       String val,
       PdfColor col,
-      PdfColor bg, {
+      PdfColor bg,
+      LanguageProvider lp, {
         bool bold = false,
       }) {
     return pw.Expanded(
@@ -392,8 +405,7 @@ class CustomerLedgerPdfGenerator {
     );
   }
 
-  // ── Page footer ────────────────────────────────────────────────────────────
-  static pw.Widget _pageFooter(pw.Context ctx) {
+  static pw.Widget _pageFooter(pw.Context ctx, LanguageProvider lp) {
     return pw.Container(
       margin: const pw.EdgeInsets.only(top: 4),
       padding: const pw.EdgeInsets.only(top: 4),
@@ -404,7 +416,9 @@ class CustomerLedgerPdfGenerator {
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(
-            'Computer-generated - not valid without authorisation.',
+            lp.isEnglish
+                ? 'Computer-generated - not valid without authorisation.'
+                : 'کمپیوٹر سے تیار کردہ - اجازت کے بغیر درست نہیں۔',
             style: pw.TextStyle(
               fontSize: 5.5,
               color: _t3,
@@ -412,7 +426,7 @@ class CustomerLedgerPdfGenerator {
             ),
           ),
           pw.Text(
-            'Page ${ctx.pageNumber} of ${ctx.pagesCount}',
+            '${lp.isEnglish ? 'Page' : 'صفحہ'} ${ctx.pageNumber} ${lp.isEnglish ? 'of' : 'of'} ${ctx.pagesCount}',
             style: pw.TextStyle(fontSize: 5.5, color: _t3),
           ),
         ],
@@ -420,12 +434,12 @@ class CustomerLedgerPdfGenerator {
     );
   }
 
-  // ── Full table ─────────────────────────────────────────────────────────────
   static pw.Widget _table(
       List<Map<String, dynamic>> entries,
       Map<String, dynamic> summary,
       Map<int, List<Map<String, dynamic>>> cache,
       Map<int, pw.MemoryImage> descriptionImages,
+      LanguageProvider lp,
       ) {
     double totDebit = 0, totCredit = 0;
     for (final e in entries) {
@@ -445,30 +459,29 @@ class CustomerLedgerPdfGenerator {
           borderRadius: pw.BorderRadius.circular(6),
         ),
         child: pw.Column(children: [
-          _tHeader(),
+          _tHeader(lp),
           ...entries.asMap().entries.expand(
-                (en) => _tRow(en.value, en.key, cache, descriptionImages),
+                (en) => _tRow(en.value, en.key, cache, descriptionImages, lp),
           ),
-          _tTotal(totDebit, totCredit, closing),
+          _tTotal(totDebit, totCredit, closing, lp),
         ]),
       ),
     );
   }
 
-  // ── Table header ───────────────────────────────────────────────────────────
-  static pw.Widget _tHeader() => pw.Container(
+  static pw.Widget _tHeader(LanguageProvider lp) => pw.Container(
     padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
     color: _hdrBg,
     child: pw.Row(children: [
-      _hc('DATE',        11),
-      _hc('REF #',       10),
-      _hc('TYPE',         9),
-      _hc('METHOD',       8),
-      _hc('BANK',        13),
-      _hc('DESCRIPTION', 23),
-      _hc('DEBIT',       12, r: true),
-      _hc('CREDIT',      12, r: true),
-      _hc('BALANCE',     12, r: true),
+      _hc(lp.isEnglish ? 'DATE' : 'تاریخ',        11),
+      _hc(lp.isEnglish ? 'REF #' : 'حوالہ نمبر',  10),
+      _hc(lp.isEnglish ? 'TYPE' : 'قسم',          9),
+      _hc(lp.isEnglish ? 'METHOD' : 'طریقہ',      8),
+      _hc(lp.isEnglish ? 'BANK' : 'بینک',        13),
+      _hc(lp.isEnglish ? 'DESCRIPTION' : 'تفصیل', 23),
+      _hc(lp.isEnglish ? 'DEBIT' : 'ڈیبٹ',       12, r: true),
+      _hc(lp.isEnglish ? 'CREDIT' : 'کریڈٹ',     12, r: true),
+      _hc(lp.isEnglish ? 'BALANCE' : 'بیلنس',    12, r: true),
     ]),
   );
 
@@ -486,12 +499,12 @@ class CustomerLedgerPdfGenerator {
     ),
   );
 
-  // ── Table row (returns 1–3 widgets: main row + optional sub-rows) ──────────
   static List<pw.Widget> _tRow(
       Map<String, dynamic> e,
       int idx,
       Map<int, List<Map<String, dynamic>>> cache,
       Map<int, pw.MemoryImage> descriptionImages,
+      LanguageProvider lp,
       ) {
     final widgets = <pw.Widget>[];
 
@@ -503,8 +516,8 @@ class CustomerLedgerPdfGenerator {
     final bank    = e['bank_name'] as String?;
     final refNum  = e['reference_number'] as String?;
 
-    final ts     = _typeStyle(type);
-    final ms     = _methodStyle(method);
+    final ts     = _typeStyle(type, lp);
+    final ms     = _methodStyle(method, lp);
     final balCol = balance > 0 ? _red : balance < 0 ? _green : _t3;
     final bg     = idx.isEven ? _white : _rowAlt;
 
@@ -524,7 +537,6 @@ class CustomerLedgerPdfGenerator {
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
-          // DATE
           pw.Expanded(
             flex: 11,
             child: pw.Text(
@@ -532,7 +544,6 @@ class CustomerLedgerPdfGenerator {
               style: pw.TextStyle(fontSize: 6.5, color: _t2),
             ),
           ),
-          // REF #
           pw.Expanded(
             flex: 10,
             child: pw.Text(
@@ -546,7 +557,6 @@ class CustomerLedgerPdfGenerator {
               overflow: pw.TextOverflow.clip,
             ),
           ),
-          // TYPE badge
           pw.Expanded(
             flex: 9,
             child: _badge(
@@ -555,7 +565,6 @@ class CustomerLedgerPdfGenerator {
               ts['bg'] as PdfColor,
             ),
           ),
-          // METHOD badge
           pw.Expanded(
             flex: 8,
             child: method != null
@@ -566,19 +575,16 @@ class CustomerLedgerPdfGenerator {
             )
                 : pw.SizedBox(),
           ),
-          // BANK with logo
           pw.Expanded(
             flex: 13,
             child: bank != null && bank.isNotEmpty
                 ? _buildBankCell(bank)
                 : pw.SizedBox(),
           ),
-          // DESCRIPTION — Using pre-rendered raster image
           pw.Expanded(
             flex: 23,
             child: pw.Image(descriptionImages[idx]!, height: 20),
           ),
-          // DEBIT (Sales)
           pw.Expanded(
             flex: 12,
             child: pw.Text(
@@ -591,7 +597,6 @@ class CustomerLedgerPdfGenerator {
               ),
             ),
           ),
-          // CREDIT (Payments)
           pw.Expanded(
             flex: 12,
             child: pw.Text(
@@ -604,7 +609,6 @@ class CustomerLedgerPdfGenerator {
               ),
             ),
           ),
-          // BALANCE
           pw.Expanded(
             flex: 12,
             child: pw.Text(
@@ -621,24 +625,21 @@ class CustomerLedgerPdfGenerator {
       ),
     ));
 
-    // Sale items sub-row
     if (type == 'sale' && e['reference_id'] != null) {
       final items = cache[e['reference_id'] as int];
-      if (items != null && items.isNotEmpty) widgets.add(_saleSub(items));
+      if (items != null && items.isNotEmpty) widgets.add(_saleSub(items, lp));
     }
 
-    // Cheque sub-row
     if (type == 'payment' && method == 'cheque') {
       final cn = e['cheque_number'] as String?;
       final cd = e['cheque_date'] as String?;
       final cl = e['cheque_cleared'] as bool? ?? false;
-      if (cn != null) widgets.add(_chequeSub(cn, cd, cl));
+      if (cn != null) widgets.add(_chequeSub(cn, cd, cl, lp));
     }
 
     return widgets;
   }
 
-  // ── Bank cell with logo ────────────────────────────────────────────────────
   static pw.Widget _buildBankCell(String bankName) {
     final logo = _bankLogoCache[bankName];
     if (logo != null) {
@@ -674,7 +675,6 @@ class CustomerLedgerPdfGenerator {
     );
   }
 
-  // ── Badge widget ───────────────────────────────────────────────────────────
   static pw.Widget _badge(String label, PdfColor col, PdfColor bg) =>
       pw.Container(
         padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -693,8 +693,7 @@ class CustomerLedgerPdfGenerator {
         ),
       );
 
-  // ── Sale items sub-row (similar to receipt sub-row in supplier) ────────────
-  static pw.Widget _saleSub(List<Map<String, dynamic>> items) =>
+  static pw.Widget _saleSub(List<Map<String, dynamic>> items, LanguageProvider lp) =>
       pw.Container(
         margin: const pw.EdgeInsets.only(left: 18, right: 6, bottom: 4),
         padding: const pw.EdgeInsets.all(5),
@@ -707,7 +706,7 @@ class CustomerLedgerPdfGenerator {
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             pw.Text(
-              'Sold Items',
+              lp.isEnglish ? 'Sold Items' : 'فروخت شدہ اشیاء',
               style: pw.TextStyle(
                 fontSize: 6,
                 fontWeight: pw.FontWeight.bold,
@@ -715,7 +714,6 @@ class CustomerLedgerPdfGenerator {
               ),
             ),
             pw.SizedBox(height: 3),
-            // Sub-table header
             pw.Container(
               padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               color: _purpleS,
@@ -723,7 +721,7 @@ class CustomerLedgerPdfGenerator {
                 pw.Expanded(
                   flex: 5,
                   child: pw.Text(
-                    'PRODUCT',
+                    lp.isEnglish ? 'PRODUCT' : 'پروڈکٹ',
                     style: pw.TextStyle(
                       fontSize: 5,
                       fontWeight: pw.FontWeight.bold,
@@ -734,7 +732,7 @@ class CustomerLedgerPdfGenerator {
                 pw.Expanded(
                   flex: 2,
                   child: pw.Text(
-                    'QTY',
+                    lp.isEnglish ? 'QTY' : 'مقدار',
                     textAlign: pw.TextAlign.center,
                     style: pw.TextStyle(
                       fontSize: 5,
@@ -746,7 +744,7 @@ class CustomerLedgerPdfGenerator {
                 pw.Expanded(
                   flex: 2,
                   child: pw.Text(
-                    'PRICE',
+                    lp.isEnglish ? 'PRICE' : 'قیمت',
                     textAlign: pw.TextAlign.right,
                     style: pw.TextStyle(
                       fontSize: 5,
@@ -758,7 +756,7 @@ class CustomerLedgerPdfGenerator {
                 pw.Expanded(
                   flex: 2,
                   child: pw.Text(
-                    'TOTAL',
+                    lp.isEnglish ? 'TOTAL' : 'کل',
                     textAlign: pw.TextAlign.right,
                     style: pw.TextStyle(
                       fontSize: 5,
@@ -769,7 +767,6 @@ class CustomerLedgerPdfGenerator {
                 ),
               ]),
             ),
-            // Sub-table rows
             ...items.asMap().entries.map((en) {
               final qty  = (en.value['quantity'] as num?)?.toInt() ?? 0;
               final price = (en.value['unit_price'] as num?)?.toDouble() ?? 0.0;
@@ -823,7 +820,6 @@ class CustomerLedgerPdfGenerator {
                 ]),
               );
             }),
-            // Sub-table total row
             pw.Container(
               margin: const pw.EdgeInsets.only(top: 2),
               padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
@@ -831,7 +827,7 @@ class CustomerLedgerPdfGenerator {
               child: pw.Row(children: [
                 pw.Expanded(
                   child: pw.Text(
-                    'Total',
+                    lp.isEnglish ? 'Total' : 'کل',
                     style: pw.TextStyle(
                       fontSize: 6,
                       fontWeight: pw.FontWeight.bold,
@@ -859,8 +855,7 @@ class CustomerLedgerPdfGenerator {
         ),
       );
 
-  // ── Cheque sub-row ─────────────────────────────────────────────────────────
-  static pw.Widget _chequeSub(String num, String? date, bool cleared) {
+  static pw.Widget _chequeSub(String num, String? date, bool cleared, LanguageProvider lp) {
     final col = cleared ? _green : _amber;
     final bg  = cleared ? _greenBg : _amberBg;
     return pw.Container(
@@ -873,7 +868,7 @@ class CustomerLedgerPdfGenerator {
       ),
       child: pw.Row(children: [
         pw.Text(
-          'Cheque #$num',
+          '${lp.isEnglish ? 'Cheque #' : 'چیک نمبر'}$num',
           style: pw.TextStyle(
             fontSize: 6.5,
             fontWeight: pw.FontWeight.bold,
@@ -883,7 +878,7 @@ class CustomerLedgerPdfGenerator {
         if (date != null) ...[
           pw.SizedBox(width: 10),
           pw.Text(
-            'Date: $date',
+            '${lp.isEnglish ? 'Date' : 'تاریخ'}: $date',
             style: pw.TextStyle(fontSize: 6.5, color: col),
           ),
         ],
@@ -895,7 +890,9 @@ class CustomerLedgerPdfGenerator {
             borderRadius: pw.BorderRadius.circular(3),
           ),
           child: pw.Text(
-            cleared ? 'CLEARED' : 'PENDING',
+            cleared
+                ? (lp.isEnglish ? 'CLEARED' : 'کلیئر شدہ')
+                : (lp.isEnglish ? 'PENDING' : 'زیر التواء'),
             style: pw.TextStyle(
               fontSize: 5.5,
               fontWeight: pw.FontWeight.bold,
@@ -907,8 +904,7 @@ class CustomerLedgerPdfGenerator {
     );
   }
 
-  // ── Totals footer row ──────────────────────────────────────────────────────
-  static pw.Widget _tTotal(double debit, double credit, double closing) {
+  static pw.Widget _tTotal(double debit, double credit, double closing, LanguageProvider lp) {
     final balCol = closing > 0 ? _red : closing < 0 ? _green : _t1;
     return pw.Container(
       padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 7),
@@ -927,7 +923,7 @@ class CustomerLedgerPdfGenerator {
         pw.Expanded(
           flex: 23,
           child: pw.Text(
-            'TOTAL',
+            lp.isEnglish ? 'TOTAL' : 'کل',
             style: pw.TextStyle(
               fontSize: 7.5,
               fontWeight: pw.FontWeight.bold,
@@ -976,39 +972,42 @@ class CustomerLedgerPdfGenerator {
     );
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
   static double _d(dynamic v) =>
       double.tryParse(v?.toString() ?? '0') ?? 0.0;
 
-  static Map<String, dynamic> _typeStyle(String type) {
+  static Map<String, dynamic> _typeStyle(String type, LanguageProvider lp) {
     switch (type) {
       case 'sale':
-        return {'label': 'SALE',      'color': _red,    'bg': _redBg};
+        return {'label': lp.isEnglish ? 'SALE' : 'فروخت', 'color': _red,    'bg': _redBg};
       case 'payment':
-        return {'label': 'PAYMENT',   'color': _green,  'bg': _greenBg};
+        return {'label': lp.isEnglish ? 'PAYMENT' : 'ادائیگی', 'color': _green,  'bg': _greenBg};
       case 'adjustment':
-        return {'label': 'ADJUSTMENT','color': _amber,  'bg': _amberBg};
+        return {'label': lp.isEnglish ? 'ADJUSTMENT' : 'ایڈجسٹمنٹ', 'color': _amber,  'bg': _amberBg};
       default:
-        return {'label': 'MANUAL',    'color': _indigo, 'bg': _indigoBg};
+        return {'label': lp.isEnglish ? 'MANUAL' : 'دستی', 'color': _indigo, 'bg': _indigoBg};
     }
   }
 
-  static Map<String, dynamic> _methodStyle(String? method) {
+  static Map<String, dynamic> _methodStyle(String? method, LanguageProvider lp) {
     switch (method) {
-      case 'cash':   return {'label': 'CASH',   'color': _green,  'bg': _greenBg};
-      case 'bank':   return {'label': 'BANK',   'color': _blue,   'bg': _blueBg};
-      case 'cheque': return {'label': 'CHEQUE', 'color': _amber,  'bg': _amberBg};
-      case 'slip':   return {'label': 'SLIP',   'color': _purple, 'bg': _purpleL};
+      case 'cash':   return {'label': lp.isEnglish ? 'CASH' : 'نقد',   'color': _green,  'bg': _greenBg};
+      case 'bank':   return {'label': lp.isEnglish ? 'BANK' : 'بینک',   'color': _blue,   'bg': _blueBg};
+      case 'cheque': return {'label': lp.isEnglish ? 'CHEQUE' : 'چیک', 'color': _amber,  'bg': _amberBg};
+      case 'slip':   return {'label': lp.isEnglish ? 'SLIP' : 'سلیپ',   'color': _purple, 'bg': _purpleL};
       default:       return {'label': '',       'color': _t3,     'bg': _hdrBg};
     }
   }
 
-  static String _filterLabel(String f) {
+  static String _filterLabel(String f, LanguageProvider lp) {
     switch (f) {
-      case 'sale':     return 'SALES ONLY';
-      case 'payment':  return 'PAYMENTS ONLY';
-      case 'adjustment': return 'ADJUSTMENTS ONLY';
-      default:         return 'ALL TRANSACTIONS';
+      case 'sale':
+        return lp.isEnglish ? 'SALES ONLY' : 'صرف فروخت';
+      case 'payment':
+        return lp.isEnglish ? 'PAYMENTS ONLY' : 'صرف ادائیگیاں';
+      case 'adjustment':
+        return lp.isEnglish ? 'ADJUSTMENTS ONLY' : 'صرف ایڈجسٹمنٹ';
+      default:
+        return lp.isEnglish ? 'ALL TRANSACTIONS' : 'تمام لین دین';
     }
   }
 }

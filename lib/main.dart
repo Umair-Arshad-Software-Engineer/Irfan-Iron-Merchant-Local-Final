@@ -1,6 +1,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:irfan_iron_merchant_local/providers/bank_provider.dart';
+import 'package:irfan_iron_merchant_local/providers/employee_provider.dart';
+import 'package:irfan_iron_merchant_local/providers/lanprovider.dart';
 import 'package:provider/provider.dart';
 import 'package:irfan_iron_merchant_local/providers/CustomerPriceProvider.dart';
 import 'package:irfan_iron_merchant_local/providers/customer_ledger_provider.dart';
@@ -37,9 +39,7 @@ Future<void> startServer() async {
     print("Server start failed: $e");
   }
 }
-// void main() {
-//   runApp(const MyApp());
-// }
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -72,6 +72,8 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => SaleProvider()),
         ChangeNotifierProvider(create: (_) => CustomerLedgerProvider()),
         ChangeNotifierProvider(create: (_) => BankProvider()),
+        ChangeNotifierProvider(create: (_) => LanguageProvider()),
+        ChangeNotifierProvider(create: (_) => EmployeeProvider()),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,

@@ -8,6 +8,7 @@ import 'dart:convert';
 import '../../config/api_config.dart';
 import '../../models/supplier.dart';
 import '../../providers/auth_provider.dart';
+import '../providers/lanprovider.dart';
 import 'supplier_ledger_screen.dart';
 import 'supplier_payments_screen.dart';
 import 'supplier_payment_dialog.dart';
@@ -49,7 +50,7 @@ class SupplierBalanceSummary {
     contact: contact,
     address: address,
     isActive: isActive,
-    discountPercent: 0,        // ← add this
+    discountPercent: 0,
     createdAt: DateTime.now(),
     updatedAt: DateTime.now(),
   );
@@ -76,8 +77,8 @@ class _SupplierBalanceReportScreenState
 
   // Filters
   String _search      = '';
-  String _sortBy      = 'balance_desc'; // balance_desc | balance_asc | name_asc | name_desc | paid_desc
-  String _balanceFilter = 'all';         // all | outstanding | overpaid | settled
+  String _sortBy      = 'balance_desc';
+  String _balanceFilter = 'all';
   bool   _activeOnly  = false;
 
   final _searchCtrl = TextEditingController();
@@ -85,22 +86,6 @@ class _SupplierBalanceReportScreenState
   final _cf0        = NumberFormat('#,##0');
 
   late AnimationController _animCtrl;
-
-  // Sort options
-  static const _sortOptions = [
-    {'value': 'balance_desc', 'label': 'Highest Balance'},
-    {'value': 'balance_asc',  'label': 'Lowest Balance'},
-    {'value': 'paid_desc',    'label': 'Most Paid'},
-    {'value': 'name_asc',     'label': 'Name A–Z'},
-    {'value': 'name_desc',    'label': 'Name Z–A'},
-  ];
-
-  static const _balanceFilters = [
-    {'value': 'all',         'label': 'All'},
-    {'value': 'outstanding', 'label': 'Outstanding'},
-    {'value': 'settled',     'label': 'Settled'},
-    {'value': 'overpaid',    'label': 'Overpaid'},
-  ];
 
   @override
   void initState() {
@@ -151,10 +136,8 @@ class _SupplierBalanceReportScreenState
   void _applyFilters() {
     var list = List<SupplierBalanceSummary>.from(_all);
 
-    // Active filter
     if (_activeOnly) list = list.where((s) => s.isActive).toList();
 
-    // Search
     if (_search.isNotEmpty) {
       final q = _search.toLowerCase();
       list = list.where((s) =>
@@ -163,14 +146,12 @@ class _SupplierBalanceReportScreenState
           (s.address?.toLowerCase().contains(q) ?? false)).toList();
     }
 
-    // Balance filter
     switch (_balanceFilter) {
       case 'outstanding': list = list.where((s) => s.balance > 0.01).toList();  break;
       case 'settled':     list = list.where((s) => s.balance.abs() <= 0.01).toList(); break;
       case 'overpaid':    list = list.where((s) => s.balance < -0.01).toList(); break;
     }
 
-    // Sort
     switch (_sortBy) {
       case 'balance_desc': list.sort((a, b) => b.balance.compareTo(a.balance));    break;
       case 'balance_asc':  list.sort((a, b) => a.balance.compareTo(b.balance));    break;
@@ -182,7 +163,6 @@ class _SupplierBalanceReportScreenState
     setState(() => _filtered = list);
   }
 
-  // ── Aggregate totals ──────────────────────────────────────────────────────
   double get _grandCredit  => _filtered.fold(0.0, (s, e) => s + e.totalCredit);
   double get _grandDebit   => _filtered.fold(0.0, (s, e) => s + e.totalDebit);
   double get _grandBalance => _filtered.fold(0.0, (s, e) => s + e.balance);
@@ -190,24 +170,44 @@ class _SupplierBalanceReportScreenState
   int    get _countSettled     => _filtered.where((s) => s.balance.abs() <= 0.01).length;
   int    get _countOverpaid    => _filtered.where((s) => s.balance < -0.01).length;
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+  List<Map<String, String>> _getSortOptions(LanguageProvider lp) => [
+    {'value': 'balance_desc', 'label': lp.isEnglish ? 'Highest Balance' : 'سب سے زیادہ بیلنس'},
+    {'value': 'balance_asc',  'label': lp.isEnglish ? 'Lowest Balance' : 'سب سے کم بیلنس'},
+    {'value': 'paid_desc',    'label': lp.isEnglish ? 'Most Paid' : 'سب سے زیادہ ادا کیا'},
+    {'value': 'name_asc',     'label': lp.isEnglish ? 'Name A–Z' : 'نام A–Z'},
+    {'value': 'name_desc',    'label': lp.isEnglish ? 'Name Z–A' : 'نام Z–A'},
+  ];
+
+  List<Map<String, String>> _getBalanceFilters(LanguageProvider lp) => [
+    {'value': 'all',         'label': lp.isEnglish ? 'All' : 'سب'},
+    {'value': 'outstanding', 'label': lp.isEnglish ? 'Outstanding' : 'بقایا'},
+    {'value': 'settled',     'label': lp.isEnglish ? 'Settled' : 'تصفیہ شدہ'},
+    {'value': 'overpaid',    'label': lp.isEnglish ? 'Overpaid' : 'زیادہ ادا شدہ'},
+  ];
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FB),
-      body: Column(children: [
-        _buildHeader(),
-        _buildSummaryStrip(),
-        _buildToolbar(),
-        Expanded(child: _buildBody()),
-      ]),
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        final sortOptions = _getSortOptions(languageProvider);
+        final balanceFilters = _getBalanceFilters(languageProvider);
+
+        return Scaffold(
+          backgroundColor: const Color(0xFFF4F6FB),
+          body: Column(children: [
+            _buildHeader(languageProvider),
+            _buildSummaryStrip(languageProvider),
+            _buildToolbar(languageProvider, sortOptions, balanceFilters),
+            Expanded(child: _buildBody(languageProvider)),
+          ]),
+        );
+      },
     );
   }
 
   // ─── Header ───────────────────────────────────────────────────────────────
 
-  Widget _buildHeader() {
+  Widget _buildHeader(LanguageProvider lp) {
     return Container(
       padding: const EdgeInsets.fromLTRB(28, 28, 28, 20),
       decoration: const BoxDecoration(
@@ -218,7 +218,6 @@ class _SupplierBalanceReportScreenState
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          // Icon
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -230,39 +229,52 @@ class _SupplierBalanceReportScreenState
           ),
           const SizedBox(width: 14),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Supplier Balance Report',
-                style: TextStyle(color: Colors.white, fontSize: 20,
+            Text(lp.isEnglish ? 'Supplier Balance Report' : 'سپلائر بیلنس رپورٹ',
+                style: const TextStyle(color: Colors.white, fontSize: 20,
                     fontWeight: FontWeight.bold, letterSpacing: -0.3)),
-            Text('${_all.length} suppliers • as of ${DateFormat('dd MMM yyyy').format(DateTime.now())}',
+            Text('${_all.length} ${lp.isEnglish ? 'suppliers' : 'سپلائرز'} • ${lp.isEnglish ? 'as of' : 'بمطابق'} ${DateFormat('dd MMM yyyy').format(DateTime.now())}',
                 style: TextStyle(color: Colors.white.withOpacity(0.65), fontSize: 12)),
           ])),
-          // Refresh
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: Colors.white70, size: 20),
             onPressed: _fetch,
+            tooltip: lp.isEnglish ? 'Refresh' : 'تازہ کریں',
           ),
         ]),
-
         const SizedBox(height: 20),
-
-        // 3 KPI cards
         Row(children: [
-          _kpiCard(label: 'Total Payable',  value: _grandCredit,
-              icon: Icons.arrow_circle_up_outlined, color: const Color(0xFFEF4444)),
+          _kpiCard(
+            label: lp.isEnglish ? 'Total Payable' : 'کل قابل ادائیگی',
+            value: _grandCredit,
+            icon: Icons.arrow_circle_up_outlined,
+            color: const Color(0xFFEF4444),
+            lp: lp,
+          ),
           const SizedBox(width: 12),
-          _kpiCard(label: 'Total Paid',     value: _grandDebit,
-              icon: Icons.arrow_circle_down_outlined, color: const Color(0xFF10B981)),
+          _kpiCard(
+            label: lp.isEnglish ? 'Total Paid' : 'کل ادا شدہ',
+            value: _grandDebit,
+            icon: Icons.arrow_circle_down_outlined,
+            color: const Color(0xFF10B981),
+            lp: lp,
+          ),
           const SizedBox(width: 12),
-          _kpiCard(label: 'Net Outstanding', value: _grandBalance,
-              icon: Icons.account_balance_outlined, color: const Color(0xFFF59E0B),
-              highlight: true),
+          _kpiCard(
+            label: lp.isEnglish ? 'Net Outstanding' : 'خالص بقایا',
+            value: _grandBalance,
+            icon: Icons.account_balance_outlined,
+            color: const Color(0xFFF59E0B),
+            highlight: true,
+            lp: lp,
+          ),
         ]),
       ]),
     );
   }
 
   Widget _kpiCard({required String label, required double value,
-    required IconData icon, required Color color, bool highlight = false}) {
+    required IconData icon, required Color color, bool highlight = false,
+    required LanguageProvider lp}) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(14),
@@ -279,13 +291,15 @@ class _SupplierBalanceReportScreenState
             Icon(icon, size: 14, color: color),
             const SizedBox(width: 5),
             Expanded(child: Text(label, style: TextStyle(fontSize: 10,
-                color: Colors.white.withOpacity(0.7), fontWeight: FontWeight.w600),
+                color: Colors.white.withOpacity(0.7), fontWeight: FontWeight.w600,
+                fontFamily: lp.fontFamily),
                 overflow: TextOverflow.ellipsis)),
           ]),
           const SizedBox(height: 8),
           Text('Rs ${_cf0.format(value)}',
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold,
-                  color: highlight ? Colors.white : Colors.white.withOpacity(0.95)),
+                  color: highlight ? Colors.white : Colors.white.withOpacity(0.95),
+                  fontFamily: lp.fontFamily),
               overflow: TextOverflow.ellipsis),
         ]),
       ),
@@ -294,24 +308,39 @@ class _SupplierBalanceReportScreenState
 
   // ─── Summary strip (count badges) ─────────────────────────────────────────
 
-  Widget _buildSummaryStrip() {
+  Widget _buildSummaryStrip(LanguageProvider lp) {
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Row(children: [
-        _countBadge(label: 'Showing', value: '${_filtered.length}',
-            color: const Color(0xFF6366F1)),
+        _countBadge(
+          label: lp.isEnglish ? 'Showing' : 'دکھا رہا ہے',
+          value: '${_filtered.length}',
+          color: const Color(0xFF6366F1),
+          lp: lp,
+        ),
         _vDivider(),
-        _countBadge(label: 'Outstanding', value: '$_countOutstanding',
-            color: const Color(0xFFEF4444)),
+        _countBadge(
+          label: lp.isEnglish ? 'Outstanding' : 'بقایا',
+          value: '$_countOutstanding',
+          color: const Color(0xFFEF4444),
+          lp: lp,
+        ),
         _vDivider(),
-        _countBadge(label: 'Settled', value: '$_countSettled',
-            color: const Color(0xFF10B981)),
+        _countBadge(
+          label: lp.isEnglish ? 'Settled' : 'تصفیہ شدہ',
+          value: '$_countSettled',
+          color: const Color(0xFF10B981),
+          lp: lp,
+        ),
         _vDivider(),
-        _countBadge(label: 'Overpaid', value: '$_countOverpaid',
-            color: const Color(0xFF8B5CF6)),
+        _countBadge(
+          label: lp.isEnglish ? 'Overpaid' : 'زیادہ ادا شدہ',
+          value: '$_countOverpaid',
+          color: const Color(0xFF8B5CF6),
+          lp: lp,
+        ),
         const Spacer(),
-        // Active toggle
         GestureDetector(
           onTap: () { setState(() => _activeOnly = !_activeOnly); _applyFilters(); },
           child: AnimatedContainer(
@@ -329,9 +358,10 @@ class _SupplierBalanceReportScreenState
               Icon(Icons.verified_outlined, size: 12,
                   color: _activeOnly ? const Color(0xFF10B981) : Colors.grey),
               const SizedBox(width: 4),
-              Text('Active Only', style: TextStyle(fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: _activeOnly ? const Color(0xFF10B981) : Colors.grey[600])),
+              Text(lp.isEnglish ? 'Active Only' : 'صرف فعال',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+                      color: _activeOnly ? const Color(0xFF10B981) : Colors.grey[600],
+                      fontFamily: lp.fontFamily)),
             ]),
           ),
         ),
@@ -339,12 +369,15 @@ class _SupplierBalanceReportScreenState
     );
   }
 
-  Widget _countBadge({required String label, required String value, required Color color}) {
+  Widget _countBadge({required String label, required String value,
+    required Color color, required LanguageProvider lp}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
-        Text(label, style: TextStyle(fontSize: 10, color: Colors.grey[500], fontWeight: FontWeight.w500)),
+        Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color,
+            fontFamily: lp.fontFamily)),
+        Text(label, style: TextStyle(fontSize: 10, color: Colors.grey[500], fontWeight: FontWeight.w500,
+            fontFamily: lp.fontFamily)),
       ]),
     );
   }
@@ -354,7 +387,9 @@ class _SupplierBalanceReportScreenState
 
   // ─── Toolbar: search + sort + balance filter ───────────────────────────────
 
-  Widget _buildToolbar() {
+  Widget _buildToolbar(LanguageProvider lp,
+      List<Map<String, String>> sortOptions,
+      List<Map<String, String>> balanceFilters) {
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -362,7 +397,6 @@ class _SupplierBalanceReportScreenState
         const Divider(height: 1, color: Color(0xFFF0F0F5)),
         const SizedBox(height: 12),
         Row(children: [
-          // Search
           Expanded(
             child: Container(
               height: 42,
@@ -371,9 +405,10 @@ class _SupplierBalanceReportScreenState
                   borderRadius: BorderRadius.circular(10)),
               child: TextField(
                 controller: _searchCtrl,
+                style: TextStyle(fontFamily: lp.fontFamily),
                 onChanged: (v) { _search = v; _applyFilters(); },
                 decoration: InputDecoration(
-                  hintText: 'Search supplier…',
+                  hintText: lp.isEnglish ? 'Search supplier…' : 'سپلائر تلاش کریں…',
                   hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
                   prefixIcon: Icon(Icons.search, color: Colors.grey[400], size: 18),
                   suffixIcon: _search.isNotEmpty
@@ -387,21 +422,20 @@ class _SupplierBalanceReportScreenState
             ),
           ),
           const SizedBox(width: 10),
-          // Sort dropdown
           _toolbarDropdown(
             icon: Icons.sort_rounded,
             value: _sortBy,
-            items: _sortOptions,
+            items: sortOptions,
             onChanged: (v) { _sortBy = v!; _applyFilters(); },
-            tooltip: 'Sort',
+            tooltip: lp.isEnglish ? 'Sort' : 'ترتیب دیں',
+            lp: lp,
           ),
         ]),
         const SizedBox(height: 10),
-        // Balance filter chips
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
-            children: _balanceFilters.map((f) {
+            children: balanceFilters.map((f) {
               final sel   = _balanceFilter == f['value'];
               final color = _chipColor(f['value']!);
               return Padding(
@@ -419,7 +453,8 @@ class _SupplierBalanceReportScreenState
                     ),
                     child: Text(f['label']!, style: TextStyle(
                         fontSize: 12, fontWeight: sel ? FontWeight.bold : FontWeight.normal,
-                        color: sel ? color : const Color(0xFF8E8E93))),
+                        color: sel ? color : const Color(0xFF8E8E93),
+                        fontFamily: lp.fontFamily)),
                   ),
                 ),
               );
@@ -443,6 +478,7 @@ class _SupplierBalanceReportScreenState
     required IconData icon, required String value,
     required List<Map<String, String>> items,
     required ValueChanged<String?> onChanged, required String tooltip,
+    required LanguageProvider lp,
   }) {
     return Container(
       height: 42,
@@ -455,7 +491,7 @@ class _SupplierBalanceReportScreenState
         child: DropdownButton<String>(
           value: value,
           icon: Icon(Icons.keyboard_arrow_down, size: 16, color: Colors.grey[500]),
-          style: const TextStyle(fontSize: 12, color: Color(0xFF1C1C1E)),
+          style: TextStyle(fontSize: 12, color: const Color(0xFF1C1C1E), fontFamily: lp.fontFamily),
           isDense: true,
           items: items.map((i) => DropdownMenuItem(
               value: i['value'],
@@ -472,7 +508,7 @@ class _SupplierBalanceReportScreenState
 
   // ─── Body ──────────────────────────────────────────────────────────────────
 
-  Widget _buildBody() {
+  Widget _buildBody(LanguageProvider lp) {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator(color: Color(0xFF6366F1)));
     }
@@ -483,7 +519,8 @@ class _SupplierBalanceReportScreenState
         Text(_error!, style: const TextStyle(color: Colors.red)),
         const SizedBox(height: 16),
         ElevatedButton.icon(onPressed: _fetch, icon: const Icon(Icons.refresh),
-            label: const Text('Retry'), style: ElevatedButton.styleFrom(
+            label: Text(lp.isEnglish ? 'Retry' : 'دوبارہ کوشش کریں'),
+            style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF6366F1), foregroundColor: Colors.white)),
       ]));
     }
@@ -494,18 +531,19 @@ class _SupplierBalanceReportScreenState
                 shape: BoxShape.circle),
             child: const Icon(Icons.people_outline, size: 52, color: Color(0xFF6366F1))),
         const SizedBox(height: 16),
-        const Text('No suppliers found',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF1C1C1E))),
+        Text(lp.isEnglish ? 'No suppliers found' : 'کوئی سپلائر نہیں ملا',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF1C1C1E),
+                fontFamily: lp.fontFamily)),
         const SizedBox(height: 6),
-        Text(_search.isNotEmpty ? 'Try a different search term' : 'Adjust your filters',
-            style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+        Text(_search.isNotEmpty
+            ? (lp.isEnglish ? 'Try a different search term' : 'مختلف تلاش کی اصطلاح آزمائیں')
+            : (lp.isEnglish ? 'Adjust your filters' : 'اپنے فلٹرز کو ایڈجسٹ کریں'),
+            style: TextStyle(fontSize: 13, color: Colors.grey[500], fontFamily: lp.fontFamily)),
       ]));
     }
 
     return Column(children: [
-      // Table header
-      _buildTableHeader(),
-      // Rows
+      _buildTableHeader(lp),
       Expanded(
         child: RefreshIndicator(
           onRefresh: _fetch, color: const Color(0xFF6366F1),
@@ -524,19 +562,19 @@ class _SupplierBalanceReportScreenState
                 )),
                 child: _SupplierRow(
                   summary: s, index: i, cf: _cf,
-                  onTap: () => _showSupplierActions(s),
+                  onTap: () => _showSupplierActions(s, lp),
+                  languageProvider: lp,
                 ),
               );
             },
           ),
         ),
       ),
-      // Grand total footer
-      _buildFooter(),
+      _buildFooter(lp),
     ]);
   }
 
-  Widget _buildTableHeader() {
+  Widget _buildTableHeader(LanguageProvider lp) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -546,11 +584,11 @@ class _SupplierBalanceReportScreenState
       ),
       child: Row(children: [
         const Expanded(flex: 1, child: Text('#', style: _hStyle)),
-        const Expanded(flex: 5, child: Text('SUPPLIER', style: _hStyle)),
-        const Expanded(flex: 3, child: Text('PAYABLE', textAlign: TextAlign.right, style: _hStyle)),
-        const Expanded(flex: 3, child: Text('PAID', textAlign: TextAlign.right, style: _hStyle)),
-        const Expanded(flex: 3, child: Text('BALANCE', textAlign: TextAlign.right, style: _hStyle)),
-        const Expanded(flex: 2, child: Text('STATUS', textAlign: TextAlign.center, style: _hStyle)),
+        Expanded(flex: 5, child: Text(lp.isEnglish ? 'SUPPLIER' : 'سپلائر', style: _hStyle)),
+        Expanded(flex: 3, child: Text(lp.isEnglish ? 'PAYABLE' : 'قابل ادائیگی', textAlign: TextAlign.right, style: _hStyle)),
+        Expanded(flex: 3, child: Text(lp.isEnglish ? 'PAID' : 'ادا شدہ', textAlign: TextAlign.right, style: _hStyle)),
+        Expanded(flex: 3, child: Text(lp.isEnglish ? 'BALANCE' : 'بیلنس', textAlign: TextAlign.right, style: _hStyle)),
+        Expanded(flex: 2, child: Text(lp.isEnglish ? 'STATUS' : 'حالت', textAlign: TextAlign.center, style: _hStyle)),
         const SizedBox(width: 36),
       ]),
     );
@@ -559,7 +597,7 @@ class _SupplierBalanceReportScreenState
   static const _hStyle = TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
       color: Colors.white70, letterSpacing: 0.8);
 
-  Widget _buildFooter() {
+  Widget _buildFooter(LanguageProvider lp) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
@@ -573,7 +611,7 @@ class _SupplierBalanceReportScreenState
       child: Row(children: [
         const Expanded(flex: 1, child: SizedBox()),
         Expanded(flex: 5, child: Text(
-            'TOTAL  (${_filtered.length} suppliers)',
+            '${lp.isEnglish ? 'TOTAL' : 'کل'}  (${_filtered.length} ${lp.isEnglish ? 'suppliers' : 'سپلائرز'})',
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold,
                 color: Colors.white70))),
         Expanded(flex: 3, child: Text('Rs ${_cf.format(_grandCredit)}',
@@ -592,8 +630,8 @@ class _SupplierBalanceReportScreenState
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(color: Colors.white.withOpacity(0.15),
               borderRadius: BorderRadius.circular(8)),
-          child: Text('NET', style: const TextStyle(fontSize: 10,
-              fontWeight: FontWeight.bold, color: Colors.white)),
+          child: Text(lp.isEnglish ? 'NET' : 'خالص',
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
         ))),
         const SizedBox(width: 36),
       ]),
@@ -602,32 +640,35 @@ class _SupplierBalanceReportScreenState
 
   // ─── Actions bottom sheet ──────────────────────────────────────────────────
 
-  void _showSupplierActions(SupplierBalanceSummary s) {
+  void _showSupplierActions(SupplierBalanceSummary s, LanguageProvider lp) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _SupplierActionSheet(
-        summary: s, cf: _cf,
+        summary: s,
+        cf: _cf,
+        languageProvider: lp,
         onViewLedger: () {
           Navigator.pop(context);
           Navigator.push(context, MaterialPageRoute(
-              builder: (_) => SupplierLedgerScreen(supplier: s.toSupplier())));
+              builder: (_) => SupplierLedgerScreen(supplier: s.toSupplier(), languageProvider: lp)));
         },
         onViewPayments: () {
           Navigator.pop(context);
           Navigator.push(context, MaterialPageRoute(
-              builder: (_) => SupplierPaymentsScreen(supplier: s.toSupplier())));
+              builder: (_) => SupplierPaymentsScreen(supplier: s.toSupplier(), languageProvider: lp)));
         },
         onPayNow: () async {
           Navigator.pop(context);
           final result = await showDialog<bool>(
             context: context,
-            builder: (_) => SupplierPaymentDialog(supplier: s.toSupplier()),
+            builder: (_) => SupplierPaymentDialog(supplier: s.toSupplier(), languageProvider: lp),
           );
           if (result == true) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                content: Text('Payment recorded'), backgroundColor: Color(0xFF10B981)));
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(lp.isEnglish ? 'Payment recorded' : 'ادائیگی ریکارڈ ہوگئی'),
+                backgroundColor: const Color(0xFF10B981)));
             _fetch();
           }
         },
@@ -643,10 +684,12 @@ class _SupplierRow extends StatelessWidget {
   final int index;
   final NumberFormat cf;
   final VoidCallback onTap;
+  final LanguageProvider languageProvider;
 
   const _SupplierRow({
     required this.summary, required this.index,
     required this.cf, required this.onTap,
+    required this.languageProvider,
   });
 
   @override
@@ -660,11 +703,13 @@ class _SupplierRow extends StatelessWidget {
         ? const Color(0xFFEF4444)
         : isOverpaid ? const Color(0xFF8B5CF6) : const Color(0xFF10B981);
 
-    final statusLabel = isOutstanding ? 'DUE'
-        : isOverpaid ? 'OVERPAID' : 'SETTLED';
+    final statusLabel = isOutstanding
+        ? (languageProvider.isEnglish ? 'DUE' : 'واجب')
+        : isOverpaid
+        ? (languageProvider.isEnglish ? 'OVERPAID' : 'زیادہ ادا شدہ')
+        : (languageProvider.isEnglish ? 'SETTLED' : 'تصفیہ شدہ');
     final statusColor = balColor;
 
-    // Avatar letter color
     final avatarColors = [
       const Color(0xFF6366F1), const Color(0xFF10B981), const Color(0xFF3B82F6),
       const Color(0xFFF59E0B), const Color(0xFF8B5CF6), const Color(0xFFEF4444),
@@ -682,14 +727,10 @@ class _SupplierRow extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
           child: Row(children: [
-            // Index
             Expanded(flex: 1, child: Text('${index + 1}',
                 style: TextStyle(fontSize: 11, color: Colors.grey[400],
-                    fontWeight: FontWeight.w500))),
-
-            // Supplier info
+                    fontWeight: FontWeight.w500, fontFamily: languageProvider.fontFamily))),
             Expanded(flex: 5, child: Row(children: [
-              // Avatar
               Container(
                 width: 36, height: 36,
                 decoration: BoxDecoration(
@@ -698,19 +739,22 @@ class _SupplierRow extends StatelessWidget {
                     border: Border.all(color: avatarColor.withOpacity(0.25))),
                 child: Center(child: Text(
                     summary.name.isNotEmpty ? summary.name[0].toUpperCase() : '?',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: avatarColor))),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: avatarColor,
+                        fontFamily: languageProvider.fontFamily))),
               ),
               const SizedBox(width: 10),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(summary.name,
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
-                        color: Color(0xFF1C1C1E)), overflow: TextOverflow.ellipsis),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                        color: const Color(0xFF1C1C1E), fontFamily: languageProvider.fontFamily),
+                    overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 2),
                 Row(children: [
                   Icon(Icons.phone_outlined, size: 10, color: Colors.grey[400]),
                   const SizedBox(width: 3),
                   Flexible(child: Text(summary.contact,
-                      style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                      style: TextStyle(fontSize: 11, color: Colors.grey[500],
+                          fontFamily: languageProvider.fontFamily),
                       overflow: TextOverflow.ellipsis)),
                   if (!summary.isActive) ...[
                     const SizedBox(width: 6),
@@ -718,33 +762,27 @@ class _SupplierRow extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                       decoration: BoxDecoration(color: Colors.grey[200],
                           borderRadius: BorderRadius.circular(4)),
-                      child: Text('INACTIVE', style: TextStyle(fontSize: 9,
-                          fontWeight: FontWeight.bold, color: Colors.grey[500])),
+                      child: Text(languageProvider.isEnglish ? 'INACTIVE' : 'غیر فعال',
+                          style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold,
+                              color: Colors.grey[500], fontFamily: languageProvider.fontFamily)),
                     ),
                   ],
                 ]),
               ])),
             ])),
-
-            // Payable
             Expanded(flex: 3, child: Text('Rs ${cf.format(summary.totalCredit)}',
                 textAlign: TextAlign.right,
                 style: const TextStyle(fontSize: 12, color: Color(0xFFEF4444),
                     fontWeight: FontWeight.w500))),
-
-            // Paid
             Expanded(flex: 3, child: Text('Rs ${cf.format(summary.totalDebit)}',
                 textAlign: TextAlign.right,
                 style: const TextStyle(fontSize: 12, color: Color(0xFF10B981),
                     fontWeight: FontWeight.w500))),
-
-            // Balance
             Expanded(flex: 3, child: Text(
                 '${bal < 0 ? '-' : ''}Rs ${cf.format(bal.abs())}',
                 textAlign: TextAlign.right,
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: balColor))),
-
-            // Status badge
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: balColor,
+                    fontFamily: languageProvider.fontFamily))),
             Expanded(flex: 2, child: Center(child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
               decoration: BoxDecoration(
@@ -753,11 +791,10 @@ class _SupplierRow extends StatelessWidget {
                   border: Border.all(color: statusColor.withOpacity(0.3))),
               child: Text(statusLabel,
                   style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold,
-                      color: statusColor, letterSpacing: 0.3),
+                      color: statusColor, letterSpacing: 0.3,
+                      fontFamily: languageProvider.fontFamily),
                   overflow: TextOverflow.ellipsis),
             ))),
-
-            // Chevron
             SizedBox(width: 36, child: Icon(Icons.chevron_right,
                 size: 18, color: Colors.grey[300])),
           ]),
@@ -772,6 +809,7 @@ class _SupplierRow extends StatelessWidget {
 class _SupplierActionSheet extends StatelessWidget {
   final SupplierBalanceSummary summary;
   final NumberFormat cf;
+  final LanguageProvider languageProvider;
   final VoidCallback onViewLedger;
   final VoidCallback onViewPayments;
   final VoidCallback onPayNow;
@@ -779,7 +817,7 @@ class _SupplierActionSheet extends StatelessWidget {
   const _SupplierActionSheet({
     required this.summary, required this.cf,
     required this.onViewLedger, required this.onViewPayments,
-    required this.onPayNow,
+    required this.onPayNow, required this.languageProvider,
   });
 
   @override
@@ -794,6 +832,12 @@ class _SupplierActionSheet extends StatelessWidget {
     final paymentPercent = summary.totalCredit > 0
         ? (summary.totalDebit / summary.totalCredit).clamp(0.0, 1.0) : 0.0;
 
+    final owingLabel = isOutstanding
+        ? (languageProvider.isEnglish ? 'OWING' : 'بقایا')
+        : isOverpaid
+        ? (languageProvider.isEnglish ? 'CREDIT' : 'کریڈٹ')
+        : (languageProvider.isEnglish ? 'CLEAR' : 'صاف');
+
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -801,12 +845,10 @@ class _SupplierActionSheet extends StatelessWidget {
       ),
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        // Handle
         Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 20),
             decoration: BoxDecoration(color: const Color(0xFFE5E5EA),
                 borderRadius: BorderRadius.circular(2))),
 
-        // Supplier header
         Row(children: [
           Container(
             width: 52, height: 52,
@@ -820,11 +862,11 @@ class _SupplierActionSheet extends StatelessWidget {
           const SizedBox(width: 14),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(summary.name,
-                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold,
-                    color: Color(0xFF1C1C1E))),
-            Text(summary.contact, style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold,
+                    color: const Color(0xFF1C1C1E), fontFamily: languageProvider.fontFamily)),
+            Text(summary.contact, style: TextStyle(fontSize: 13, color: Colors.grey[500],
+                fontFamily: languageProvider.fontFamily)),
           ])),
-          // Balance chip
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
@@ -832,23 +874,24 @@ class _SupplierActionSheet extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: balColor.withOpacity(0.3))),
             child: Column(children: [
-              Text(isOutstanding ? 'OWING' : isOverpaid ? 'CREDIT' : 'CLEAR',
+              Text(owingLabel,
                   style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: balColor,
-                      letterSpacing: 0.5)),
+                      letterSpacing: 0.5, fontFamily: languageProvider.fontFamily)),
               const SizedBox(height: 2),
               Text('Rs ${cf.format(bal.abs())}',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: balColor)),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: balColor,
+                      fontFamily: languageProvider.fontFamily)),
             ]),
           ),
         ]),
 
         const SizedBox(height: 20),
 
-        // Payment progress bar
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('Payment Progress',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[600])),
+            Text(languageProvider.isEnglish ? 'Payment Progress' : 'ادائیگی کی پیشرفت',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[600],
+                    fontFamily: languageProvider.fontFamily)),
             Text('${(paymentPercent * 100).toStringAsFixed(1)}%',
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold,
                     color: Color(0xFF6366F1))),
@@ -866,55 +909,75 @@ class _SupplierActionSheet extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('Paid: Rs ${cf.format(summary.totalDebit)}',
-                style: TextStyle(fontSize: 11, color: Colors.grey[500])),
-            Text('Total: Rs ${cf.format(summary.totalCredit)}',
-                style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+            Text('${languageProvider.isEnglish ? 'Paid' : 'ادا شدہ'}: Rs ${cf.format(summary.totalDebit)}',
+                style: TextStyle(fontSize: 11, color: Colors.grey[500], fontFamily: languageProvider.fontFamily)),
+            Text('${languageProvider.isEnglish ? 'Total' : 'کل'}: Rs ${cf.format(summary.totalCredit)}',
+                style: TextStyle(fontSize: 11, color: Colors.grey[500], fontFamily: languageProvider.fontFamily)),
           ]),
         ]),
 
         const SizedBox(height: 20),
 
-        // 3-column stats
         Row(children: [
-          _sheetStat('Total Payable', 'Rs ${cf.format(summary.totalCredit)}',
-              const Color(0xFFEF4444), Icons.arrow_upward_rounded),
+          _sheetStat(
+            languageProvider.isEnglish ? 'Total Payable' : 'کل قابل ادائیگی',
+            'Rs ${cf.format(summary.totalCredit)}',
+            const Color(0xFFEF4444), Icons.arrow_upward_rounded,
+            languageProvider,
+          ),
           const SizedBox(width: 10),
-          _sheetStat('Total Paid', 'Rs ${cf.format(summary.totalDebit)}',
-              const Color(0xFF10B981), Icons.arrow_downward_rounded),
+          _sheetStat(
+            languageProvider.isEnglish ? 'Total Paid' : 'کل ادا شدہ',
+            'Rs ${cf.format(summary.totalDebit)}',
+            const Color(0xFF10B981), Icons.arrow_downward_rounded,
+            languageProvider,
+          ),
           const SizedBox(width: 10),
-          _sheetStat('Net Balance', 'Rs ${cf.format(bal.abs())}',
-              balColor, Icons.account_balance_outlined),
+          _sheetStat(
+            languageProvider.isEnglish ? 'Net Balance' : 'خالص بیلنس',
+            'Rs ${cf.format(bal.abs())}',
+            balColor, Icons.account_balance_outlined,
+            languageProvider,
+          ),
         ]),
 
         const SizedBox(height: 20),
         const Divider(color: Color(0xFFF0F0F5)),
         const SizedBox(height: 12),
 
-        // Action buttons
         if (isOutstanding)
           _actionBtn(
-            icon: Icons.payments_outlined, label: 'Pay Now',
-            sub: 'Record payment to ${summary.name}',
-            color: const Color(0xFF10B981), onTap: onPayNow,
+            icon: Icons.payments_outlined,
+            label: languageProvider.isEnglish ? 'Pay Now' : 'ابھی ادائیگی کریں',
+            sub: languageProvider.isEnglish
+                ? 'Record payment to ${summary.name}'
+                : '${summary.name} کو ادائیگی ریکارڈ کریں',
+            color: const Color(0xFF10B981),
+            onTap: onPayNow,
+            lp: languageProvider,   // ← was: languageProvider: languageProvider
           ),
         const SizedBox(height: 10),
         Row(children: [
           Expanded(child: _smallActionBtn(
               icon: Icons.account_balance_wallet_outlined,
-              label: 'View Ledger', color: const Color(0xFF6366F1),
-              onTap: onViewLedger)),
+              label: languageProvider.isEnglish ? 'View Ledger' : 'لیجر دیکھیں',
+              color: const Color(0xFF6366F1),
+              onTap: onViewLedger,
+              lp: languageProvider)),   // ← was: languageProvider: languageProvider
           const SizedBox(width: 10),
           Expanded(child: _smallActionBtn(
               icon: Icons.history_outlined,
-              label: 'Payments', color: const Color(0xFF3B82F6),
-              onTap: onViewPayments)),
+              label: languageProvider.isEnglish ? 'Payments' : 'ادائیگیاں',
+              color: const Color(0xFF3B82F6),
+              onTap: onViewPayments,
+              lp: languageProvider)),   // ← was: languageProvider: languageProvider
         ]),
       ]),
     );
   }
 
-  Widget _sheetStat(String label, String value, Color color, IconData icon) {
+  Widget _sheetStat(String label, String value, Color color, IconData icon,
+      LanguageProvider lp) {
     return Expanded(child: Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -926,18 +989,21 @@ class _SupplierActionSheet extends StatelessWidget {
           Icon(icon, size: 12, color: color),
           const SizedBox(width: 4),
           Expanded(child: Text(label, style: TextStyle(fontSize: 10,
-              color: color.withOpacity(0.8), fontWeight: FontWeight.w600),
+              color: color.withOpacity(0.8), fontWeight: FontWeight.w600,
+              fontFamily: lp.fontFamily),
               overflow: TextOverflow.ellipsis)),
         ]),
         const SizedBox(height: 6),
-        Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color),
+        Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color,
+            fontFamily: lp.fontFamily),
             overflow: TextOverflow.ellipsis),
       ]),
     ));
   }
 
   Widget _actionBtn({required IconData icon, required String label,
-    required String sub, required Color color, required VoidCallback onTap}) {
+    required String sub, required Color color, required VoidCallback onTap,
+    required LanguageProvider lp}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -953,7 +1019,8 @@ class _SupplierActionSheet extends StatelessWidget {
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(label, style: const TextStyle(color: Colors.white, fontSize: 14,
                 fontWeight: FontWeight.bold)),
-            Text(sub, style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 11)),
+            Text(sub, style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 11,
+                fontFamily: lp.fontFamily)),
           ])),
           const Icon(Icons.arrow_forward_ios, color: Colors.white70, size: 14),
         ]),
@@ -962,7 +1029,7 @@ class _SupplierActionSheet extends StatelessWidget {
   }
 
   Widget _smallActionBtn({required IconData icon, required String label,
-    required Color color, required VoidCallback onTap}) {
+    required Color color, required VoidCallback onTap, required LanguageProvider lp}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -974,7 +1041,8 @@ class _SupplierActionSheet extends StatelessWidget {
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(icon, size: 16, color: color),
           const SizedBox(width: 7),
-          Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color)),
+          Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color,
+              fontFamily: lp.fontFamily)),
         ]),
       ),
     );

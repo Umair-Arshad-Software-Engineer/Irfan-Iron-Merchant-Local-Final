@@ -7,6 +7,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 import '../../models/customer.dart';
+import '../providers/lanprovider.dart';
 
 class CustomerPdfService {
   static const _primaryColor = PdfColor.fromInt(0xFF10B981);
@@ -24,6 +25,7 @@ class CustomerPdfService {
     required double totalPaid,
     required String filterMethod,
     required DateTimeRange? dateRange,
+    required LanguageProvider languageProvider,
   }) async {
     final pdf = pw.Document();
 
@@ -31,28 +33,28 @@ class CustomerPdfService {
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(32),
-        header: (context) => _buildHeader(customer),
-        footer: (context) => _buildFooter(),
+        header: (context) => _buildHeader(customer, languageProvider),
+        footer: (context) => _buildFooter(languageProvider),
         build: (context) => [
-          _buildTitle(),
-          _buildSummary(totalPaid, payments.length, filterMethod, dateRange),
+          _buildTitle(languageProvider),
+          _buildSummary(totalPaid, payments.length, filterMethod, dateRange, languageProvider),
           pw.SizedBox(height: 20),
-          _buildTable(payments),
+          _buildTable(payments, languageProvider),
         ],
       ),
     );
 
-    // Save PDF to temporary directory
     final output = await getTemporaryDirectory();
     final fileName =
         '${customer.name.replaceAll(' ', '_')}_payments_${DateTime.now().millisecondsSinceEpoch}.pdf';
     final file = File('${output.path}/$fileName');
     await file.writeAsBytes(await pdf.save());
 
-    // Share the PDF
     await Share.shareXFiles(
       [XFile(file.path)],
-      text: 'Payment Report for ${customer.name}',
+      text: languageProvider.isEnglish
+          ? 'Payment Report for ${customer.name}'
+          : '${customer.name} کے لیے ادائیگی رپورٹ',
     );
   }
 
@@ -63,6 +65,7 @@ class CustomerPdfService {
     required double totalPaid,
     required String filterMethod,
     required DateTimeRange? dateRange,
+    required LanguageProvider languageProvider,
   }) {
     showModalBottomSheet(
       context: context,
@@ -83,11 +86,11 @@ class CustomerPdfService {
               ),
             ),
             const SizedBox(height: 16),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Text(
-                'Export Payment Report',
-                style: TextStyle(
+                languageProvider.isEnglish ? 'Export Payment Report' : 'ادائیگی رپورٹ ایکسپورٹ کریں',
+                style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
@@ -103,9 +106,11 @@ class CustomerPdfService {
                 ),
                 child: const Icon(Icons.picture_as_pdf, color: Color(0xFF10B981)),
               ),
-              title: const Text('Generate PDF'),
+              title: Text(languageProvider.isEnglish ? 'Generate PDF' : 'PDF بنائیں'),
               subtitle: Text(
-                '${payments.length} payments • Rs ${_cf.format(totalPaid)}',
+                languageProvider.isEnglish
+                    ? '${payments.length} payments • Rs ${_cf.format(totalPaid)}'
+                    : '${payments.length} ادائیگیاں • Rs ${_cf.format(totalPaid)}',
                 style: const TextStyle(fontSize: 12),
               ),
               onTap: () {
@@ -116,6 +121,7 @@ class CustomerPdfService {
                   totalPaid: totalPaid,
                   filterMethod: filterMethod,
                   dateRange: dateRange,
+                  languageProvider: languageProvider,
                 );
               },
             ),
@@ -126,7 +132,7 @@ class CustomerPdfService {
     );
   }
 
-  static pw.Widget _buildHeader(Customer customer) {
+  static pw.Widget _buildHeader(Customer customer, LanguageProvider languageProvider) {
     return pw.Container(
       margin: const pw.EdgeInsets.only(bottom: 20),
       child: pw.Row(
@@ -136,7 +142,7 @@ class CustomerPdfService {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text(
-                'Payment Report',
+                languageProvider.isEnglish ? 'Payment Report' : 'ادائیگی رپورٹ',
                 style: pw.TextStyle(
                   fontSize: 24,
                   fontWeight: pw.FontWeight.bold,
@@ -159,7 +165,9 @@ class CustomerPdfService {
               borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
             ),
             child: pw.Text(
-              'Generated: ${_df.format(DateTime.now())}',
+              languageProvider.isEnglish
+                  ? 'Generated: ${_df.format(DateTime.now())}'
+                  : 'تیار کردہ: ${_df.format(DateTime.now())}',
               style: const pw.TextStyle(
                 fontSize: 10,
                 color: PdfColors.white,
@@ -171,14 +179,14 @@ class CustomerPdfService {
     );
   }
 
-  static pw.Widget _buildFooter() {
+  static pw.Widget _buildFooter(LanguageProvider languageProvider) {
     return pw.Container(
       margin: const pw.EdgeInsets.only(top: 20),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.center,
         children: [
           pw.Text(
-            'Page ',
+            languageProvider.isEnglish ? 'Page ' : 'صفحہ ',
             style: pw.TextStyle(
               fontSize: 10,
               color: _lightTextColor,
@@ -192,7 +200,7 @@ class CustomerPdfService {
             ),
           ),
           pw.Text(
-            ' of {{pages}}',
+            languageProvider.isEnglish ? ' of {{pages}}' : ' / {{pages}}',
             style: pw.TextStyle(
               fontSize: 10,
               color: _lightTextColor,
@@ -203,12 +211,12 @@ class CustomerPdfService {
     );
   }
 
-  static pw.Widget _buildTitle() {
+  static pw.Widget _buildTitle(LanguageProvider languageProvider) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Text(
-          'Payment History',
+          languageProvider.isEnglish ? 'Payment History' : 'ادائیگی کی تاریخ',
           style: pw.TextStyle(
             fontSize: 18,
             fontWeight: pw.FontWeight.bold,
@@ -227,7 +235,10 @@ class CustomerPdfService {
       int count,
       String filterMethod,
       DateTimeRange? dateRange,
+      LanguageProvider languageProvider,
       ) {
+    final filterLabel = _getMethodLabel(filterMethod, languageProvider);
+
     return pw.Container(
       padding: const pw.EdgeInsets.all(16),
       decoration: pw.BoxDecoration(
@@ -241,16 +252,27 @@ class CustomerPdfService {
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              _buildSummaryItem('Total Payments', count.toString()),
-              _buildSummaryItem('Total Received', 'Rs ${_cf.format(totalPaid)}'),
-              _buildSummaryItem('Filter', filterMethod.toUpperCase()),
+              _buildSummaryItem(
+                languageProvider.isEnglish ? 'Total Payments' : 'کل ادائیگیاں',
+                count.toString(),
+                languageProvider,
+              ),
+              _buildSummaryItem(
+                languageProvider.isEnglish ? 'Total Received' : 'کل وصول شدہ',
+                'Rs ${_cf.format(totalPaid)}',
+                languageProvider,
+              ),
+              _buildSummaryItem(
+                languageProvider.isEnglish ? 'Filter' : 'فلٹر',
+                filterLabel.toUpperCase(),
+                languageProvider,
+              ),
             ],
           ),
           if (dateRange != null) ...[
             pw.SizedBox(height: 12),
             pw.Row(
               children: [
-                // Using text with calendar emoji instead of icon
                 pw.Text(
                   '📅 ',
                   style: pw.TextStyle(
@@ -273,7 +295,31 @@ class CustomerPdfService {
     );
   }
 
-  static pw.Widget _buildSummaryItem(String label, String value) {
+  static String _getMethodLabel(String method, LanguageProvider languageProvider) {
+    if (languageProvider.isEnglish) {
+      const labels = {
+        'all': 'All',
+        'cash': 'Cash',
+        'bank': 'Bank Transfer',
+        'cheque': 'Cheque',
+        'card': 'Card',
+        'online': 'Online',
+      };
+      return labels[method.toLowerCase()] ?? method;
+    } else {
+      const labels = {
+        'all': 'سب',
+        'cash': 'نقد',
+        'bank': 'بینک ٹرانسفر',
+        'cheque': 'چیک',
+        'card': 'کارڈ',
+        'online': 'آن لائن',
+      };
+      return labels[method.toLowerCase()] ?? method;
+    }
+  }
+
+  static pw.Widget _buildSummaryItem(String label, String value, LanguageProvider languageProvider) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -296,21 +342,19 @@ class CustomerPdfService {
     );
   }
 
-  static pw.Widget _buildTable(List<Map<String, dynamic>> payments) {
+  static pw.Widget _buildTable(List<Map<String, dynamic>> payments, LanguageProvider languageProvider) {
     return pw.Table(
       border: pw.TableBorder.all(color: _lightTextColor.withOpacity(0.3)),
       children: [
-        // Header row
         pw.TableRow(
           decoration: pw.BoxDecoration(color: _primaryColor),
           children: [
-            _buildTableCell('Date', isHeader: true),
-            _buildTableCell('Method', isHeader: true),
-            _buildTableCell('Reference', isHeader: true),
-            _buildTableCell('Amount', isHeader: true, align: pw.Alignment.centerRight),
+            _buildTableCell(languageProvider.isEnglish ? 'Date' : 'تاریخ', isHeader: true),
+            _buildTableCell(languageProvider.isEnglish ? 'Method' : 'طریقہ', isHeader: true),
+            _buildTableCell(languageProvider.isEnglish ? 'Reference' : 'حوالہ', isHeader: true),
+            _buildTableCell(languageProvider.isEnglish ? 'Amount' : 'رقم', isHeader: true, align: pw.Alignment.centerRight),
           ],
         ),
-        // Data rows
         ...payments.map((payment) {
           final date = payment['payment_date'] != null
               ? _df.format(DateTime.parse(payment['payment_date']))
@@ -318,15 +362,25 @@ class CustomerPdfService {
               ? _df.format(DateTime.parse(payment['created_at']))
               : '—';
 
-          final method = payment['payment_method'] ?? 'Cash';
-          final refNum = payment['reference_number'] ?? payment['reference'] ?? '—';
-          // In _buildTable method:
-          final amount = double.tryParse(payment['credit']?.toString() ?? '0') ?? 0;
+          String method = payment['payment_method']?.toString() ?? 'cash';
+          final methodLabel = _getMethodLabel(method, languageProvider);
+
+          final refNum = payment['reference_number']?.toString() ??
+              payment['reference']?.toString() ??
+              '—';
+
+          double amount = 0;
+          if (payment['credit'] != null) {
+            amount = double.tryParse(payment['credit'].toString()) ?? 0;
+          } else if (payment['amount'] != null) {
+            amount = double.tryParse(payment['amount'].toString()) ?? 0;
+          }
+
           return pw.TableRow(
             children: [
               _buildTableCell(date),
-              _buildTableCell(method.toString()),
-              _buildTableCell(refNum.toString()),
+              _buildTableCell(methodLabel),
+              _buildTableCell(refNum),
               _buildTableCell(
                 'Rs ${_cf.format(amount)}',
                 align: pw.Alignment.centerRight,

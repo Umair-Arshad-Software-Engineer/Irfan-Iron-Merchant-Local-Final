@@ -1,4 +1,5 @@
 // backend/src/controllers/purchaseReceiptController.js
+
 const { Op } = require('sequelize');
 const {
   PurchaseReceipt,
@@ -6,6 +7,7 @@ const {
   PurchaseOrder,
   PurchaseOrderItem,
   Product,
+  SupplierLedger,  // ← Add this import
   sequelize,
 } = require('../models');
 const {
@@ -293,7 +295,7 @@ exports.getReceiptsByPurchaseOrder = async (req, res) => {
   }
 };
 
-// ── Delete purchase receipt — reverses stock, PO qty, AND ledger ──────────────
+// ── Delete purchase receipt — DELETE ledger entry instead of reversing ────────
 exports.deletePurchaseReceipt = async (req, res) => {
   const transaction = await sequelize.transaction();
 
@@ -301,11 +303,27 @@ exports.deletePurchaseReceipt = async (req, res) => {
     const { id } = req.params;
 
     const receipt = await PurchaseReceipt.findByPk(id, {
-      include: [{ model: PurchaseReceiptItem, as: 'items' }],
+      include: [
+        { model: PurchaseReceiptItem, as: 'items' },
+        { model: PurchaseOrder, as: 'purchaseOrder' }
+      ],
     });
 
     if (!receipt) {
       return res.status(404).json({ success: false, message: 'Receipt not found' });
+    }
+
+    // ── Calculate receipt total before deletion ───────────────────────────────
+    let receiptTotal = 0;
+    for (const receiptItem of receipt.items) {
+      if (receiptItem.purchase_order_item_id != null) {
+        const poItem = await PurchaseOrderItem.findByPk(receiptItem.purchase_order_item_id);
+        if (poItem) {
+          receiptTotal += receiptItem.quantity_received * parseFloat(poItem.unit_cost);
+        }
+      } else {
+        receiptTotal += receiptItem.quantity_received * parseFloat(receiptItem.unit_cost);
+      }
     }
 
     // ── Reverse stock & PO item quantities ───────────────────────────────────
@@ -355,15 +373,33 @@ exports.deletePurchaseReceipt = async (req, res) => {
         { transaction }
       );
 
-      // ── REVERSE SUPPLIER LEDGER ENTRY ───────────────────────────────────────
-      await reverseLedgerEntry({
-        supplier_id:    purchaseOrder.supplier_id,
-        reference_type: 'purchase_receipt',
-        reference_id:   receipt.id,
-        description:    `Reversal of receipt ${receipt.receipt_number}`,
-        created_by:     req.user?.id,
+      // ── DELETE SUPPLIER LEDGER ENTRY instead of reversing ───────────────────
+      // Find and delete the ledger entry for this receipt
+      const ledgerEntry = await SupplierLedger.findOne({
+        where: {
+          reference_type: 'purchase_receipt',
+          reference_id: receipt.id,
+        },
         transaction,
       });
+
+      if (ledgerEntry) {
+        // Delete the ledger entry
+        await ledgerEntry.destroy({ transaction });
+        
+        // Recalculate all remaining ledger balances for this supplier
+        const remainingEntries = await SupplierLedger.findAll({
+          where: { supplier_id: purchaseOrder.supplier_id },
+          order: [['transaction_date', 'ASC'], ['id', 'ASC']],
+          transaction,
+        });
+
+        let runningBalance = 0;
+        for (const remainingEntry of remainingEntries) {
+          runningBalance += parseFloat(remainingEntry.credit) - parseFloat(remainingEntry.debit);
+          await remainingEntry.update({ balance: runningBalance.toFixed(2) }, { transaction });
+        }
+      }
     }
 
     // ── Delete receipt items & receipt ────────────────────────────────────────
@@ -372,7 +408,7 @@ exports.deletePurchaseReceipt = async (req, res) => {
 
     await transaction.commit();
 
-    res.json({ success: true, message: 'Receipt deleted and stock reversed successfully' });
+    res.json({ success: true, message: 'Receipt deleted, stock reversed, and ledger entry removed successfully' });
   } catch (error) {
     await transaction.rollback();
     console.error('Delete purchase receipt error:', error);

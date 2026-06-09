@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/product_model.dart';
 import '../../providers/product_provider.dart';
+import '../providers/lanprovider.dart';
 
 class BomComponentSelector extends StatefulWidget {
   final Function(BomComponent) onComponentAdded;
@@ -30,7 +31,7 @@ class _BomComponentSelectorState extends State<BomComponentSelector> {
   bool _isLoading = false;
   String? _searchError;
   bool _isSearching = false;
-  bool _isNegativeQuantity = false; // NEW: Track if this is a byproduct
+  bool _isNegativeQuantity = false;
 
   @override
   void dispose() {
@@ -62,7 +63,6 @@ class _BomComponentSelectorState extends State<BomComponentSelector> {
 
       if (result['success']) {
         final products = result['data'] as List<ProductModel>;
-        // Filter out products that are already added or the parent product itself
         setState(() {
           _searchResults = products.where((p) =>
           p.id != widget.excludeProductId &&
@@ -71,9 +71,12 @@ class _BomComponentSelectorState extends State<BomComponentSelector> {
           ).toList();
         });
 
+        final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
         if (_searchResults.isEmpty && query.isNotEmpty) {
           setState(() {
-            _searchError = 'No products found matching "$query"';
+            _searchError = languageProvider.isEnglish
+                ? 'No products found matching "$query"'
+                : '"$query" سے ملنے والی کوئی پروڈکٹ نہیں ملی';
           });
         }
       } else {
@@ -94,9 +97,13 @@ class _BomComponentSelectorState extends State<BomComponentSelector> {
   }
 
   void _addComponent() {
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+
     if (_selectedProduct == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a product')),
+        SnackBar(content: Text(languageProvider.isEnglish
+            ? 'Please select a product'
+            : 'براہ کرم ایک پروڈکٹ منتخب کریں')),
       );
       return;
     }
@@ -104,20 +111,22 @@ class _BomComponentSelectorState extends State<BomComponentSelector> {
     final quantity = double.tryParse(_quantityController.text);
     if (quantity == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid quantity')),
+        SnackBar(content: Text(languageProvider.isEnglish
+            ? 'Please enter a valid quantity'
+            : 'براہ کرم ایک درست مقدار درج کریں')),
       );
       return;
     }
 
-    // Allow zero? No - zero quantity doesn't make sense
     if (quantity == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Quantity cannot be zero')),
+        SnackBar(content: Text(languageProvider.isEnglish
+            ? 'Quantity cannot be zero'
+            : 'مقدار صفر نہیں ہو سکتی')),
       );
       return;
     }
 
-    // Apply negative sign if checkbox is checked
     final finalQuantity = _isNegativeQuantity ? -quantity.abs() : quantity.abs();
 
     final component = BomComponent(
@@ -133,7 +142,6 @@ class _BomComponentSelectorState extends State<BomComponentSelector> {
 
     widget.onComponentAdded(component);
 
-    // Clear form
     setState(() {
       _selectedProduct = null;
       _quantityController.clear();
@@ -146,357 +154,429 @@ class _BomComponentSelectorState extends State<BomComponentSelector> {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Add Component',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
-            ),
-            const SizedBox(height: 16),
-
-            // Search field
-            TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                labelText: 'Search Product',
-                hintText: 'Type product name or barcode...',
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.search, color: Color(0xFF7C3AED)),
-                suffixIcon: _isLoading
-                    ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: CircularProgressIndicator(strokeWidth: 2),
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        return Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  languageProvider.isEnglish ? 'Add Component' : 'جزو شامل کریں',
+                  style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF2D3142)
                   ),
-                )
-                    : IconButton(
-                  icon: const Icon(Icons.search),
-                  onPressed: _searchProducts,
                 ),
-              ),
-              onSubmitted: (_) => _searchProducts(),
-              onChanged: (value) {
-                if (value.isEmpty) {
-                  setState(() {
-                    _searchResults = [];
-                    _searchError = null;
-                  });
-                }
-              },
-            ),
+                const SizedBox(height: 16),
 
-            // Search results
-            if (_isSearching && _isLoading) ...[
-              const SizedBox(height: 16),
-              const Center(child: CircularProgressIndicator()),
-            ] else if (_searchResults.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              const Text('Select Product:', style: TextStyle(fontWeight: FontWeight.w500)),
-              const SizedBox(height: 8),
-              Container(
-                height: 250,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade300),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: ListView.builder(
-                  itemCount: _searchResults.length,
-                  itemBuilder: (context, index) {
-                    final product = _searchResults[index];
-                    final isSelected = _selectedProduct?.id == product.id;
-
-                    return ListTile(
-                      selected: isSelected,
-                      selectedTileColor: const Color(0xFFEDE9FB),
-                      title: Text(
-                        product.itemName,
-                        style: const TextStyle(fontSize: 14),
+                // Search field
+                TextField(
+                  controller: _searchController,
+                  style: TextStyle(fontFamily: languageProvider.fontFamily),
+                  decoration: InputDecoration(
+                    labelText: languageProvider.isEnglish ? 'Search Product' : 'پروڈکٹ تلاش کریں',
+                    hintText: languageProvider.isEnglish
+                        ? 'Type product name or barcode...'
+                        : 'پروڈکٹ کا نام یا بارکوڈ ٹائپ کریں...',
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.search, color: Color(0xFF7C3AED)),
+                    suffixIcon: _isLoading
+                        ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Cost: ${product.costPrice.toStringAsFixed(2)} PKR / ${product.unit?.symbol ?? 'unit'}',
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                          if (product.barcode != null)
-                            Text(
-                              'Barcode: ${product.barcode}',
-                              style: const TextStyle(fontSize: 11, color: Colors.grey),
-                            ),
-                        ],
-                      ),
-                      trailing: isSelected
-                          ? const Icon(Icons.check_circle, color: Color(0xFF7C3AED))
-                          : null,
-                      onTap: () {
-                        setState(() {
-                          _selectedProduct = product;
-                        });
-                      },
-                    );
+                    )
+                        : IconButton(
+                      icon: const Icon(Icons.search),
+                      onPressed: _searchProducts,
+                    ),
+                  ),
+                  onSubmitted: (_) => _searchProducts(),
+                  onChanged: (value) {
+                    if (value.isEmpty) {
+                      setState(() {
+                        _searchResults = [];
+                        _searchError = null;
+                      });
+                    }
                   },
                 ),
-              ),
-            ],
 
-            if (_searchError != null && _searchResults.isEmpty) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red.shade200),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.error_outline, color: Colors.red),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text(_searchError!, style: const TextStyle(color: Colors.red))),
-                  ],
-                ),
-              ),
-            ],
-
-            if (_selectedProduct != null) ...[
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 8),
-
-              // Selected product info
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEDE9FB),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF7C3AED).withOpacity(0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.check_circle, color: Color(0xFF7C3AED), size: 24),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _selectedProduct!.itemName,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Cost: ${_selectedProduct!.costPrice.toStringAsFixed(2)} PKR / ${_selectedProduct!.unit?.symbol ?? 'unit'}',
-                            style: const TextStyle(fontSize: 13, color: Color(0xFF7C3AED)),
-                          ),
-                          if (_selectedProduct!.hasMultipleLengths && _selectedProduct!.lengthCombinations != null)
-                            Text(
-                              'Has ${_selectedProduct!.lengthCombinations!.length} length variations',
-                              style: const TextStyle(fontSize: 11, color: Colors.grey),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // NEW: Component type selector (Material vs Byproduct)
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _isNegativeQuantity
-                      ? Colors.orange.shade50
-                      : Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: _isNegativeQuantity
-                        ? Colors.orange.shade200
-                        : Colors.green.shade200,
+                // Search results
+                if (_isSearching && _isLoading) ...[
+                  const SizedBox(height: 16),
+                  const Center(child: CircularProgressIndicator()),
+                ] else if (_searchResults.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    languageProvider.isEnglish ? 'Select Product:' : 'پروڈکٹ منتخب کریں:',
+                    style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
-                ),
-                child: Row(
-                  children: [
-                    Radio<bool>(
-                      value: false,
-                      groupValue: _isNegativeQuantity,
-                      onChanged: (value) {
-                        setState(() {
-                          _isNegativeQuantity = false;
-                        });
-                      },
-                      activeColor: Colors.green,
+                  const SizedBox(height: 8),
+                  Container(
+                    height: 250,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '📦 Material (Consumable)',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            'This component is consumed to make the product',
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _isNegativeQuantity
-                      ? Colors.orange.shade50
-                      : Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: _isNegativeQuantity
-                        ? Colors.orange.shade200
-                        : Colors.green.shade200,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Radio<bool>(
-                      value: true,
-                      groupValue: _isNegativeQuantity,
-                      onChanged: (value) {
-                        setState(() {
-                          _isNegativeQuantity = true;
-                        });
-                      },
-                      activeColor: Colors.orange,
-                    ),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '♻️ Byproduct / Wastage',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            'This component is produced or wasted during manufacturing (negative quantity)',
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+                    child: ListView.builder(
+                      itemCount: _searchResults.length,
+                      itemBuilder: (context, index) {
+                        final product = _searchResults[index];
+                        final isSelected = _selectedProduct?.id == product.id;
 
-              const SizedBox(height: 16),
-
-              // Quantity field
-              TextField(
-                controller: _quantityController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                  labelText: _isNegativeQuantity ? 'Quantity (wastage/produced)' : 'Quantity (consumed)',
-                  hintText: _isNegativeQuantity ? 'e.g., 0.06 (wastage)' : 'Enter quantity needed',
-                  border: const OutlineInputBorder(),
-                  prefixIcon: _isNegativeQuantity
-                      ? const Icon(Icons.delete_outline, color: Colors.orange)
-                      : const Icon(Icons.numbers),
-                  helperText: _isNegativeQuantity
-                      ? 'Positive number will be stored as negative (reduces total cost)'
-                      : 'How many units are needed for this BOM?',
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Notes field
-              TextField(
-                controller: _notesController,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'Notes (optional)',
-                  hintText: 'Any special instructions or remarks...',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.note_add),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Cost preview
-              if (_quantityController.text.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: _isNegativeQuantity ? Colors.orange.shade50 : Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: _isNegativeQuantity ? Colors.orange.shade200 : Colors.green.shade200,
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            _isNegativeQuantity ? 'Cost Reduction:' : 'Total Cost:',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            '${(_selectedProduct!.costPrice * (double.tryParse(_quantityController.text) ?? 0)).toStringAsFixed(2)} PKR',
+                        return ListTile(
+                          selected: isSelected,
+                          selectedTileColor: const Color(0xFFEDE9FB),
+                          title: Text(
+                            product.itemName,
                             style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              color: _isNegativeQuantity ? Colors.orange : Colors.green,
+                              fontSize: 14,
+                              fontFamily: languageProvider.fontFamily,
                             ),
                           ),
-                        ],
-                      ),
-                      if (_isNegativeQuantity) ...[
-                        const SizedBox(height: 8),
-                        const Text(
-                          'This will REDUCE the total BOM cost',
-                          style: TextStyle(fontSize: 11, color: Colors.orange),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                languageProvider.isEnglish
+                                    ? 'Cost: ${product.costPrice.toStringAsFixed(2)} PKR / ${product.unit?.symbol ?? 'unit'}'
+                                    : 'قیمت: ${product.costPrice.toStringAsFixed(2)} PKR / ${product.unit?.symbol ?? 'یونٹ'}',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                              if (product.barcode != null)
+                                Text(
+                                  languageProvider.isEnglish
+                                      ? 'Barcode: ${product.barcode}'
+                                      : 'بارکوڈ: ${product.barcode}',
+                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                ),
+                            ],
+                          ),
+                          trailing: isSelected
+                              ? const Icon(Icons.check_circle, color: Color(0xFF7C3AED))
+                              : null,
+                          onTap: () {
+                            setState(() {
+                              _selectedProduct = product;
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+
+                if (_searchError != null && _searchResults.isEmpty) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline, color: Colors.red),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _searchError!,
+                            style: const TextStyle(color: Colors.red),
+                          ),
                         ),
                       ],
-                    ],
+                    ),
                   ),
-                ),
+                ],
 
-              const SizedBox(height: 16),
+                if (_selectedProduct != null) ...[
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 8),
 
-              // Add button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _addComponent,
-                  icon: Icon(_isNegativeQuantity ? Icons.delete_outline : Icons.add),
-                  label: Text(_isNegativeQuantity ? 'Add as Byproduct' : 'Add to BOM'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _isNegativeQuantity ? Colors.orange : const Color(0xFF7C3AED),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  // Selected product info
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEDE9FB),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF7C3AED).withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Color(0xFF7C3AED), size: 24),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _selectedProduct!.itemName,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                languageProvider.isEnglish
+                                    ? 'Cost: ${_selectedProduct!.costPrice.toStringAsFixed(2)} PKR / ${_selectedProduct!.unit?.symbol ?? 'unit'}'
+                                    : 'قیمت: ${_selectedProduct!.costPrice.toStringAsFixed(2)} PKR / ${_selectedProduct!.unit?.symbol ?? 'یونٹ'}',
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFF7C3AED)
+                                ),
+                              ),
+                              if (_selectedProduct!.hasMultipleLengths && _selectedProduct!.lengthCombinations != null)
+                                Text(
+                                  languageProvider.isEnglish
+                                      ? 'Has ${_selectedProduct!.lengthCombinations!.length} length variations'
+                                      : 'لمبائی کی ${_selectedProduct!.lengthCombinations!.length} مختلف حالتیں ہیں',
+                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
+
+                  const SizedBox(height: 16),
+
+                  // Component type selector (Material vs Byproduct)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _isNegativeQuantity
+                          ? Colors.orange.shade50
+                          : Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _isNegativeQuantity
+                            ? Colors.orange.shade200
+                            : Colors.green.shade200,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Radio<bool>(
+                          value: false,
+                          groupValue: _isNegativeQuantity,
+                          onChanged: (value) {
+                            setState(() {
+                              _isNegativeQuantity = false;
+                            });
+                          },
+                          activeColor: Colors.green,
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                languageProvider.isEnglish
+                                    ? '📦 Material (Consumable)'
+                                    : '📦 مواد (خرچ ہونے والا)',
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                languageProvider.isEnglish
+                                    ? 'This component is consumed to make the product'
+                                    : 'یہ جزو پروڈکٹ بنانے کے لیے استعمال ہوتا ہے',
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _isNegativeQuantity
+                          ? Colors.orange.shade50
+                          : Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _isNegativeQuantity
+                            ? Colors.orange.shade200
+                            : Colors.green.shade200,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Radio<bool>(
+                          value: true,
+                          groupValue: _isNegativeQuantity,
+                          onChanged: (value) {
+                            setState(() {
+                              _isNegativeQuantity = true;
+                            });
+                          },
+                          activeColor: Colors.orange,
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                languageProvider.isEnglish
+                                    ? '♻️ Byproduct / Wastage'
+                                    : '♻️ ضمنی پیداوار / ضائع',
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                languageProvider.isEnglish
+                                    ? 'This component is produced or wasted during manufacturing (negative quantity)'
+                                    : 'یہ جزو تیاری کے دوران پیدا یا ضائع ہوتا ہے (منفی مقدار)',
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Quantity field
+                  TextField(
+                    controller: _quantityController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: TextStyle(fontFamily: languageProvider.fontFamily),
+                    decoration: InputDecoration(
+                      labelText: _isNegativeQuantity
+                          ? (languageProvider.isEnglish
+                          ? 'Quantity (wastage/produced)'
+                          : 'مقدار (ضائع / پیدا شدہ)')
+                          : (languageProvider.isEnglish
+                          ? 'Quantity (consumed)'
+                          : 'مقدار (استعمال شدہ)'),
+                      hintText: _isNegativeQuantity
+                          ? (languageProvider.isEnglish
+                          ? 'e.g., 0.06 (wastage)'
+                          : 'مثال: 0.06 (ضائع)')
+                          : (languageProvider.isEnglish
+                          ? 'Enter quantity needed'
+                          : 'مطلوبہ مقدار درج کریں'),
+                      border: const OutlineInputBorder(),
+                      prefixIcon: _isNegativeQuantity
+                          ? const Icon(Icons.delete_outline, color: Colors.orange)
+                          : const Icon(Icons.numbers),
+                      helperText: _isNegativeQuantity
+                          ? (languageProvider.isEnglish
+                          ? 'Positive number will be stored as negative (reduces total cost)'
+                          : 'مثبت نمبر منفی کے طور پر محفوظ ہو گا (کل لاگت کم کرتا ہے)')
+                          : (languageProvider.isEnglish
+                          ? 'How many units are needed for this BOM?'
+                          : 'اس BOM کے لیے کتنے یونٹس درکار ہیں؟'),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Notes field
+                  TextField(
+                    controller: _notesController,
+                    maxLines: 2,
+                    style: TextStyle(fontFamily: languageProvider.fontFamily),
+                    decoration: InputDecoration(
+                      labelText: languageProvider.isEnglish ? 'Notes (optional)' : 'نوٹس (اختیاری)',
+                      hintText: languageProvider.isEnglish
+                          ? 'Any special instructions or remarks...'
+                          : 'کوئی خاص ہدایات یا تبصرے...',
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.note_add),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Cost preview
+                  if (_quantityController.text.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _isNegativeQuantity ? Colors.orange.shade50 : Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: _isNegativeQuantity ? Colors.orange.shade200 : Colors.green.shade200,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                _isNegativeQuantity
+                                    ? (languageProvider.isEnglish ? 'Cost Reduction:' : 'لاگت میں کمی:')
+                                    : (languageProvider.isEnglish ? 'Total Cost:' : 'کل لاگت:'),
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                '${(_selectedProduct!.costPrice * (double.tryParse(_quantityController.text) ?? 0)).toStringAsFixed(2)} PKR',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: _isNegativeQuantity ? Colors.orange : Colors.green,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_isNegativeQuantity) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              languageProvider.isEnglish
+                                  ? 'This will REDUCE the total BOM cost'
+                                  : 'یہ کل BOM لاگت کو کم کرے گا',
+                              style: const TextStyle(fontSize: 11, color: Colors.orange),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                  const SizedBox(height: 16),
+
+                  // Add button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _addComponent,
+                      icon: Icon(_isNegativeQuantity ? Icons.delete_outline : Icons.add),
+                      label: Text(
+                        _isNegativeQuantity
+                            ? (languageProvider.isEnglish ? 'Add as Byproduct' : 'بطور ضمنی پیداوار شامل کریں')
+                            : (languageProvider.isEnglish ? 'Add to BOM' : 'BOM میں شامل کریں'),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isNegativeQuantity ? Colors.orange : const Color(0xFF7C3AED),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

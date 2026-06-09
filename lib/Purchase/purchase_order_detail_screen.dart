@@ -10,6 +10,7 @@ import '../../providers/purchase_receipt_provider.dart';
 import '../../models/purchase_order_model.dart';
 import '../components/loading_indicator.dart';
 import '../components/error_widget.dart';
+import '../providers/lanprovider.dart';
 import '../services/purchase_pdf_generator.dart';
 import 'add_edit_purchase_order_screen.dart';
 import 'create_receipt_screen.dart';
@@ -46,6 +47,7 @@ class _PurchaseOrderDetailScreenState
 
 
   Future<void> _printPurchaseOrder() async {
+    final lp = Provider.of<LanguageProvider>(context, listen: false);
     if (_selectedPurchaseOrder == null) return;
 
     final order = _selectedPurchaseOrder!;
@@ -62,7 +64,7 @@ class _PurchaseOrderDetailScreenState
       final lineTotal = afterDiscount * (1 + taxPercent / 100);
 
       return {
-        'product_name': item.product?.itemName ?? 'Unknown',
+        'product_name': item.product?.itemName ?? (lp.isEnglish ? 'Unknown' : 'نامعلوم'),
         'barcode': item.product?.barcode,
         'quantity': qty,
         'unit_cost': cost,
@@ -82,19 +84,20 @@ class _PurchaseOrderDetailScreenState
       final pdfData = await PurchasePdfGenerator.generatePurchaseOrderPdf(
         order: order,
         items: items,
+        languageProvider: lp,
       );
 
       if (mounted) Navigator.pop(context);
-      _showPrintOptions(pdfData, '${order.poNumber}.pdf');
+      _showPrintOptions(pdfData, '${order.poNumber}.pdf', lp);
     } catch (e) {
       if (mounted) Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error generating PDF: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text('${lp.isEnglish ? 'Error generating PDF' : 'PDF بنانے میں خرابی'}: $e'), backgroundColor: Colors.red),
       );
     }
   }
 
-  void _showPrintOptions(Uint8List pdfData, String filename) {
+  void _showPrintOptions(Uint8List pdfData, String filename, LanguageProvider lp) {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -114,9 +117,9 @@ class _PurchaseOrderDetailScreenState
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            const Text(
-              'Document Options',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Text(
+              lp.isEnglish ? 'Document Options' : 'دستاویز کے اختیارات',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
             Row(
@@ -124,24 +127,26 @@ class _PurchaseOrderDetailScreenState
                 Expanded(
                   child: _buildPrintOption(
                     icon: Icons.print,
-                    label: 'Print',
+                    label: lp.isEnglish ? 'Print' : 'پرنٹ کریں',
                     color: const Color(0xFF7C3AED),
                     onTap: () {
                       Navigator.pop(ctx);
                       PurchasePdfGenerator.printPdf(pdfData);
                     },
+                    lp: lp,
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: _buildPrintOption(
                     icon: Icons.share,
-                    label: 'Share',
+                    label: lp.isEnglish ? 'Share' : 'شیئر کریں',
                     color: const Color(0xFF10B981),
                     onTap: () {
                       Navigator.pop(ctx);
                       PurchasePdfGenerator.sharePdf(pdfData, filename);
                     },
+                    lp: lp,
                   ),
                 ),
               ],
@@ -150,18 +155,19 @@ class _PurchaseOrderDetailScreenState
             Expanded(
               child: _buildPrintOption(
                 icon: Icons.visibility,
-                label: 'Preview',
+                label: lp.isEnglish ? 'Preview' : 'پیش نظارہ',
                 color: const Color(0xFF3B82F6),
                 onTap: () {
                   Navigator.pop(ctx);
                   _showPdfPreview(pdfData);
                 },
+                lp: lp,
               ),
             ),
             const SizedBox(height: 16),
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
+              child: Text(lp.isEnglish ? 'Cancel' : 'منسوخ کریں'),
             ),
           ],
         ),
@@ -170,6 +176,7 @@ class _PurchaseOrderDetailScreenState
   }
 
   Future<void> _printReceipt(PurchaseReceiptModel receipt) async {
+    final lp = Provider.of<LanguageProvider>(context, listen: false);
     if (_selectedPurchaseOrder == null) return;
 
     final order = _selectedPurchaseOrder!;
@@ -184,7 +191,7 @@ class _PurchaseOrderDetailScreenState
       final lineTotal = qty * cost;
 
       return {
-        'product_name': item.product?.itemName ?? 'Unknown',
+        'product_name': item.product?.itemName ?? (lp.isEnglish ? 'Unknown' : 'نامعلوم'),
         'barcode': item.product?.barcode,
         'quantity': qty,
         'unit_cost': cost,
@@ -206,14 +213,15 @@ class _PurchaseOrderDetailScreenState
         receipt: receipt,
         order: order,
         items: items,
+        languageProvider: lp,
       );
 
       if (mounted) Navigator.pop(context);
-      _showPrintOptions(pdfData, '${receipt.receiptNumber}.pdf');
+      _showPrintOptions(pdfData, '${receipt.receiptNumber}.pdf', lp);
     } catch (e) {
       if (mounted) Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error generating PDF: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text('${lp.isEnglish ? 'Error generating PDF' : 'PDF بنانے میں خرابی'}: $e'), backgroundColor: Colors.red),
       );
     }
   }
@@ -223,6 +231,7 @@ class _PurchaseOrderDetailScreenState
     required String label,
     required Color color,
     required VoidCallback onTap,
+    required LanguageProvider lp,
   }) {
     return GestureDetector(
       onTap: onTap,
@@ -243,6 +252,7 @@ class _PurchaseOrderDetailScreenState
                 color: color,
                 fontWeight: FontWeight.w600,
                 fontSize: 14,
+                fontFamily: lp.fontFamily,
               ),
             ),
           ],
@@ -261,138 +271,143 @@ class _PurchaseOrderDetailScreenState
 
   @override
   Widget build(BuildContext context) {
-    final currencyFormat = NumberFormat.currency(symbol: '\$');
+    final currencyFormat = NumberFormat.currency(symbol: 'Rs ');
     final dateFormat = DateFormat('MMM dd, yyyy');
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFC),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF2D3142)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Purchase Order Details',
-          style: TextStyle(
-              color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.print_outlined, color: Color(0xFF7C3AED)),
-            onPressed: _printPurchaseOrder,
-            tooltip: 'Print PO',
-          ),
-          // Edit button — only for draft
-          if (_selectedPurchaseOrder?.status == 'draft')
-            IconButton(
-              icon: const Icon(Icons.edit_outlined, color: Color(0xFF7C3AED)),
-              onPressed: _editOrder,
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        return Scaffold(
+          backgroundColor: const Color(0xFFFAFAFC),
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Color(0xFF2D3142)),
+              onPressed: () => Navigator.pop(context),
             ),
-
-          // 3-dot menu
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: Colors.grey),
-            onSelected: _handleAction,
-            itemBuilder: (context) => [
-              if (_selectedPurchaseOrder?.status == 'ordered' ||
-                  _selectedPurchaseOrder?.status == 'partial')
-                const PopupMenuItem(
-                  value: 'receive',
-                  child: Row(
-                    children: [
-                      Icon(Icons.inventory, size: 18, color: Color(0xFF7C3AED)),
-                      SizedBox(width: 8),
-                      Text('Receive Items'),
-                    ],
-                  ),
-                ),
+            title: Text(
+              languageProvider.isEnglish ? 'Purchase Order Details' : 'پرچیز آرڈر کی تفصیلات',
+              style: const TextStyle(
+                  color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.print_outlined, color: Color(0xFF7C3AED)),
+                onPressed: _printPurchaseOrder,
+                tooltip: languageProvider.isEnglish ? 'Print PO' : 'PO پرنٹ کریں',
+              ),
+              // Edit button — only for draft
               if (_selectedPurchaseOrder?.status == 'draft')
-                const PopupMenuItem(
-                  value: 'place_order',
-                  child: Row(
-                    children: [
-                      Icon(Icons.send, size: 18, color: Colors.blue),
-                      SizedBox(width: 8),
-                      Text('Place Order'),
-                    ],
-                  ),
+                IconButton(
+                  icon: const Icon(Icons.edit_outlined, color: Color(0xFF7C3AED)),
+                  onPressed: _editOrder,
+                  tooltip: languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں',
                 ),
-              if (_selectedPurchaseOrder?.status == 'draft' ||
-                  _selectedPurchaseOrder?.status == 'cancelled')
-                const PopupMenuItem(
-                  value: 'delete',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete_outline, size: 18, color: Colors.red),
-                      SizedBox(width: 8),
-                      Text('Delete Order',
-                          style: TextStyle(color: Colors.red)),
-                    ],
-                  ),
-                ),
-              if (_selectedPurchaseOrder?.status == 'ordered' ||
-                  _selectedPurchaseOrder?.status == 'partial')
-                const PopupMenuItem(
-                  value: 'cancel',
-                  child: Row(
-                    children: [
-                      Icon(Icons.cancel, size: 18, color: Colors.orange),
-                      SizedBox(width: 8),
-                      Text('Cancel Order'),
-                    ],
-                  ),
-                ),
+
+              // 3-dot menu
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, color: Colors.grey),
+                onSelected: _handleAction,
+                itemBuilder: (context) => [
+                  if (_selectedPurchaseOrder?.status == 'ordered' ||
+                      _selectedPurchaseOrder?.status == 'partial')
+                    PopupMenuItem(
+                      value: 'receive',
+                      child: Row(
+                        children: [
+                          const Icon(Icons.inventory, size: 18, color: Color(0xFF7C3AED)),
+                          const SizedBox(width: 8),
+                          Text(languageProvider.isEnglish ? 'Receive Items' : 'آئٹمز وصول کریں'),
+                        ],
+                      ),
+                    ),
+                  if (_selectedPurchaseOrder?.status == 'draft')
+                    PopupMenuItem(
+                      value: 'place_order',
+                      child: Row(
+                        children: [
+                          const Icon(Icons.send, size: 18, color: Colors.blue),
+                          const SizedBox(width: 8),
+                          Text(languageProvider.isEnglish ? 'Place Order' : 'آرڈر دیں'),
+                        ],
+                      ),
+                    ),
+                  if (_selectedPurchaseOrder?.status == 'draft' ||
+                      _selectedPurchaseOrder?.status == 'cancelled')
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                          const SizedBox(width: 8),
+                          Text(languageProvider.isEnglish ? 'Delete Order' : 'آرڈر حذف کریں',
+                              style: const TextStyle(color: Colors.red)),
+                        ],
+                      ),
+                    ),
+                  if (_selectedPurchaseOrder?.status == 'ordered' ||
+                      _selectedPurchaseOrder?.status == 'partial')
+                    PopupMenuItem(
+                      value: 'cancel',
+                      child: Row(
+                        children: [
+                          const Icon(Icons.cancel, size: 18, color: Colors.orange),
+                          const SizedBox(width: 8),
+                          Text(languageProvider.isEnglish ? 'Cancel Order' : 'آرڈر منسوخ کریں'),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
             ],
           ),
-        ],
-      ),
-      body: Consumer<PurchaseOrderProvider>(
-        builder: (context, provider, child) {
-          if (provider.isLoading) {
-            return const LoadingIndicator();
-          }
+          body: Consumer<PurchaseOrderProvider>(
+            builder: (context, provider, child) {
+              if (provider.isLoading) {
+                return const LoadingIndicator();
+              }
 
-          if (provider.errorMessage != null) {
-            return CustomErrorWidget(
-              message: provider.errorMessage!,
-              onRetry: _loadData,
-            );
-          }
+              if (provider.errorMessage != null) {
+                return CustomErrorWidget(
+                  message: provider.errorMessage!,
+                  onRetry: _loadData,
+                );
+              }
 
-          if (provider.selectedPurchaseOrder == null) {
-            return const Center(child: Text('Order not found'));
-          }
+              if (provider.selectedPurchaseOrder == null) {
+                return Center(child: Text(languageProvider.isEnglish ? 'Order not found' : 'آرڈر نہیں ملا'));
+              }
 
-          final order = provider.selectedPurchaseOrder!;
+              final order = provider.selectedPurchaseOrder!;
 
-          return Column(
-            children: [
-              _buildHeader(order, dateFormat, currencyFormat),
-              // ── PO-level over-received banner ──────────────────────────
-              if (order.hasOverReceivedItems) _buildPoOverReceivedBanner(order),
-              _buildTabBar(),
-              Expanded(child: _buildTabContent(order, currencyFormat)),
-            ],
-          );
-        },
-      ),
-      floatingActionButton: Consumer<PurchaseOrderProvider>(
-        builder: (context, provider, _) {
-          final status = provider.selectedPurchaseOrder?.status;
-          if (status != 'ordered' && status != 'partial') {
-            return const SizedBox.shrink();
-          }
-          return FloatingActionButton.extended(
-            onPressed: _navigateToCreateReceipt,
-            label: const Text('Receive Items',
-                style: TextStyle(color: Colors.white)),
-            icon: const Icon(Icons.inventory, color: Colors.white),
-            backgroundColor: const Color(0xFF7C3AED),
-          );
-        },
-      ),
+              return Column(
+                children: [
+                  _buildHeader(order, dateFormat, currencyFormat, languageProvider),
+                  // ── PO-level over-received banner ──────────────────────────
+                  if (order.hasOverReceivedItems) _buildPoOverReceivedBanner(order, languageProvider),
+                  _buildTabBar(languageProvider),
+                  Expanded(child: _buildTabContent(order, currencyFormat, languageProvider)),
+                ],
+              );
+            },
+          ),
+          floatingActionButton: Consumer<PurchaseOrderProvider>(
+            builder: (context, provider, _) {
+              final status = provider.selectedPurchaseOrder?.status;
+              if (status != 'ordered' && status != 'partial') {
+                return const SizedBox.shrink();
+              }
+              return FloatingActionButton.extended(
+                onPressed: _navigateToCreateReceipt,
+                label: Text(languageProvider.isEnglish ? 'Receive Items' : 'آئٹمز وصول کریں',
+                    style: const TextStyle(color: Colors.white)),
+                icon: const Icon(Icons.inventory, color: Colors.white),
+                backgroundColor: const Color(0xFF7C3AED),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
@@ -402,7 +417,7 @@ class _PurchaseOrderDetailScreenState
 
   // ─── PO-level over-received banner ────────────────────────────────────────
 
-  Widget _buildPoOverReceivedBanner(PurchaseOrderModel order) {
+  Widget _buildPoOverReceivedBanner(PurchaseOrderModel order, LanguageProvider lp) {
     final overCount = order.items?.where((i) => i.isOverReceived).length ?? 0;
     return Container(
       width: double.infinity,
@@ -419,8 +434,9 @@ class _PurchaseOrderDetailScreenState
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Over-received: $overCount item${overCount > 1 ? 's exceed' : ' exceeds'} '
-                  'the ordered quantity. Review the Items tab for details.',
+              lp.isEnglish
+                  ? 'Over-received: $overCount item${overCount > 1 ? 's exceed' : ' exceeds'} the ordered quantity. Review the Items tab for details.'
+                  : 'زیادہ موصول: $overCount آئٹم آرڈر کردہ مقدار سے زیادہ ہے۔ تفصیلات کے لیے آئٹمز ٹیب دیکھیں۔',
               style: const TextStyle(
                 fontSize: 12,
                 color: Colors.red,
@@ -436,7 +452,7 @@ class _PurchaseOrderDetailScreenState
   // ─── Header ───────────────────────────────────────────────────────────────
 
   Widget _buildHeader(PurchaseOrderModel order, DateFormat dateFormat,
-      NumberFormat currencyFormat) {
+      NumberFormat currencyFormat, LanguageProvider lp) {
     return Container(
       padding: const EdgeInsets.all(24),
       color: Colors.white,
@@ -490,9 +506,8 @@ class _PurchaseOrderDetailScreenState
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      order.supplier?.name ?? 'Unknown Supplier',
-                      style:
-                      TextStyle(fontSize: 14, color: Colors.grey[600]),
+                      order.supplier?.name ?? (lp.isEnglish ? 'Unknown Supplier' : 'نامعلوم سپلائر'),
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600], fontFamily: lp.fontFamily),
                     ),
                   ],
                 ),
@@ -502,14 +517,14 @@ class _PurchaseOrderDetailScreenState
           const SizedBox(height: 20),
           Row(
             children: [
-              _buildInfoBox('Order Date',
-                  dateFormat.format(order.orderDate), Colors.blue),
+              _buildInfoBox(lp.isEnglish ? 'Order Date' : 'آرڈر کی تاریخ',
+                  dateFormat.format(order.orderDate), Colors.blue, lp),
               const SizedBox(width: 12),
-              _buildInfoBox('Total Amount',
-                  currencyFormat.format(order.totalAmount), Colors.green),
+              _buildInfoBox(lp.isEnglish ? 'Total Amount' : 'کل رقم',
+                  currencyFormat.format(order.totalAmount), Colors.green, lp),
               const SizedBox(width: 12),
-              _buildInfoBox(
-                  'Items', '${order.items?.length ?? 0}', Colors.purple),
+              _buildInfoBox(lp.isEnglish ? 'Items' : 'آئٹمز',
+                  '${order.items?.length ?? 0}', Colors.purple, lp),
             ],
           ),
           if (order.expectedDeliveryDate != null) ...[
@@ -527,7 +542,7 @@ class _PurchaseOrderDetailScreenState
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Expected Delivery: ${dateFormat.format(order.expectedDeliveryDate!)}',
+                      '${lp.isEnglish ? 'Expected Delivery' : 'متوقع ترسیل'}: ${dateFormat.format(order.expectedDeliveryDate!)}',
                       style: const TextStyle(color: Colors.orange),
                     ),
                   ),
@@ -540,7 +555,7 @@ class _PurchaseOrderDetailScreenState
     );
   }
 
-  Widget _buildInfoBox(String label, String value, Color color) {
+  Widget _buildInfoBox(String label, String value, Color color, LanguageProvider lp) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(12),
@@ -554,13 +569,15 @@ class _PurchaseOrderDetailScreenState
                 style: TextStyle(
                     fontSize: 11,
                     color: color.withOpacity(0.7),
-                    fontWeight: FontWeight.w500)),
+                    fontWeight: FontWeight.w500,
+                    fontFamily: lp.fontFamily)),
             const SizedBox(height: 4),
             Text(value,
                 style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
-                    color: color)),
+                    color: color,
+                    fontFamily: lp.fontFamily)),
           ],
         ),
       ),
@@ -569,20 +586,20 @@ class _PurchaseOrderDetailScreenState
 
   // ─── Tab Bar ──────────────────────────────────────────────────────────────
 
-  Widget _buildTabBar() {
+  Widget _buildTabBar(LanguageProvider lp) {
     return Container(
       color: Colors.white,
       child: Row(
         children: [
-          _buildTab('Items', 0),
-          _buildTab('Receipts', 1),
-          _buildTab('Details', 2),
+          _buildTab(lp.isEnglish ? 'Items' : 'آئٹمز', 0, lp),
+          _buildTab(lp.isEnglish ? 'Receipts' : 'رسیدیں', 1, lp),
+          _buildTab(lp.isEnglish ? 'Details' : 'تفصیلات', 2, lp),
         ],
       ),
     );
   }
 
-  Widget _buildTab(String label, int index) {
+  Widget _buildTab(String label, int index, LanguageProvider lp) {
     final isSelected = _selectedTab == index;
     return Expanded(
       child: GestureDetector(
@@ -604,8 +621,8 @@ class _PurchaseOrderDetailScreenState
             textAlign: TextAlign.center,
             style: TextStyle(
               color: isSelected ? const Color(0xFF7C3AED) : Colors.grey,
-              fontWeight:
-              isSelected ? FontWeight.w600 : FontWeight.normal,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              fontFamily: lp.fontFamily,
             ),
           ),
         ),
@@ -616,26 +633,26 @@ class _PurchaseOrderDetailScreenState
   // ─── Tab Content ──────────────────────────────────────────────────────────
 
   Widget _buildTabContent(
-      PurchaseOrderModel order, NumberFormat currencyFormat)
+      PurchaseOrderModel order, NumberFormat currencyFormat, LanguageProvider lp)
   {
     switch (_selectedTab) {
       case 0:
-        return _buildItemsTab(order, currencyFormat);
+        return _buildItemsTab(order, currencyFormat, lp);
       case 1:
-        return _buildReceiptsTab(order);
+        return _buildReceiptsTab(order, lp);
       case 2:
-        return _buildDetailsTab(order, currencyFormat);
+        return _buildDetailsTab(order, currencyFormat, lp);
       default:
-        return _buildItemsTab(order, currencyFormat);
+        return _buildItemsTab(order, currencyFormat, lp);
     }
   }
 
   // ─── Items Tab ────────────────────────────────────────────────────────────
 
   Widget _buildItemsTab(
-      PurchaseOrderModel order, NumberFormat currencyFormat) {
+      PurchaseOrderModel order, NumberFormat currencyFormat, LanguageProvider lp) {
     if (order.items == null || order.items!.isEmpty) {
-      return const Center(child: Text('No items found'));
+      return Center(child: Text(lp.isEnglish ? 'No items found' : 'کوئی آئٹم نہیں ملا'));
     }
 
     return ListView.builder(
@@ -694,7 +711,7 @@ class _PurchaseOrderDetailScreenState
                       children: [
                         Expanded(
                           child: Text(
-                            item.product?.itemName ?? 'Unknown Product',
+                            item.product?.itemName ?? (lp.isEnglish ? 'Unknown Product' : 'نامعلوم پروڈکٹ'),
                             style: const TextStyle(
                                 fontWeight: FontWeight.w600, fontSize: 15),
                           ),
@@ -748,15 +765,16 @@ class _PurchaseOrderDetailScreenState
               Row(
                 children: [
                   Expanded(
-                      child: _buildItemDetail('Unit Cost',
-                          currencyFormat.format(item.unitCost))),
+                      child: _buildItemDetail(lp.isEnglish ? 'Unit Cost' : 'فی یونٹ لاگت',
+                          currencyFormat.format(item.unitCost), lp)),
                   // ── CHANGE THIS ──
                   Expanded(
                       child: _buildItemDetail(
-                          'Qty',
+                          lp.isEnglish ? 'Qty' : 'مقدار',
                           item.product?.unit?.symbol != null
                               ? '× ${item.quantityOrdered} ${item.product!.unit!.symbol}'
-                              : '× ${item.quantityOrdered}')),
+                              : '× ${item.quantityOrdered}',
+                          lp)),
                   // ─────────────────
                 ],
               ),
@@ -765,11 +783,13 @@ class _PurchaseOrderDetailScreenState
                 children: [
                   if (item.discountPercent > 0)
                     Expanded(
-                        child: _buildItemDetail('After Disc',
-                            currencyFormat.format(afterDiscount))),
+                        child: _buildItemDetail(lp.isEnglish ? 'After Disc' : 'چھوٹ کے بعد',
+                            currencyFormat.format(afterDiscount), lp)),
                   Expanded(
                       child: _buildItemDetail(
-                          'Line Total', currencyFormat.format(lineTotal),
+                          lp.isEnglish ? 'Line Total' : 'لائن کل',
+                          currencyFormat.format(lineTotal),
+                          lp,
                           highlight: true)),
                 ],
               ),
@@ -780,11 +800,15 @@ class _PurchaseOrderDetailScreenState
                     if (item.discountPercent > 0)
                       Expanded(
                           child: _buildItemDetail(
-                              'Discount', '${item.discountPercent}%')),
+                              lp.isEnglish ? 'Discount' : 'چھوٹ',
+                              '${item.discountPercent}%',
+                              lp)),
                     if (item.taxPercent > 0)
                       Expanded(
                           child: _buildItemDetail(
-                              'Tax', '${item.taxPercent}%')),
+                              lp.isEnglish ? 'Tax' : 'ٹیکس',
+                              '${item.taxPercent}%',
+                              lp)),
                   ],
                 ),
               ],
@@ -830,9 +854,9 @@ class _PurchaseOrderDetailScreenState
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          'Over-received: ${item.quantityReceived} received '
-                              'vs ${item.quantityOrdered} ordered '
-                              '(+${item.overReceivedQuantity} extra unit${item.overReceivedQuantity > 1 ? 's' : ''})',
+                          lp.isEnglish
+                              ? 'Over-received: ${item.quantityReceived} received vs ${item.quantityOrdered} ordered (+${item.overReceivedQuantity} extra unit${item.overReceivedQuantity > 1 ? 's' : ''})'
+                              : 'زیادہ موصول: ${item.quantityReceived} موصول بمقابلہ ${item.quantityOrdered} آرڈر (+${item.overReceivedQuantity} اضافی یونٹ${item.overReceivedQuantity > 1 ? 'ز' : ''})',
                           style: const TextStyle(
                             fontSize: 11,
                             color: Colors.red,
@@ -848,11 +872,12 @@ class _PurchaseOrderDetailScreenState
               if (item.notes != null && item.notes!.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(
-                  'Note: ${item.notes}',
+                  '${lp.isEnglish ? 'Note' : 'نوٹ'}: ${item.notes}',
                   style: TextStyle(
                       fontSize: 12,
                       color: Colors.grey[600],
-                      fontStyle: FontStyle.italic),
+                      fontStyle: FontStyle.italic,
+                      fontFamily: lp.fontFamily),
                 ),
               ],
             ],
@@ -862,13 +887,13 @@ class _PurchaseOrderDetailScreenState
     );
   }
 
-  Widget _buildItemDetail(String label, String value,
+  Widget _buildItemDetail(String label, String value, LanguageProvider lp,
       {bool highlight = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label,
-            style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+            style: TextStyle(fontSize: 11, color: Colors.grey[500], fontFamily: lp.fontFamily)),
         const SizedBox(height: 2),
         Text(value,
             style: TextStyle(
@@ -876,14 +901,15 @@ class _PurchaseOrderDetailScreenState
                 fontWeight: FontWeight.w600,
                 color: highlight
                     ? const Color(0xFF059669)
-                    : const Color(0xFF2D3142))),
+                    : const Color(0xFF2D3142),
+                fontFamily: lp.fontFamily)),
       ],
     );
   }
 
   // ─── Receipts Tab ─────────────────────────────────────────────────────────
 
-  Widget _buildReceiptsTab(PurchaseOrderModel order) {
+  Widget _buildReceiptsTab(PurchaseOrderModel order, LanguageProvider lp) {
     return Consumer<PurchaseReceiptProvider>(
       builder: (context, provider, child) {
         if (provider.isLoading) {
@@ -899,15 +925,14 @@ class _PurchaseOrderDetailScreenState
               children: [
                 Icon(Icons.receipt_outlined, size: 64, color: Colors.grey[400]),
                 const SizedBox(height: 16),
-                Text('No receipts yet',
-                    style:
-                    TextStyle(fontSize: 16, color: Colors.grey[600])),
+                Text(lp.isEnglish ? 'No receipts yet' : 'ابھی تک کوئی رسید نہیں',
+                    style: TextStyle(fontSize: 16, color: Colors.grey[600], fontFamily: lp.fontFamily)),
                 const SizedBox(height: 8),
                 if (order.status == 'ordered' || order.status == 'partial')
                   ElevatedButton.icon(
                     onPressed: _navigateToCreateReceipt,
                     icon: const Icon(Icons.add),
-                    label: const Text('Create Receipt'),
+                    label: Text(lp.isEnglish ? 'Create Receipt' : 'رسید بنائیں'),
                     style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF7C3AED),
                         foregroundColor: Colors.white),
@@ -922,7 +947,7 @@ class _PurchaseOrderDetailScreenState
           itemCount: receipts.length,
           itemBuilder: (context, index) {
             final receipt = receipts[index];
-            return _buildReceiptCard(receipt, order);
+            return _buildReceiptCard(receipt, order, lp);
           },
         );
       },
@@ -931,7 +956,7 @@ class _PurchaseOrderDetailScreenState
 
   // ── Receipt Card ──────────────────────────────────────────────────────────
 
-  Widget _buildReceiptCard(PurchaseReceiptModel receipt, PurchaseOrderModel order) {
+  Widget _buildReceiptCard(PurchaseReceiptModel receipt, PurchaseOrderModel order, LanguageProvider lp) {
     final dateFormat = DateFormat('MMM dd, yyyy HH:mm');
 
     // Detect over-received items within THIS receipt by cross-referencing
@@ -1004,8 +1029,7 @@ class _PurchaseOrderDetailScreenState
                     ),
                     Text(
                       dateFormat.format(receipt.receiptDate),
-                      style:
-                      TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600], fontFamily: lp.fontFamily),
                     ),
                   ],
                 ),
@@ -1020,9 +1044,8 @@ class _PurchaseOrderDetailScreenState
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  '${receipt.items?.length ?? 0} items',
-                  style:
-                  const TextStyle(fontSize: 12, color: Colors.blue),
+                  '${receipt.items?.length ?? 0} ${lp.isEnglish ? 'items' : 'آئٹمز'}',
+                  style: const TextStyle(fontSize: 12, color: Colors.blue),
                 ),
               ),
 
@@ -1032,7 +1055,7 @@ class _PurchaseOrderDetailScreenState
                 constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 icon: const Icon(Icons.print_outlined,
                     color: Color(0xFF7C3AED), size: 20),
-                tooltip: 'Print Receipt',
+                tooltip: lp.isEnglish ? 'Print Receipt' : 'رسید پرنٹ کریں',
                 onPressed: () => _printReceipt(receipt),
               ),
 
@@ -1045,7 +1068,7 @@ class _PurchaseOrderDetailScreenState
                 const BoxConstraints(minWidth: 32, minHeight: 32),
                 icon: const Icon(Icons.delete_outline,
                     color: Colors.red, size: 20),
-                tooltip: 'Delete Receipt',
+                tooltip: lp.isEnglish ? 'Delete Receipt' : 'رسید حذف کریں',
                 onPressed: () => _confirmDeleteReceipt(receipt),
               ),
             ],
@@ -1069,8 +1092,9 @@ class _PurchaseOrderDetailScreenState
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      '${overReceivedInReceipt.length} item${overReceivedInReceipt.length > 1 ? 's' : ''} in this receipt '
-                          '${overReceivedInReceipt.length > 1 ? 'exceed' : 'exceeds'} the ordered quantity.',
+                      lp.isEnglish
+                          ? '${overReceivedInReceipt.length} item${overReceivedInReceipt.length > 1 ? 's' : ''} in this receipt exceed the ordered quantity.'
+                          : 'اس رسید میں ${overReceivedInReceipt.length} آئٹم آرڈر کردہ مقدار سے زیادہ ہے۔',
                       style: const TextStyle(
                         fontSize: 11,
                         color: Colors.red,
@@ -1092,8 +1116,8 @@ class _PurchaseOrderDetailScreenState
                 const SizedBox(width: 32),
                 Expanded(
                   child: Text(
-                    item.product?.itemName ?? 'Unknown',
-                    style: const TextStyle(fontSize: 12),
+                    item.product?.itemName ?? (lp.isEnglish ? 'Unknown' : 'نامعلوم'),
+                    style: TextStyle(fontSize: 12, fontFamily: lp.fontFamily),
                   ),
                 ),
                 Text(
@@ -1110,8 +1134,8 @@ class _PurchaseOrderDetailScreenState
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      'Batch: ${item.batchNumber}',
-                      style: TextStyle(fontSize: 9, color: Colors.grey[600]),
+                      '${lp.isEnglish ? 'Batch' : 'بیچ'}: ${item.batchNumber}',
+                      style: TextStyle(fontSize: 9, color: Colors.grey[600], fontFamily: lp.fontFamily),
                     ),
                   ),
                 ],
@@ -1122,11 +1146,12 @@ class _PurchaseOrderDetailScreenState
             Padding(
               padding: const EdgeInsets.only(left: 32, top: 4),
               child: Text(
-                '+${receipt.items!.length - 2} more items',
+                '+${receipt.items!.length - 2} ${lp.isEnglish ? 'more items' : 'مزید آئٹمز'}',
                 style: TextStyle(
                     fontSize: 11,
                     color: Colors.grey[500],
-                    fontStyle: FontStyle.italic),
+                    fontStyle: FontStyle.italic,
+                    fontFamily: lp.fontFamily),
               ),
             ),
         ],
@@ -1137,16 +1162,17 @@ class _PurchaseOrderDetailScreenState
   // ── Confirm & delete receipt ──────────────────────────────────────────────
 
   Future<void> _confirmDeleteReceipt(PurchaseReceiptModel receipt) async {
+    final lp = Provider.of<LanguageProvider>(context, listen: false);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         shape:
         RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.red, size: 24),
-            SizedBox(width: 8),
-            Text('Delete Receipt'),
+            const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 24),
+            const SizedBox(width: 8),
+            Text(lp.isEnglish ? 'Delete Receipt' : 'رسید حذف کریں'),
           ],
         ),
         content: Column(
@@ -1154,7 +1180,9 @@ class _PurchaseOrderDetailScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Are you sure you want to delete ${receipt.receiptNumber}?',
+              lp.isEnglish
+                  ? 'Are you sure you want to delete ${receipt.receiptNumber}?'
+                  : 'کیا آپ واقعی ${receipt.receiptNumber} حذف کرنا چاہتے ہیں؟',
               style: const TextStyle(fontSize: 15),
             ),
             const SizedBox(height: 12),
@@ -1165,16 +1193,22 @@ class _PurchaseOrderDetailScreenState
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.red.withOpacity(0.2)),
               ),
-              child: const Column(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('This will:',
-                      style: TextStyle(
+                  Text(lp.isEnglish ? 'This will:' : 'اس سے ہوگا:',
+                      style: const TextStyle(
                           fontWeight: FontWeight.bold, fontSize: 13)),
-                  SizedBox(height: 6),
-                  _BulletPoint('Reverse stock for all received items'),
-                  _BulletPoint('Reset PO item quantities'),
-                  _BulletPoint('Update PO status accordingly'),
+                  const SizedBox(height: 6),
+                  _BulletPoint(lp.isEnglish
+                      ? 'Reverse stock for all received items'
+                      : 'تمام موصول شدہ آئٹمز کا اسٹاک واپس لے گا'),
+                  _BulletPoint(lp.isEnglish
+                      ? 'Reset PO item quantities'
+                      : 'PO آئٹم کی مقدار کو دوبارہ ترتیب دے گا'),
+                  _BulletPoint(lp.isEnglish
+                      ? 'Update PO status accordingly'
+                      : 'PO کی حیثیت کو اسی کے مطابق اپ ڈیٹ کرے گا'),
                 ],
               ),
             ),
@@ -1183,12 +1217,12 @@ class _PurchaseOrderDetailScreenState
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(lp.isEnglish ? 'Cancel' : 'منسوخ کریں'),
           ),
           ElevatedButton.icon(
             onPressed: () => Navigator.pop(context, true),
             icon: const Icon(Icons.delete_outline, size: 16),
-            label: const Text('Delete'),
+            label: Text(lp.isEnglish ? 'Delete' : 'حذف کریں'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
@@ -1208,6 +1242,7 @@ class _PurchaseOrderDetailScreenState
   Future<void> _deleteReceipt(int receiptId) async {
     final receiptProvider =
     Provider.of<PurchaseReceiptProvider>(context, listen: false);
+    final lp = Provider.of<LanguageProvider>(context, listen: false);
 
     final result = await receiptProvider.deletePurchaseReceipt(receiptId);
 
@@ -1215,8 +1250,8 @@ class _PurchaseOrderDetailScreenState
 
     if (result['success']) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Receipt deleted & stock reversed'),
+        SnackBar(
+          content: Text(lp.isEnglish ? 'Receipt deleted & stock reversed' : 'رسید حذف اور اسٹاک واپس لیا گیا'),
           backgroundColor: Colors.green,
         ),
       );
@@ -1224,7 +1259,7 @@ class _PurchaseOrderDetailScreenState
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(result['error'] ?? 'Failed to delete receipt'),
+          content: Text(result['error'] ?? (lp.isEnglish ? 'Failed to delete receipt' : 'رسید حذف کرنے میں ناکام')),
           backgroundColor: Colors.red,
         ),
       );
@@ -1234,7 +1269,7 @@ class _PurchaseOrderDetailScreenState
   // ─── Details Tab ──────────────────────────────────────────────────────────
 
   Widget _buildDetailsTab(
-      PurchaseOrderModel order, NumberFormat currencyFormat)
+      PurchaseOrderModel order, NumberFormat currencyFormat, LanguageProvider lp)
   {
     final dateFormat = DateFormat('MMM dd, yyyy');
 
@@ -1243,61 +1278,61 @@ class _PurchaseOrderDetailScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildInfoSection('Order Information', [
-            _buildInfoRow('PO Number', order.poNumber),
-            _buildInfoRow('Status', order.statusText,
-                color: order.statusColor),
+          _buildInfoSection(lp.isEnglish ? 'Order Information' : 'آرڈر کی معلومات', [
+            _buildInfoRow(lp.isEnglish ? 'PO Number' : 'PO نمبر', order.poNumber, lp: lp),
+            _buildInfoRow(lp.isEnglish ? 'Status' : 'حیثیت', order.statusText,
+                color: order.statusColor, lp: lp),
             _buildInfoRow(
-                'Order Date', dateFormat.format(order.orderDate)),
+                lp.isEnglish ? 'Order Date' : 'آرڈر کی تاریخ', dateFormat.format(order.orderDate), lp: lp),
             _buildInfoRow(
-                'Expected Delivery',
+                lp.isEnglish ? 'Expected Delivery' : 'متوقع ترسیل',
                 order.expectedDeliveryDate != null
                     ? dateFormat.format(order.expectedDeliveryDate!)
-                    : 'Not set'),
+                    : (lp.isEnglish ? 'Not set' : 'مقرر نہیں'), lp: lp),
             _buildInfoRow(
-                'Delivery Date',
+                lp.isEnglish ? 'Delivery Date' : 'ترسیل کی تاریخ',
                 order.deliveryDate != null
                     ? dateFormat.format(order.deliveryDate!)
-                    : 'Not delivered'),
+                    : (lp.isEnglish ? 'Not delivered' : 'موصول نہیں ہوئی'), lp: lp),
           ]),
           const SizedBox(height: 20),
-          _buildInfoSection('Supplier Information', [
-            _buildInfoRow('Name', order.supplier?.name ?? 'N/A'),
-            _buildInfoRow('Contact', order.supplier?.contact ?? 'N/A'),
-            _buildInfoRow('Email', order.supplier?.email ?? 'N/A'),
+          _buildInfoSection(lp.isEnglish ? 'Supplier Information' : 'سپلائر کی معلومات', [
+            _buildInfoRow(lp.isEnglish ? 'Name' : 'نام', order.supplier?.name ?? 'N/A', lp: lp),
+            _buildInfoRow(lp.isEnglish ? 'Contact' : 'رابطہ', order.supplier?.contact ?? 'N/A', lp: lp),
+            _buildInfoRow(lp.isEnglish ? 'Email' : 'ای میل', order.supplier?.email ?? 'N/A', lp: lp),
             _buildInfoRow(
-                'Payment Terms', order.supplier?.paymentTerms ?? 'N/A'),
+                lp.isEnglish ? 'Payment Terms' : 'ادائیگی کی شرائط', order.supplier?.paymentTerms ?? 'N/A', lp: lp),
           ]),
           const SizedBox(height: 20),
-          _buildInfoSection('Financial Summary', [
+          _buildInfoSection(lp.isEnglish ? 'Financial Summary' : 'مالی خلاصہ', [
             _buildInfoRow(
-                'Subtotal', currencyFormat.format(order.subtotal)),
-            _buildInfoRow('Tax', currencyFormat.format(order.taxAmount)),
-            _buildInfoRow('Discount',
+                lp.isEnglish ? 'Subtotal' : 'ذیلی کل', currencyFormat.format(order.subtotal), lp: lp),
+            _buildInfoRow(lp.isEnglish ? 'Tax' : 'ٹیکس', currencyFormat.format(order.taxAmount), lp: lp),
+            _buildInfoRow(lp.isEnglish ? 'Discount' : 'چھوٹ',
                 currencyFormat.format(order.discountAmount),
-                isNegative: true),
+                isNegative: true, lp: lp),
             _buildInfoRow(
-                'Shipping', currencyFormat.format(order.shippingCost)),
+                lp.isEnglish ? 'Shipping' : 'شپنگ', currencyFormat.format(order.shippingCost), lp: lp),
             _buildInfoRow(
-                'Total', currencyFormat.format(order.totalAmount),
-                isBold: true),
+                lp.isEnglish ? 'Total' : 'کل', currencyFormat.format(order.totalAmount),
+                isBold: true, lp: lp),
           ]),
           const SizedBox(height: 20),
-          _buildInfoSection('Additional Information', [
+          _buildInfoSection(lp.isEnglish ? 'Additional Information' : 'اضافی معلومات', [
             if (order.notes != null && order.notes!.isNotEmpty)
-              _buildInfoRow('Notes', order.notes!, isMultiline: true),
+              _buildInfoRow(lp.isEnglish ? 'Notes' : 'نوٹس', order.notes!, isMultiline: true, lp: lp),
             if (order.paymentTerms != null &&
                 order.paymentTerms!.isNotEmpty)
-              _buildInfoRow('Payment Terms', order.paymentTerms!),
+              _buildInfoRow(lp.isEnglish ? 'Payment Terms' : 'ادائیگی کی شرائط', order.paymentTerms!, lp: lp),
             if (order.termsConditions != null &&
                 order.termsConditions!.isNotEmpty)
               _buildInfoRow(
-                  'Terms & Conditions', order.termsConditions!,
-                  isMultiline: true),
+                  lp.isEnglish ? 'Terms & Conditions' : 'شرائط و ضوابط', order.termsConditions!,
+                  isMultiline: true, lp: lp),
             _buildInfoRow(
-                'Created At', dateFormat.format(order.createdAt)),
+                lp.isEnglish ? 'Created At' : 'بنایا گیا', dateFormat.format(order.createdAt), lp: lp),
             _buildInfoRow(
-                'Last Updated', dateFormat.format(order.updatedAt)),
+                lp.isEnglish ? 'Last Updated' : 'آخری ترمیم', dateFormat.format(order.updatedAt), lp: lp),
           ]),
         ],
       ),
@@ -1331,7 +1366,8 @@ class _PurchaseOrderDetailScreenState
       {Color? color,
         bool isBold = false,
         bool isNegative = false,
-        bool isMultiline = false}) {
+        bool isMultiline = false,
+        required LanguageProvider lp}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -1342,7 +1378,7 @@ class _PurchaseOrderDetailScreenState
           SizedBox(
             width: 120,
             child: Text(label,
-                style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+                style: TextStyle(fontSize: 13, color: Colors.grey[600], fontFamily: lp.fontFamily)),
           ),
           Expanded(
             child: Text(
@@ -1352,6 +1388,7 @@ class _PurchaseOrderDetailScreenState
                 fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
                 color: color ??
                     (isNegative ? Colors.red : const Color(0xFF2D3142)),
+                fontFamily: lp.fontFamily,
               ),
             ),
           ),
@@ -1397,17 +1434,22 @@ class _PurchaseOrderDetailScreenState
   }
 
   Future<void> _updateStatus(String status) async {
+    final lp = Provider.of<LanguageProvider>(context, listen: false);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
-            '${status == 'ordered' ? 'Place' : 'Cancel'} Order'),
+            status == 'ordered'
+                ? (lp.isEnglish ? 'Place Order' : 'آرڈر دیں')
+                : (lp.isEnglish ? 'Cancel Order' : 'آرڈر منسوخ کریں')),
         content: Text(
-            'Are you sure you want to ${status == 'ordered' ? 'place' : 'cancel'} this order?'),
+            status == 'ordered'
+                ? (lp.isEnglish ? 'Are you sure you want to place this order?' : 'کیا آپ واقعی یہ آرڈر دینا چاہتے ہیں؟')
+                : (lp.isEnglish ? 'Are you sure you want to cancel this order?' : 'کیا آپ واقعی یہ آرڈر منسوخ کرنا چاہتے ہیں؟')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('No'),
+            child: Text(lp.isEnglish ? 'No' : 'نہیں'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -1417,7 +1459,9 @@ class _PurchaseOrderDetailScreenState
               foregroundColor: Colors.white,
             ),
             child: Text(
-                status == 'cancelled' ? 'Yes, Cancel' : 'Yes, Place Order'),
+                status == 'cancelled'
+                    ? (lp.isEnglish ? 'Yes, Cancel' : 'جی ہاں، منسوخ کریں')
+                    : (lp.isEnglish ? 'Yes, Place Order' : 'جی ہاں، آرڈر دیں')),
           ),
         ],
       ),
@@ -1432,13 +1476,15 @@ class _PurchaseOrderDetailScreenState
       if (result['success'] && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(
-              'Order ${status == 'ordered' ? 'placed' : 'cancelled'} successfully'),
+              status == 'ordered'
+                  ? (lp.isEnglish ? 'Order placed successfully' : 'آرڈر کامیابی سے دیا گیا')
+                  : (lp.isEnglish ? 'Order cancelled successfully' : 'آرڈر کامیابی سے منسوخ کر دیا گیا')),
           backgroundColor: Colors.green,
         ));
         _loadData();
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(result['error'] ?? 'Failed to update status'),
+          content: Text(result['error'] ?? (lp.isEnglish ? 'Failed to update status' : 'حیثیت اپ ڈیٹ کرنے میں ناکام')),
           backgroundColor: Colors.red,
         ));
       }
@@ -1446,22 +1492,25 @@ class _PurchaseOrderDetailScreenState
   }
 
   Future<void> _deleteOrder() async {
+    final lp = Provider.of<LanguageProvider>(context, listen: false);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Order'),
-        content: const Text(
-            'Are you sure you want to delete this order? This action cannot be undone.'),
+        title: Text(lp.isEnglish ? 'Delete Order' : 'آرڈر حذف کریں'),
+        content: Text(
+            lp.isEnglish
+                ? 'Are you sure you want to delete this order? This action cannot be undone.'
+                : 'کیا آپ واقعی یہ آرڈر حذف کرنا چاہتے ہیں؟ یہ عمل کالعدم نہیں کیا جا سکتا۔'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(lp.isEnglish ? 'Cancel' : 'منسوخ کریں'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red, foregroundColor: Colors.white),
-            child: const Text('Delete'),
+            child: Text(lp.isEnglish ? 'Delete' : 'حذف کریں'),
           ),
         ],
       ),
@@ -1474,14 +1523,14 @@ class _PurchaseOrderDetailScreenState
 
       if (result['success'] && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Order deleted successfully'),
+          SnackBar(
+              content: Text(lp.isEnglish ? 'Order deleted successfully' : 'آرڈر کامیابی سے حذف کر دیا گیا'),
               backgroundColor: Colors.green),
         );
         Navigator.pop(context, true);
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(result['error'] ?? 'Failed to delete order'),
+          content: Text(result['error'] ?? (lp.isEnglish ? 'Failed to delete order' : 'آرڈر حذف کرنے میں ناکام')),
           backgroundColor: Colors.red,
         ));
       }

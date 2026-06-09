@@ -118,7 +118,10 @@ class SaleLengthCombination {
 // ─────────────────────────────────────────────
 
 class SaleScreen extends StatefulWidget {
-  const SaleScreen({super.key});
+  final SaleModel? existingSale; // ADD THIS
+
+  const SaleScreen({super.key, this.existingSale}); // MODIFY THIS
+
 
   @override
   State<SaleScreen> createState() => _SaleScreenState();
@@ -164,6 +167,10 @@ class _SaleScreenState extends State<SaleScreen>
   late final TextEditingController _discountAmountCtrl;
   bool _updatingDiscountCtrl = false;
 
+  bool get _isEditMode => widget.existingSale != null;
+  bool _isPrefilling = false;
+
+
   @override
   void initState() {
     super.initState();
@@ -175,7 +182,92 @@ class _SaleScreenState extends State<SaleScreen>
     _discountPercentCtrl = TextEditingController(text: _discountPercent.toStringAsFixed(1));
     _discountAmountCtrl = TextEditingController(text: _discountAmount.toStringAsFixed(2));
 
-    _loadAllProducts();
+    // _loadAllProducts();
+    _loadAllProducts().then((_) {
+      if (_isEditMode) _prefillFromSale(); // ADD THIS
+    });
+  }
+
+
+  Future<void> _prefillFromSale() async {
+    setState(() => _isPrefilling = true);
+    final sale = widget.existingSale!;
+
+    // Sale type / category
+    _selectedSaleType =
+    sale.saleCategory == 'sarya' ? SaleType.sarya : SaleType.filled;
+
+    // POS vs Invoice
+    _isPosMode = sale.saleType == 'pos';
+    if (_isPosMode) {
+      _toggleAnim.reverse();
+    } else {
+      _toggleAnim.forward();
+    }
+
+    // Dates
+    _invoiceDate = sale.saleDate;
+    _dueDate = sale.dueDate;
+
+    // Reference & notes
+    _referenceController.text = sale.reference ?? '';
+    _invoiceNoteController.text = sale.notes ?? '';
+
+    // Discount
+    if (sale.discountType == 'percent') {
+      _usePercentDiscount = true;
+      _discountPercent = sale.discountValue;
+    } else {
+      _usePercentDiscount = false;
+      _discountAmount = sale.discountValue;
+    }
+    _syncDiscountControllers();
+
+    // Customer
+    if (sale.customer != null) {
+      final custProvider =
+      Provider.of<CustomerProvider>(context, listen: false);
+      await custProvider.fetchCustomers();
+      final matches =
+      custProvider.customers.where((c) => c.id == sale.customer!.id).toList();
+      if (matches.isNotEmpty && mounted) {
+        setState(() => _selectedCustomer = matches.first);
+      }
+    }
+
+    // Cart items — build from existing sale items
+    if (sale.items != null) {
+      for (final saleItem in sale.items!) {
+        final matches =
+        _allProducts.where((p) => p.id == saleItem.productId).toList();
+        if (matches.isEmpty) continue;
+        final product = matches.first;
+
+        final cartItem = SaleItem(
+          product: product,
+          quantity: saleItem.quantity > 0 ? saleItem.quantity : 1,
+          unitPrice: saleItem.unitPrice,
+          weight: saleItem.weight ?? 0.0,
+          selectedLengths:
+          List<String>.from(saleItem.selectedLengths ?? []),
+          lengthQuantities: Map<String, double>.fromEntries(
+            (saleItem.lengthQuantities ?? {}).entries.map(
+                  (e) => MapEntry(
+                e.key,
+                e.value is num
+                    ? (e.value as num).toDouble()
+                    : double.tryParse(e.value.toString()) ?? 1.0,
+              ),
+            ),
+          ),
+          lengthsDisplay: saleItem.selectedLengthsDisplay ?? '',
+        );
+
+        if (mounted) setState(() => _cartItems.add(cartItem));
+      }
+    }
+
+    if (mounted) setState(() => _isPrefilling = false);
   }
 
   @override
@@ -764,11 +856,25 @@ class _SaleScreenState extends State<SaleScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F5F9),
-      body: Column(
+      body: _isPrefilling
+          ? const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: Color(0xFF7C3AED)),
+            SizedBox(height: 16),
+            Text('Loading sale data…',
+                style: TextStyle(color: Color(0xFF9CA3AF))),
+          ],
+        ),
+      )
+          : Column(
         children: [
           _buildHeader(),
           Expanded(
-              child: _isPosMode ? _buildPosLayout() : _buildInvoiceLayout()),
+              child: _isPosMode
+                  ? _buildPosLayout()
+                  : _buildInvoiceLayout()),
         ],
       ),
     );
@@ -790,49 +896,126 @@ class _SaleScreenState extends State<SaleScreen>
             onPressed: () => Navigator.pop(context),
           ),
           const SizedBox(width: 15),
-          const Column(
+          Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Sales',
-                  style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E1E2D))),
-              Text('Create & manage sales transactions',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+              Text(
+                _isEditMode
+                    ? 'Edit ${widget.existingSale!.invoiceNumber}'
+                    : 'Sales',
+                style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1E1E2D)),
+              ),
+              Text(
+                _isEditMode
+                    ? 'Editing existing sale'
+                    : 'Create & manage sales transactions',
+                style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
+              ),
             ],
           ),
           const Spacer(),
-          // ── Sale Type Toggle (SARYA / FILLED) ──
-          Container(
-            height: 42,
-            margin: const EdgeInsets.only(right: 16),
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF0F0F8),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                _buildSaleTypeToggle(SaleType.filled),
-                _buildSaleTypeToggle(SaleType.sarya),
-              ],
-            ),
-          ),
-          Container(
-            height: 42,
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
+          // ── Sale Type Toggle — hidden in edit mode ──
+          if (!_isEditMode) ...[
+            Container(
+              height: 42,
+              margin: const EdgeInsets.only(right: 16),
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
                 color: const Color(0xFFF0F0F8),
-                borderRadius: BorderRadius.circular(12)),
-            child: Row(
-              children: [
-                _buildToggleBtn('POS Counter', Icons.point_of_sale, true),
-                _buildToggleBtn('Invoice', Icons.receipt_long, false),
-              ],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  _buildSaleTypeToggle(SaleType.filled),
+                  _buildSaleTypeToggle(SaleType.sarya),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 16),
+            Container(
+              height: 42,
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                  color: const Color(0xFFF0F0F8),
+                  borderRadius: BorderRadius.circular(12)),
+              child: Row(
+                children: [
+                  _buildToggleBtn('POS Counter', Icons.point_of_sale, true),
+                  _buildToggleBtn('Invoice', Icons.receipt_long, false),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+          ] else ...[
+            // Edit mode: show read-only type badges
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: _selectedSaleType == SaleType.sarya
+                    ? const Color(0xFFEFF6FF)
+                    : const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: _selectedSaleType == SaleType.sarya
+                      ? const Color(0xFF3B82F6).withOpacity(0.4)
+                      : const Color(0xFF10B981).withOpacity(0.4),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _selectedSaleType == SaleType.sarya
+                        ? Icons.scale
+                        : Icons.production_quantity_limits,
+                    size: 14,
+                    color: _selectedSaleType == SaleType.sarya
+                        ? const Color(0xFF3B82F6)
+                        : const Color(0xFF10B981),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _selectedSaleType.displayName,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: _selectedSaleType == SaleType.sarya
+                          ? const Color(0xFF3B82F6)
+                          : const Color(0xFF10B981),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF3F0FF),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _isPosMode ? Icons.point_of_sale : Icons.receipt_long,
+                    size: 14,
+                    color: const Color(0xFF7C3AED),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _isPosMode ? 'POS Counter' : 'Invoice',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF7C3AED),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+          ],
           if (_cartItems.isNotEmpty)
             TextButton.icon(
               onPressed: _clearCart,
@@ -2742,6 +2925,89 @@ class _SaleScreenState extends State<SaleScreen>
     );
   }
 
+  Future<void> _submitEdit() async {
+    if (_selectedSaleType == SaleType.sarya) {
+      final missing = _cartItems.where((i) => i.weight <= 0).toList();
+      if (missing.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'SARYA mode: ${missing.length} item(s) missing weight'),
+            backgroundColor: const Color(0xFFEF4444),
+          ),
+        );
+        return;
+      }
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final isSarya = _selectedSaleType == SaleType.sarya;
+
+    final saleData = {
+      'sale_category': _selectedSaleType.apiValue,
+      'customer_id': _selectedCustomer?.id,
+      'sale_date': _invoiceDate.toIso8601String().split('T').first,
+      'due_date': _dueDate?.toIso8601String().split('T').first,
+      'reference': _referenceController.text.trim().isEmpty
+          ? null
+          : _referenceController.text.trim(),
+      'notes': _invoiceNoteController.text.trim(),
+      'discount_type': _usePercentDiscount ? 'percent' : 'fixed',
+      'discount_value':
+      _usePercentDiscount ? _discountPercent : _discountAmount,
+      'items': _cartItems.map((item) {
+        final Map<String, dynamic> d = {
+          'product_id': item.product.id,
+          'unit_price': item.unitPrice,
+          'used_customer_price': item.usingCustomerPrice,
+        };
+        if (isSarya) {
+          d['weight'] = item.weight;
+          d['quantity'] = 0;
+        } else {
+          d['quantity'] = item.quantity;
+          if (item.weight > 0) d['weight'] = item.weight;
+        }
+        if (item.selectedLengths.isNotEmpty) {
+          d['selected_lengths'] = item.selectedLengths;
+        }
+        if (item.lengthQuantities.isNotEmpty) {
+          d['length_quantities'] = Map<String, dynamic>.fromEntries(
+            item.lengthQuantities.entries
+                .map((e) => MapEntry(e.key.toString(), e.value)),
+          );
+        }
+        return d;
+      }).toList(),
+    };
+
+    final provider = Provider.of<SaleProvider>(context, listen: false);
+    final result =
+    await provider.updateSale(widget.existingSale!.id, saleData);
+
+    if (mounted) Navigator.pop(context); // dismiss loader
+
+    if (result['success'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Sale updated successfully'),
+            backgroundColor: Color(0xFF10B981)),
+      );
+      Navigator.pop(context, true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(result['message'] ?? 'Failed to update sale'),
+            backgroundColor: const Color(0xFFEF4444)),
+      );
+    }
+  }
+
 // Weight button for increment/decrement
   Widget _weightBtn(IconData icon, VoidCallback onTap) => GestureDetector(
     onTap: onTap,
@@ -2976,7 +3242,60 @@ class _SaleScreenState extends State<SaleScreen>
             const SizedBox(height: 8),
           ],
 
-          if (isPOS)
+          // if (isPOS)
+          //   ElevatedButton.icon(
+          //     onPressed:
+          //     (_cartItems.isEmpty || _selectedCustomer == null)
+          //         ? null
+          //         : _processPayment,
+          //     icon: const Icon(Icons.payment, size: 16),
+          //     label: const Text('Charge',
+          //         style:
+          //         TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+          //     style: ElevatedButton.styleFrom(
+          //       backgroundColor: const Color(0xFF7C3AED),
+          //       foregroundColor: Colors.white,
+          //       padding: const EdgeInsets.symmetric(vertical: 14),
+          //       minimumSize: const Size(double.infinity, 48),
+          //       shape: RoundedRectangleBorder(
+          //           borderRadius: BorderRadius.circular(10)),
+          //       elevation: 0,
+          //     ),
+          //   )
+          // else
+          //   ElevatedButton.icon(
+          //     onPressed: _cartItems.isEmpty ? null : _createInvoice,
+          //     icon: const Icon(Icons.receipt_long, size: 16),
+          //     label: const Text('Create Invoice',
+          //         style: TextStyle(fontWeight: FontWeight.bold)),
+          //     style: ElevatedButton.styleFrom(
+          //       backgroundColor: const Color(0xFF7C3AED),
+          //       foregroundColor: Colors.white,
+          //       padding: const EdgeInsets.symmetric(vertical: 14),
+          //       minimumSize: const Size(double.infinity, 48),
+          //       shape: RoundedRectangleBorder(
+          //           borderRadius: BorderRadius.circular(10)),
+          //       elevation: 0,
+          //     ),
+          //   ),
+          // Replace the last if/else in _buildSummarySection:
+          if (_isEditMode)
+            ElevatedButton.icon(
+              onPressed: _cartItems.isEmpty ? null : _submitEdit,
+              icon: const Icon(Icons.save, size: 16),
+              label: const Text('Save Changes',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF7C3AED),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                minimumSize: const Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                elevation: 0,
+              ),
+            )
+          else if (isPOS)
             ElevatedButton.icon(
               onPressed:
               (_cartItems.isEmpty || _selectedCustomer == null)
@@ -4693,7 +5012,7 @@ class _PaymentDialog extends StatefulWidget {
 
 class _PaymentDialogState extends State<_PaymentDialog>
     with SingleTickerProviderStateMixin {
-  String _method = 'cash';
+  String _method = 'credit';
   final TextEditingController _receivedCtrl = TextEditingController();
   DateTime? _creditDueDate;
   final TextEditingController _creditNotesCtrl = TextEditingController();
@@ -4872,8 +5191,74 @@ class _PaymentDialogState extends State<_PaymentDialog>
     );
   }
 
+  // Widget _buildMethodSelector() {
+  //   final methods = ['cash', 'bank', 'cheque', 'slip', 'credit'];
+  //   return Column(
+  //     crossAxisAlignment: CrossAxisAlignment.start,
+  //     children: [
+  //       const Text('Payment Method *',
+  //           style: TextStyle(
+  //               fontSize: 12,
+  //               fontWeight: FontWeight.w600,
+  //               color: Color(0xFF8E8E93))),
+  //       const SizedBox(height: 8),
+  //       SingleChildScrollView(
+  //         scrollDirection: Axis.horizontal,
+  //         child: Row(
+  //           children: methods.map((method) {
+  //             final selected = _method == method;
+  //             final color = _methodColors[method]!;
+  //             return Padding(
+  //               padding: const EdgeInsets.only(right: 6),
+  //               child: GestureDetector(
+  //                 onTap: () => setState(() => _method = method),
+  //                 child: AnimatedContainer(
+  //                   duration: const Duration(milliseconds: 180),
+  //                   padding: const EdgeInsets.symmetric(
+  //                       horizontal: 14, vertical: 10),
+  //                   decoration: BoxDecoration(
+  //                     color: selected
+  //                         ? color.withOpacity(0.1)
+  //                         : const Color(0xFFF5F5F7),
+  //                     borderRadius: BorderRadius.circular(12),
+  //                     border: Border.all(
+  //                       color: selected ? color : const Color(0xFFE5E5EA),
+  //                       width: selected ? 2 : 1,
+  //                     ),
+  //                   ),
+  //                   child: Row(
+  //                     children: [
+  //                       Icon(_methodIcons[method],
+  //                           size: 18,
+  //                           color: selected
+  //                               ? color
+  //                               : const Color(0xFF8E8E93)),
+  //                       const SizedBox(width: 6),
+  //                       Text(_methodLabels[method]!,
+  //                           style: TextStyle(
+  //                               fontSize: 12,
+  //                               fontWeight: selected
+  //                                   ? FontWeight.bold
+  //                                   : FontWeight.normal,
+  //                               color: selected
+  //                                   ? color
+  //                                   : const Color(0xFF8E8E93))),
+  //                     ],
+  //                   ),
+  //                 ),
+  //               ),
+  //             );
+  //           }).toList(),
+  //         ),
+  //       ),
+  //     ],
+  //   );
+  // }
+
   Widget _buildMethodSelector() {
-    final methods = ['cash', 'bank', 'cheque', 'slip', 'credit'];
+    // Only show credit method
+    final methods = ['credit'];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

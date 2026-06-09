@@ -7,11 +7,17 @@ import 'dart:convert';
 import '../../config/api_config.dart';
 import '../../models/customer.dart';
 import '../../providers/auth_provider.dart';
+import '../providers/lanprovider.dart';
 
 class CustomerAdjustmentDialog extends StatefulWidget {
   final Customer customer;
+  final LanguageProvider languageProvider;
 
-  const CustomerAdjustmentDialog({super.key, required this.customer});
+  const CustomerAdjustmentDialog({
+    super.key,
+    required this.customer,
+    required this.languageProvider,
+  });
 
   @override
   State<CustomerAdjustmentDialog> createState() => _CustomerAdjustmentDialogState();
@@ -23,7 +29,7 @@ class _CustomerAdjustmentDialogState extends State<CustomerAdjustmentDialog> {
   final _descriptionController = TextEditingController();
   final _referenceController = TextEditingController();
 
-  String _adjustmentType = 'debit'; // debit (charge) or credit (refund)
+  String _adjustmentType = 'debit';
   DateTime _selectedDate = DateTime.now();
   bool _isLoading = false;
 
@@ -47,6 +53,8 @@ class _CustomerAdjustmentDialogState extends State<CustomerAdjustmentDialog> {
   }
 
   Future<void> _submitAdjustment() async {
+    final lp = widget.languageProvider;
+
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
@@ -77,13 +85,13 @@ class _CustomerAdjustmentDialogState extends State<CustomerAdjustmentDialog> {
         if (data['success'] == true) {
           Navigator.pop(context, true);
         } else {
-          _showError(data['message'] ?? 'Failed to record adjustment');
+          _showError(data['message'] ?? (lp.isEnglish ? 'Failed to record adjustment' : 'ایڈجسٹمنٹ ریکارڈ کرنے میں ناکامی'));
         }
       } else {
-        _showError('Server error: ${response.statusCode}');
+        _showError('${lp.isEnglish ? 'Server error' : 'سرور خرابی'}: ${response.statusCode}');
       }
     } catch (e) {
-      _showError(e.toString());
+      _showError('${lp.isEnglish ? 'Error' : 'خرابی'}: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -100,6 +108,8 @@ class _CustomerAdjustmentDialogState extends State<CustomerAdjustmentDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final lp = widget.languageProvider;
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
@@ -132,9 +142,9 @@ class _CustomerAdjustmentDialogState extends State<CustomerAdjustmentDialog> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Adjust Balance',
-                            style: TextStyle(
+                          Text(
+                            lp.isEnglish ? 'Adjust Balance' : 'بیلنس ایڈجسٹ کریں',
+                            style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
                               color: Color(0xFF1C1C1E),
@@ -170,9 +180,9 @@ class _CustomerAdjustmentDialogState extends State<CustomerAdjustmentDialog> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'Current Balance',
-                        style: TextStyle(
+                      Text(
+                        lp.isEnglish ? 'Current Balance' : 'موجودہ بیلنس',
+                        style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                         ),
@@ -185,6 +195,7 @@ class _CustomerAdjustmentDialogState extends State<CustomerAdjustmentDialog> {
                           color: widget.customer.balance > 0
                               ? const Color(0xFFEF4444)
                               : const Color(0xFF10B981),
+                          fontFamily: lp.fontFamily,
                         ),
                       ),
                     ],
@@ -194,9 +205,9 @@ class _CustomerAdjustmentDialogState extends State<CustomerAdjustmentDialog> {
                 const SizedBox(height: 20),
 
                 // Adjustment Type
-                const Text(
-                  'Adjustment Type *',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF8E8E93), fontWeight: FontWeight.w500),
+                Text(
+                  lp.isEnglish ? 'Adjustment Type *' : 'ایڈجسٹمنٹ کی قسم *',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E93), fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 8),
                 Row(
@@ -228,23 +239,25 @@ class _CustomerAdjustmentDialogState extends State<CustomerAdjustmentDialog> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                'Charge',
+                                lp.isEnglish ? 'Charge' : 'چارج',
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: _adjustmentType == 'debit' ? FontWeight.bold : FontWeight.normal,
                                   color: _adjustmentType == 'debit'
                                       ? const Color(0xFFEF4444)
                                       : Colors.grey,
+                                  fontFamily: lp.fontFamily,
                                 ),
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                '(Increase debit)',
+                                lp.isEnglish ? '(Increase debit)' : '(ڈیبٹ بڑھائیں)',
                                 style: TextStyle(
                                   fontSize: 9,
                                   color: _adjustmentType == 'debit'
                                       ? const Color(0xFFEF4444).withOpacity(0.7)
                                       : Colors.grey[400],
+                                  fontFamily: lp.fontFamily,
                                 ),
                               ),
                             ],
@@ -280,23 +293,25 @@ class _CustomerAdjustmentDialogState extends State<CustomerAdjustmentDialog> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                'Refund/Credit',
+                                lp.isEnglish ? 'Refund/Credit' : 'ریفنڈ/کریڈٹ',
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: _adjustmentType == 'credit' ? FontWeight.bold : FontWeight.normal,
                                   color: _adjustmentType == 'credit'
                                       ? const Color(0xFF10B981)
                                       : Colors.grey,
+                                  fontFamily: lp.fontFamily,
                                 ),
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                '(Decrease debit)',
+                                lp.isEnglish ? '(Decrease debit)' : '(ڈیبٹ کم کریں)',
                                 style: TextStyle(
                                   fontSize: 9,
                                   color: _adjustmentType == 'credit'
                                       ? const Color(0xFF10B981).withOpacity(0.7)
                                       : Colors.grey[400],
+                                  fontFamily: lp.fontFamily,
                                 ),
                               ),
                             ],
@@ -313,8 +328,9 @@ class _CustomerAdjustmentDialogState extends State<CustomerAdjustmentDialog> {
                 TextFormField(
                   controller: _amountController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  style: TextStyle(fontFamily: lp.fontFamily),
                   decoration: InputDecoration(
-                    labelText: 'Amount *',
+                    labelText: lp.isEnglish ? 'Amount *' : 'رقم *',
                     prefixText: 'Rs ',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
@@ -326,11 +342,11 @@ class _CustomerAdjustmentDialogState extends State<CustomerAdjustmentDialog> {
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'Please enter amount';
+                      return lp.isEnglish ? 'Please enter amount' : 'براہ کرم رقم درج کریں';
                     }
                     final amount = double.tryParse(value);
                     if (amount == null || amount <= 0) {
-                      return 'Please enter a valid amount';
+                      return lp.isEnglish ? 'Please enter a valid amount' : 'براہ کرم ایک درست رقم درج کریں';
                     }
                     return null;
                   },
@@ -341,9 +357,12 @@ class _CustomerAdjustmentDialogState extends State<CustomerAdjustmentDialog> {
                 // Description
                 TextFormField(
                   controller: _descriptionController,
+                  style: TextStyle(fontFamily: lp.fontFamily),
                   decoration: InputDecoration(
-                    labelText: 'Description *',
-                    hintText: 'e.g. Opening balance, adjustment, discount...',
+                    labelText: lp.isEnglish ? 'Description *' : 'تفصیل *',
+                    hintText: lp.isEnglish
+                        ? 'e.g. Opening balance, adjustment, discount...'
+                        : 'مثال: ابتدائی بیلنس، ایڈجسٹمنٹ، چھوٹ...',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -354,7 +373,7 @@ class _CustomerAdjustmentDialogState extends State<CustomerAdjustmentDialog> {
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
-                      return 'Please enter description';
+                      return lp.isEnglish ? 'Please enter description' : 'براہ کرم تفصیل درج کریں';
                     }
                     return null;
                   },
@@ -395,8 +414,8 @@ class _CustomerAdjustmentDialogState extends State<CustomerAdjustmentDialog> {
                             size: 18, color: Color(0xFF7C3AED)),
                         const SizedBox(width: 10),
                         Text(
-                          'Adjustment Date: ${_dateFormat.format(_selectedDate)}',
-                          style: const TextStyle(fontSize: 14),
+                          '${lp.isEnglish ? 'Adjustment Date' : 'ایڈجسٹمنٹ کی تاریخ'}: ${_dateFormat.format(_selectedDate)}',
+                          style: TextStyle(fontSize: 14, fontFamily: lp.fontFamily),
                         ),
                       ],
                     ),
@@ -408,9 +427,10 @@ class _CustomerAdjustmentDialogState extends State<CustomerAdjustmentDialog> {
                 // Reference Number
                 TextFormField(
                   controller: _referenceController,
+                  style: TextStyle(fontFamily: lp.fontFamily),
                   decoration: InputDecoration(
-                    labelText: 'Reference Number (Optional)',
-                    hintText: 'e.g. ADJ-001',
+                    labelText: lp.isEnglish ? 'Reference Number (Optional)' : 'حوالہ نمبر (اختیاری)',
+                    hintText: lp.isEnglish ? 'e.g. ADJ-001' : 'مثال: ADJ-001',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -435,7 +455,8 @@ class _CustomerAdjustmentDialogState extends State<CustomerAdjustmentDialog> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        child: const Text('Cancel'),
+                        child: Text(lp.isEnglish ? 'Cancel' : 'منسوخ کریں',
+                            style: TextStyle(fontFamily: lp.fontFamily)),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -459,7 +480,8 @@ class _CustomerAdjustmentDialogState extends State<CustomerAdjustmentDialog> {
                             color: Colors.white,
                           ),
                         )
-                            : const Text('Save Adjustment'),
+                            : Text(lp.isEnglish ? 'Save Adjustment' : 'ایڈجسٹمنٹ محفوظ کریں',
+                            style: TextStyle(fontFamily: lp.fontFamily)),
                       ),
                     ),
                   ],

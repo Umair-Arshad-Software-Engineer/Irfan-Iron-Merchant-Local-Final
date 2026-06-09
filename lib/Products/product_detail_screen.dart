@@ -13,6 +13,7 @@ import '../models/customer_price_model.dart';
 import '../models/product_image_model.dart';
 import '../models/product_model.dart';
 import '../providers/CustomerPriceProvider.dart';
+import '../providers/lanprovider.dart';
 import '../providers/product_image_provider.dart';
 import '../providers/sale_provider.dart';
 import '../providers/purchase_order_provider.dart';
@@ -53,65 +54,74 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFC),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF2D3142)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Product Details',
-          style: TextStyle(
-              color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_outlined, color: Color(0xFF7C3AED)),
-            onPressed: _editProduct,
-          ),
-          IconButton(
-            icon:
-            const Icon(Icons.delete_outline, color: Color(0xFFFF6B6B)),
-            onPressed: _deleteProduct,
-          ),
-        ],
-      ),
-      body: Consumer<ProductProvider>(
-        builder: (context, provider, child) {
-          if (provider.isLoading) return const LoadingIndicator();
-
-          if (provider.errorMessage != null) {
-            return CustomErrorWidget(
-              message: provider.errorMessage!,
-              onRetry: _loadProduct,
-            );
-          }
-
-          if (provider.selectedProduct == null) {
-            return const Center(child: Text('Product not found'));
-          }
-
-          final product = provider.selectedProduct!;
-
-          return Column(
-            children: [
-              _buildHeader(product),
-              _buildTabBar(),
-              Expanded(child: _buildTabContent(product)),
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        return Scaffold(
+          backgroundColor: const Color(0xFFFAFAFC),
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Color(0xFF2D3142)),
+              onPressed: () => Navigator.pop(context),
+            ),
+            title: Text(
+              languageProvider.isEnglish ? 'Product Details' : 'پروڈکٹ کی تفصیلات',
+              style: const TextStyle(
+                  color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.edit_outlined, color: Color(0xFF7C3AED)),
+                onPressed: _editProduct,
+                tooltip: languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں',
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: Color(0xFFFF6B6B)),
+                onPressed: _deleteProduct,
+                tooltip: languageProvider.isEnglish ? 'Delete' : 'حذف کریں',
+              ),
             ],
-          );
-        },
-      ),
+          ),
+          body: Consumer<ProductProvider>(
+            builder: (context, provider, child) {
+              if (provider.isLoading) return const LoadingIndicator();
+
+              if (provider.errorMessage != null) {
+                return CustomErrorWidget(
+                  message: provider.errorMessage!,
+                  onRetry: _loadProduct,
+                );
+              }
+
+              if (provider.selectedProduct == null) {
+                return Center(
+                  child: Text(
+                    languageProvider.isEnglish ? 'Product not found' : 'پروڈکٹ نہیں ملی',
+                  ),
+                );
+              }
+
+              final product = provider.selectedProduct!;
+
+              return Column(
+                children: [
+                  _buildHeader(product, languageProvider),
+                  _buildTabBar(languageProvider),
+                  Expanded(child: _buildTabContent(product, languageProvider)),
+                ],
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
   // ─── Header ───────────────────────────────────────────────────────────────
 
-  Widget _buildHeader(ProductModel product) {
-    final formatter = NumberFormat.currency(symbol: '\$');
+  Widget _buildHeader(ProductModel product, LanguageProvider languageProvider) {
+    final formatter = NumberFormat.currency(symbol: 'PKR ');
     final isLowStock = product.physicalQty <= product.minStock;
 
     return Container(
@@ -147,7 +157,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                 color: Color(0xFF2D3142)),
                           ),
                         ),
-                        // Active badge
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 6),
@@ -158,7 +167,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
-                            product.isActive ? 'Active' : 'Inactive',
+                            product.isActive
+                                ? (languageProvider.isEnglish ? 'Active' : 'فعال')
+                                : (languageProvider.isEnglish ? 'Inactive' : 'غیر فعال'),
                             style: TextStyle(
                                 color: product.isActive
                                     ? const Color(0xFF10B981)
@@ -170,19 +181,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    // Barcode row
                     if (product.barcode != null)
                       Row(
                         children: [
                           Icon(Icons.qr_code,
                               size: 16, color: Colors.grey[400]),
                           const SizedBox(width: 4),
-                          Text('Barcode: ${product.barcode}',
-                              style: TextStyle(
-                                  color: Colors.grey[600], fontSize: 14)),
+                          Text(
+                            '${languageProvider.isEnglish ? 'Barcode' : 'بارکوڈ'}: ${product.barcode}',
+                            style: TextStyle(
+                                color: Colors.grey[600], fontSize: 14),
+                          ),
                         ],
                       ),
-                    // Multi-length badge
                     if (product.hasMultipleLengths) ...[
                       const SizedBox(height: 6),
                       Container(
@@ -203,7 +214,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                 size: 13, color: Color(0xFF7C3AED)),
                             const SizedBox(width: 5),
                             Text(
-                              '${product.lengthCombinations?.length ?? 0} lengths',
+                              languageProvider.isEnglish
+                                  ? '${product.lengthCombinations?.length ?? 0} lengths'
+                                  : 'لمبائیاں: ${product.lengthCombinations?.length ?? 0}',
                               style: const TextStyle(
                                   fontSize: 12,
                                   color: Color(0xFF7C3AED),
@@ -223,22 +236,29 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             children: [
               Expanded(
                 child: _buildInfoBox(
-                  'Stock Quantity',
+                  languageProvider.isEnglish ? 'Stock Quantity' : 'اسٹاک کی مقدار',
                   '${product.physicalQty} ${product.unit?.symbol ?? ''}',
                   isLowStock ? Colors.red : Colors.green,
+                  languageProvider,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _buildInfoBox('Cost Price',
-                    formatter.format(product.costPrice),
-                    const Color(0xFF7C3AED)),
+                child: _buildInfoBox(
+                  languageProvider.isEnglish ? 'Cost Price' : 'لاگت قیمت',
+                  formatter.format(product.costPrice),
+                  const Color(0xFF7C3AED),
+                  languageProvider,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _buildInfoBox('Sale Price',
-                    formatter.format(product.salePrice),
-                    const Color(0xFFF59E0B)),
+                child: _buildInfoBox(
+                  languageProvider.isEnglish ? 'Sale Price' : 'فروخت قیمت',
+                  formatter.format(product.salePrice),
+                  const Color(0xFFF59E0B),
+                  languageProvider,
+                ),
               ),
             ],
           ),
@@ -257,7 +277,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Low stock alert! Minimum stock level is ${product.minStock}',
+                      languageProvider.isEnglish
+                          ? 'Low stock alert! Minimum stock level is ${product.minStock}'
+                          : 'کم اسٹاک الرٹ! کم از کم اسٹاک لیول ${product.minStock} ہے',
                       style: const TextStyle(
                           color: Color(0xFFFF6B6B),
                           fontWeight: FontWeight.w500),
@@ -267,7 +289,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     onPressed: _showUpdateStockDialog,
                     style: TextButton.styleFrom(
                         foregroundColor: const Color(0xFFFF6B6B)),
-                    child: const Text('Update Stock'),
+                    child: Text(languageProvider.isEnglish ? 'Update Stock' : 'اسٹاک اپ ڈیٹ کریں'),
                   ),
                 ],
               ),
@@ -278,7 +300,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  Widget _buildInfoBox(String label, String value, Color color) {
+  Widget _buildInfoBox(String label, String value, Color color, LanguageProvider languageProvider) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -291,13 +313,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               style: TextStyle(
                   fontSize: 11,
                   color: color.withOpacity(0.7),
-                  fontWeight: FontWeight.w500)),
+                  fontWeight: FontWeight.w500,
+                  fontFamily: languageProvider.fontFamily)),
           const SizedBox(height: 4),
           Text(value,
               style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: color)),
+                  color: color,
+                  fontFamily: languageProvider.fontFamily)),
         ],
       ),
     );
@@ -305,7 +329,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   // ─── Tab bar ──────────────────────────────────────────────────────────────
 
-  Widget _buildTabBar() {
+  Widget _buildTabBar(LanguageProvider languageProvider) {
     final product = Provider.of<ProductProvider>(context).selectedProduct;
     final hasBom = product?.isBom ?? false;
 
@@ -313,17 +337,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       color: Colors.white,
       child: Row(
         children: [
-          _buildTab('Details', 0),
-          _buildTab('Images', 1),
-          _buildTab('Prices', 2),
-          if (hasBom) _buildTab('BOM', 4), // Add BOM tab for BOM products
-          _buildTab('History', 3),
+          _buildTab(languageProvider.isEnglish ? 'Details' : 'تفصیلات', 0, languageProvider),
+          _buildTab(languageProvider.isEnglish ? 'Images' : 'تصاویر', 1, languageProvider),
+          _buildTab(languageProvider.isEnglish ? 'Prices' : 'قیمتیں', 2, languageProvider),
+          if (hasBom) _buildTab(languageProvider.isEnglish ? 'BOM' : 'BOM', 4, languageProvider),
+          _buildTab(languageProvider.isEnglish ? 'History' : 'تاریخ', 3, languageProvider),
         ],
       ),
     );
   }
 
-  Widget _buildTab(String label, int index) {
+  Widget _buildTab(String label, int index, LanguageProvider languageProvider) {
     final isSelected = _selectedTab == index;
     return Expanded(
       child: GestureDetector(
@@ -344,10 +368,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color:
-              isSelected ? const Color(0xFF7C3AED) : Colors.grey,
-              fontWeight:
-              isSelected ? FontWeight.w600 : FontWeight.normal,
+              color: isSelected ? const Color(0xFF7C3AED) : Colors.grey,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              fontFamily: languageProvider.fontFamily,
             ),
           ),
         ),
@@ -355,86 +378,122 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  Widget _buildTabContent(ProductModel product) {
+  Widget _buildTabContent(ProductModel product, LanguageProvider languageProvider) {
     switch (_selectedTab) {
       case 0:
-        return _buildDetailsTab(product);
+        return _buildDetailsTab(product, languageProvider);
       case 1:
-        return _buildImagesTab(product);
+        return _buildImagesTab(product, languageProvider);
       case 2:
-        return _buildCustomerPricesTab(product);
+        return _buildCustomerPricesTab(product, languageProvider);
       case 3:
         return ProductHistoryTab(productId: widget.productId);
       case 4:
-        return _buildBomTab(product);
+        return _buildBomTab(product, languageProvider);
       default:
-        return _buildDetailsTab(product);
+        return _buildDetailsTab(product, languageProvider);
     }
   }
 
   // ─── Details Tab ──────────────────────────────────────────────────────────
 
-  Widget _buildDetailsTab(ProductModel product) {
+  Widget _buildDetailsTab(ProductModel product, LanguageProvider languageProvider) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildInfoSection('Basic Information', [
-            _buildInfoRow('Product Name', product.itemName),
-            _buildInfoRow(
-                'Description', product.description ?? 'No description'),
-            _buildInfoRow('Category', product.category?.name ?? 'N/A'),
-            _buildInfoRow(
-                'Subcategory', product.subcategory?.name ?? 'N/A'),
-            _buildInfoRow('Unit',
-                '${product.unit?.name ?? 'N/A'} (${product.unit?.symbol ?? ''})'),
-          ]),
+          _buildInfoSection(
+            languageProvider.isEnglish ? 'Basic Information' : 'بنیادی معلومات',
+            [
+              _buildInfoRow(languageProvider.isEnglish ? 'Product Name' : 'پروڈکٹ کا نام', product.itemName, languageProvider),
+              _buildInfoRow(
+                  languageProvider.isEnglish ? 'Description' : 'تفصیل',
+                  product.description ?? (languageProvider.isEnglish ? 'No description' : 'کوئی تفصیل نہیں'),
+                  languageProvider),
+              _buildInfoRow(languageProvider.isEnglish ? 'Category' : 'کیٹگری', product.category?.name ?? 'N/A', languageProvider),
+              _buildInfoRow(
+                  languageProvider.isEnglish ? 'Subcategory' : 'ذیلی کیٹگری',
+                  product.subcategory?.name ?? 'N/A',
+                  languageProvider),
+              _buildInfoRow(languageProvider.isEnglish ? 'Unit' : 'یونٹ',
+                  '${product.unit?.name ?? 'N/A'} (${product.unit?.symbol ?? ''})',
+                  languageProvider),
+            ],
+            languageProvider,
+          ),
           const SizedBox(height: 20),
-          _buildInfoSection('Pricing & Stock', [
-            _buildInfoRow('Cost Price',
-                NumberFormat.currency(symbol: '\$').format(product.costPrice)),
-            _buildInfoRow('Sale Price',
-                NumberFormat.currency(symbol: '\$').format(product.salePrice)),
-            _buildInfoRow(
-              'Profit Margin',
-              product.costPrice > 0
-                  ? '${((product.salePrice - product.costPrice) / product.costPrice * 100).toStringAsFixed(1)}%'
-                  : 'N/A',
-            ),
-            _buildInfoRow(
-                'Physical Quantity', product.physicalQty.toString()),
-            _buildInfoRow(
-                'Available Quantity', product.availableQty.toString()),
-            _buildInfoRow('Minimum Stock', product.minStock.toString()),
-          ]),
+          _buildInfoSection(
+            languageProvider.isEnglish ? 'Pricing & Stock' : 'قیمت اور اسٹاک',
+            [
+              _buildInfoRow(languageProvider.isEnglish ? 'Cost Price' : 'لاگت قیمت',
+                  NumberFormat.currency(symbol: 'PKR ').format(product.costPrice),
+                  languageProvider),
+              _buildInfoRow(languageProvider.isEnglish ? 'Sale Price' : 'فروخت قیمت',
+                  NumberFormat.currency(symbol: 'PKR ').format(product.salePrice),
+                  languageProvider),
+              _buildInfoRow(
+                languageProvider.isEnglish ? 'Profit Margin' : 'منافع کا فیصد',
+                product.costPrice > 0
+                    ? '${((product.salePrice - product.costPrice) / product.costPrice * 100).toStringAsFixed(1)}%'
+                    : 'N/A',
+                languageProvider,
+              ),
+              _buildInfoRow(
+                  languageProvider.isEnglish ? 'Physical Quantity' : 'طبعی مقدار',
+                  product.physicalQty.toString(),
+                  languageProvider),
+              _buildInfoRow(
+                  languageProvider.isEnglish ? 'Available Quantity' : 'دستیاب مقدار',
+                  product.availableQty.toString(),
+                  languageProvider),
+              _buildInfoRow(
+                  languageProvider.isEnglish ? 'Minimum Stock' : 'کم از کم اسٹاک',
+                  product.minStock.toString(),
+                  languageProvider),
+            ],
+            languageProvider,
+          ),
           const SizedBox(height: 20),
-          // ── Length Combinations section ──────────────────────────────────
           if (product.hasMultipleLengths &&
               product.lengthCombinations != null &&
               product.lengthCombinations!.isNotEmpty) ...[
-            _buildLengthCombinationsSection(product),
+            _buildLengthCombinationsSection(product, languageProvider),
             const SizedBox(height: 20),
           ],
-          _buildInfoSection('Supplier Information', [
-            _buildInfoRow(
-                'Supplier', product.supplier?.name ?? 'No supplier'),
-            _buildInfoRow('Contact', product.supplier?.contact ?? 'N/A'),
-          ]),
+          _buildInfoSection(
+            languageProvider.isEnglish ? 'Supplier Information' : 'سپلائر کی معلومات',
+            [
+              _buildInfoRow(
+                  languageProvider.isEnglish ? 'Supplier' : 'سپلائر',
+                  product.supplier?.name ?? (languageProvider.isEnglish ? 'No supplier' : 'کوئی سپلائر نہیں'),
+                  languageProvider),
+              _buildInfoRow(
+                  languageProvider.isEnglish ? 'Contact' : 'رابطہ',
+                  product.supplier?.contact ?? 'N/A',
+                  languageProvider),
+            ],
+            languageProvider,
+          ),
           const SizedBox(height: 20),
-          _buildInfoSection('System Information', [
-            _buildInfoRow('Created At',
-                DateFormat('MMM dd, yyyy HH:mm').format(product.createdAt)),
-            _buildInfoRow('Last Updated',
-                DateFormat('MMM dd, yyyy HH:mm').format(product.updatedAt)),
-          ]),
+          _buildInfoSection(
+            languageProvider.isEnglish ? 'System Information' : 'سسٹم کی معلومات',
+            [
+              _buildInfoRow(languageProvider.isEnglish ? 'Created At' : 'بنایا گیا',
+                  DateFormat('MMM dd, yyyy HH:mm').format(product.createdAt),
+                  languageProvider),
+              _buildInfoRow(languageProvider.isEnglish ? 'Last Updated' : 'آخری تازہ کاری',
+                  DateFormat('MMM dd, yyyy HH:mm').format(product.updatedAt),
+                  languageProvider),
+            ],
+            languageProvider,
+          ),
         ],
       ),
     );
   }
 
-  /// Length combinations section shown inside Details tab
-  Widget _buildLengthCombinationsSection(ProductModel product) {
+  Widget _buildLengthCombinationsSection(ProductModel product, LanguageProvider languageProvider) {
     final combinations = product.lengthCombinations!;
 
     return Container(
@@ -447,15 +506,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Section header
           Row(
             children: [
               const Icon(Icons.straighten,
                   size: 18, color: Color(0xFF7C3AED)),
               const SizedBox(width: 8),
-              const Text(
-                'Length Combinations',
-                style: TextStyle(
+              Text(
+                languageProvider.isEnglish ? 'Length Combinations' : 'لمبائی کے امتزاج',
+                style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF2D3142)),
@@ -469,7 +527,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  '${combinations.length} total',
+                  languageProvider.isEnglish
+                      ? '${combinations.length} total'
+                      : 'کل: ${combinations.length}',
                   style: const TextStyle(
                       fontSize: 12,
                       color: Color(0xFF7C3AED),
@@ -479,14 +539,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          // Grid of length chips
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: combinations.asMap().entries.map((entry) {
               final index = entry.key;
               final combo = entry.value;
-              return _buildLengthChip(index + 1, combo);
+              return _buildLengthChip(index + 1, combo, languageProvider);
             }).toList(),
           ),
         ],
@@ -494,10 +553,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  Widget _buildLengthChip(int number, LengthCombination combo) {
+  Widget _buildLengthChip(int number, LengthCombination combo, LanguageProvider languageProvider) {
     return Container(
-      padding:
-      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: const Color(0xFFF8F7FF),
         borderRadius: BorderRadius.circular(8),
@@ -507,7 +565,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Index bubble
           Container(
             width: 20,
             height: 20,
@@ -548,7 +605,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  Widget _buildInfoSection(String title, List<Widget> children) {
+  Widget _buildInfoSection(String title, List<Widget> children, LanguageProvider languageProvider) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -560,10 +617,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF2D3142))),
+                  color: Color(0xFF2D3142),
+                  fontFamily: languageProvider.fontFamily)),
           const SizedBox(height: 16),
           ...children,
         ],
@@ -571,7 +629,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  Widget _buildInfoRow(String label, String value) {
+  Widget _buildInfoRow(String label, String value, LanguageProvider languageProvider) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -580,15 +638,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           SizedBox(
             width: 120,
             child: Text(label,
-                style:
-                TextStyle(fontSize: 13, color: Colors.grey[600])),
+                style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey[600],
+                    fontFamily: languageProvider.fontFamily)),
           ),
           Expanded(
             child: Text(value,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
-                    color: Color(0xFF2D3142))),
+                    color: Color(0xFF2D3142),
+                    fontFamily: languageProvider.fontFamily)),
           ),
         ],
       ),
@@ -629,8 +690,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               top: 16,
               right: 16,
               child: IconButton(
-                icon:
-                const Icon(Icons.close, color: Colors.white, size: 30),
+                icon: const Icon(Icons.close, color: Colors.white, size: 30),
                 onPressed: () => Navigator.pop(context),
               ),
             ),
@@ -640,7 +700,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  Widget _buildImagesTab(ProductModel product) {
+  Widget _buildImagesTab(ProductModel product, LanguageProvider languageProvider) {
     return Column(
       children: [
         Padding(
@@ -648,7 +708,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           child: ElevatedButton.icon(
             onPressed: () => _navigateToImagesScreen(product),
             icon: const Icon(Icons.add_photo_alternate),
-            label: const Text('Manage Images'),
+            label: Text(languageProvider.isEnglish ? 'Manage Images' : 'تصاویر کا انتظام کریں'),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF7C3AED),
               foregroundColor: Colors.white,
@@ -675,13 +735,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       Icon(Icons.image_outlined,
                           size: 64, color: Colors.grey[400]),
                       const SizedBox(height: 16),
-                      Text('No images yet',
+                      Text(languageProvider.isEnglish ? 'No images yet' : 'ابھی تک کوئی تصویر نہیں',
                           style: TextStyle(
                               fontSize: 16,
                               color: Colors.grey[600],
                               fontWeight: FontWeight.w500)),
                       const SizedBox(height: 8),
-                      Text('Add images to showcase your product',
+                      Text(languageProvider.isEnglish ? 'Add images to showcase your product' : 'اپنی پروڈکٹ دکھانے کے لیے تصاویر شامل کریں',
                           style: TextStyle(
                               fontSize: 14, color: Colors.grey[500])),
                     ],
@@ -739,20 +799,23 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   // ─── Customer Prices Tab ──────────────────────────────────────────────────
 
-  Widget _summaryTile(String label, String value, IconData icon) {
+  Widget _summaryTile(String label, String value, IconData icon, LanguageProvider languageProvider) {
     return Expanded(
       child: Column(
         children: [
           Icon(icon, size: 16, color: const Color(0xFF7C3AED)),
           const SizedBox(height: 4),
           Text(value,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF2D3142))),
+                  color: Color(0xFF2D3142),
+                  fontFamily: languageProvider.fontFamily)),
           Text(label,
-              style: const TextStyle(
-                  fontSize: 10, color: Color(0xFF6B7280))),
+              style: TextStyle(
+                  fontSize: 10,
+                  color: Color(0xFF6B7280),
+                  fontFamily: languageProvider.fontFamily)),
         ],
       ),
     );
@@ -762,7 +825,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       Container(width: 1, height: 36, color: const Color(0xFFE5E7EB));
 
   Widget _buildCompactPriceRow(
-      CustomerPriceModel price, ProductModel product) {
+      CustomerPriceModel price, ProductModel product, LanguageProvider languageProvider) {
     final discount = product.salePrice > 0
         ? ((product.salePrice - price.price) / product.salePrice * 100)
         : 0.0;
@@ -800,17 +863,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  price.customer?.name ?? 'Unknown',
+                  price.customer?.name ?? (languageProvider.isEnglish ? 'Unknown' : 'نامعلوم'),
                   style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
                       color: price.isActive
                           ? const Color(0xFF2D3142)
-                          : Colors.grey),
+                          : Colors.grey,
+                      fontFamily: languageProvider.fontFamily),
                 ),
                 Text(price.customer?.customerType ?? '',
-                    style: const TextStyle(
-                        fontSize: 11, color: Color(0xFF9CA3AF))),
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF9CA3AF),
+                        fontFamily: languageProvider.fontFamily)),
               ],
             ),
           ),
@@ -818,7 +884,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                NumberFormat.currency(symbol: '\$').format(price.price),
+                NumberFormat.currency(symbol: 'PKR ').format(price.price),
                 style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
@@ -844,7 +910,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  Widget _buildCustomerPricesTab(ProductModel product) {
+  Widget _buildCustomerPricesTab(ProductModel product, LanguageProvider languageProvider) {
     return Consumer<CustomerPriceProvider>(
       builder: (context, priceProvider, _) {
         if (priceProvider.isLoading) {
@@ -861,21 +927,22 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
               child: Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Customer-specific Prices',
+                        Text(languageProvider.isEnglish ? 'Customer-specific Prices' : 'کسٹمر کے مخصوص نرخ',
                             style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF2D3142))),
-                        SizedBox(height: 2),
-                        Text(
-                            'Override the standard sale price per customer',
+                                color: Color(0xFF2D3142),
+                                fontFamily: languageProvider.fontFamily)),
+                        const SizedBox(height: 2),
+                        Text(languageProvider.isEnglish ? 'Override the standard sale price per customer' : 'معیاری فروخت قیمت کو ہر کسٹمر کے لیے تبدیل کریں',
                             style: TextStyle(
                                 fontSize: 12,
-                                color: Color(0xFF6B7280))),
+                                color: Color(0xFF6B7280),
+                                fontFamily: languageProvider.fontFamily)),
                       ],
                     ),
                   ),
@@ -883,7 +950,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     onPressed: () =>
                         _navigateToCustomerPrices(product.id),
                     icon: const Icon(Icons.open_in_new, size: 16),
-                    label: const Text('Manage'),
+                    label: Text(languageProvider.isEnglish ? 'Manage' : 'انتظام کریں'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF7C3AED),
                       foregroundColor: Colors.white,
@@ -908,26 +975,28 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 ),
                 child: Row(
                   children: [
-                    _summaryTile('Total', prices.length.toString(),
-                        Icons.list_alt),
+                    _summaryTile(languageProvider.isEnglish ? 'Total' : 'کل', prices.length.toString(),
+                        Icons.list_alt, languageProvider),
                     _summaryDivider(),
                     _summaryTile(
-                        'Active',
+                        languageProvider.isEnglish ? 'Active' : 'فعال',
                         prices
                             .where((p) => p.isActive)
                             .length
                             .toString(),
-                        Icons.check_circle_outline),
+                        Icons.check_circle_outline,
+                        languageProvider),
                     _summaryDivider(),
                     _summaryTile(
-                      'Avg Price',
-                      NumberFormat.currency(symbol: '\$').format(
+                      languageProvider.isEnglish ? 'Avg Price' : 'اوسط قیمت',
+                      NumberFormat.currency(symbol: 'PKR ').format(
                           prices.isEmpty
                               ? 0
                               : prices.fold(
                               0.0, (s, p) => s + p.price) /
                               prices.length),
                       Icons.attach_money,
+                      languageProvider,
                     ),
                   ],
                 ),
@@ -941,14 +1010,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       Icon(Icons.price_change_outlined,
                           size: 72, color: Colors.grey[300]),
                       const SizedBox(height: 16),
-                      Text('No custom prices yet',
+                      Text(languageProvider.isEnglish ? 'No custom prices yet' : 'ابھی تک کوئی حسب ضرورت قیمت نہیں',
                           style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                               color: Colors.grey[500])),
                       const SizedBox(height: 8),
-                      Text(
-                          'Tap Manage to add customer-specific pricing',
+                      Text(languageProvider.isEnglish ? 'Tap Manage to add customer-specific pricing' : 'کسٹمر کے لیے قیمتیں شامل کرنے کے لیے Manage پر ٹیپ کریں',
                           style: TextStyle(
                               fontSize: 13,
                               color: Colors.grey[400])),
@@ -958,8 +1026,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             _navigateToCustomerPrices(product.id),
                         icon: const Icon(Icons.add,
                             color: Color(0xFF7C3AED)),
-                        label: const Text('Add Price',
-                            style: TextStyle(
+                        label: Text(languageProvider.isEnglish ? 'Add Price' : 'قیمت شامل کریں',
+                            style: const TextStyle(
                                 color: Color(0xFF7C3AED))),
                         style: OutlinedButton.styleFrom(
                           side: const BorderSide(
@@ -983,7 +1051,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   children: [
                     ...prices.take(5).map(
                             (price) =>
-                            _buildCompactPriceRow(price, product)),
+                            _buildCompactPriceRow(price, product, languageProvider)),
                     if (prices.length > 5) ...[
                       const SizedBox(height: 8),
                       Center(
@@ -991,7 +1059,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           onPressed: () =>
                               _navigateToCustomerPrices(product.id),
                           child: Text(
-                              'View all ${prices.length} prices →',
+                              languageProvider.isEnglish
+                                  ? 'View all ${prices.length} prices →'
+                                  : 'تمام ${prices.length} قیمتیں دیکھیں →',
                               style: const TextStyle(
                                   color: Color(0xFF7C3AED))),
                         ),
@@ -1006,7 +1076,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  Widget _buildBomTab(ProductModel product) {
+  Widget _buildBomTab(ProductModel product, LanguageProvider languageProvider) {
     if (!product.isBom) {
       return Center(
         child: Column(
@@ -1015,19 +1085,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             Icon(Icons.inventory_outlined, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
-              'Not a BOM Product',
+              languageProvider.isEnglish ? 'Not a BOM Product' : 'BOM پروڈکٹ نہیں ہے',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.grey[600]),
             ),
             const SizedBox(height: 8),
             Text(
-              'This product is not configured as a Bill of Materials',
+              languageProvider.isEnglish ? 'This product is not configured as a Bill of Materials' : 'یہ پروڈکٹ بل آف میٹریل کے طور پر ترتیب نہیں دی گئی ہے',
               style: TextStyle(fontSize: 14, color: Colors.grey[500]),
             ),
             const SizedBox(height: 24),
             OutlinedButton.icon(
               onPressed: () => _editProduct(),
               icon: const Icon(Icons.edit),
-              label: const Text('Edit Product'),
+              label: Text(languageProvider.isEnglish ? 'Edit Product' : 'پروڈکٹ میں ترمیم کریں'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: const Color(0xFF7C3AED),
                 side: const BorderSide(color: Color(0xFF7C3AED)),
@@ -1046,12 +1116,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             Icon(Icons.warning_amber_outlined, size: 64, color: Colors.orange[400]),
             const SizedBox(height: 16),
             Text(
-              'No Components Added',
+              languageProvider.isEnglish ? 'No Components Added' : 'کوئی جزو شامل نہیں',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.grey[600]),
             ),
             const SizedBox(height: 8),
             Text(
-              'This BOM product has no components configured',
+              languageProvider.isEnglish ? 'This BOM product has no components configured' : 'اس BOM پروڈکٹ میں کوئی جزو ترتیب نہیں دیا گیا',
               style: TextStyle(fontSize: 14, color: Colors.grey[500]),
             ),
           ],
@@ -1068,7 +1138,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // BOM Summary Card
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -1084,9 +1153,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'BOM Summary',
-                      style: TextStyle(
+                    Text(
+                      languageProvider.isEnglish ? 'BOM Summary' : 'BOM خلاصہ',
+                      style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
@@ -1099,7 +1168,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        '${product.bomComponents!.length} Components',
+                        languageProvider.isEnglish
+                            ? '${product.bomComponents!.length} Components'
+                            : 'اجزاء: ${product.bomComponents!.length}',
                         style: const TextStyle(color: Colors.white, fontSize: 12),
                       ),
                     ),
@@ -1110,10 +1181,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   children: [
                     Expanded(
                       child: _buildBomSummaryItem(
-                        'Total Cost',
+                        languageProvider.isEnglish ? 'Total Cost' : 'کل لاگت',
                         NumberFormat.currency(symbol: 'PKR ').format(totalCost),
                         Icons.calculate,
                         Colors.white,
+                        languageProvider,
                       ),
                     ),
                     Container(
@@ -1123,10 +1195,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     ),
                     Expanded(
                       child: _buildBomSummaryItem(
-                        'Current Sale Price',
+                        languageProvider.isEnglish ? 'Current Sale Price' : 'موجودہ فروخت قیمت',
                         NumberFormat.currency(symbol: 'PKR ').format(product.salePrice),
                         Icons.price_change,
                         Colors.white,
+                        languageProvider,
                       ),
                     ),
                   ],
@@ -1146,20 +1219,24 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'Suggested Selling Prices',
-                              style: TextStyle(color: Colors.white, fontSize: 12),
+                            Text(
+                              languageProvider.isEnglish ? 'Suggested Selling Prices' : 'تجویز کردہ فروخت قیمتیں',
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
                             ),
                             const SizedBox(height: 4),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  '30% Margin: ${NumberFormat.currency(symbol: 'PKR ').format(suggestedPrice30)}',
+                                  languageProvider.isEnglish
+                                      ? '30% Margin: ${NumberFormat.currency(symbol: 'PKR ').format(suggestedPrice30)}'
+                                      : '30% منافع: ${NumberFormat.currency(symbol: 'PKR ').format(suggestedPrice30)}',
                                   style: const TextStyle(color: Colors.white, fontSize: 11),
                                 ),
                                 Text(
-                                  '50% Margin: ${NumberFormat.currency(symbol: 'PKR ').format(suggestedPrice50)}',
+                                  languageProvider.isEnglish
+                                      ? '50% Margin: ${NumberFormat.currency(symbol: 'PKR ').format(suggestedPrice50)}'
+                                      : '50% منافع: ${NumberFormat.currency(symbol: 'PKR ').format(suggestedPrice50)}',
                                   style: const TextStyle(color: Colors.white, fontSize: 11),
                                 ),
                               ],
@@ -1175,10 +1252,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           ),
           const SizedBox(height: 20),
 
-          // Components List
-          const Text(
-            'Components',
-            style: TextStyle(
+          Text(
+            languageProvider.isEnglish ? 'Components' : 'اجزاء',
+            style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
               color: Color(0xFF2D3142),
@@ -1192,13 +1268,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             separatorBuilder: (_, __) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               final component = product.bomComponents![index];
-              return _buildBomComponentCard(component, index + 1);
+              return _buildBomComponentCard(component, index + 1, languageProvider);
             },
           ),
 
           const SizedBox(height: 20),
 
-          // Manufacturing Cost Breakdown
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -1209,9 +1284,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Manufacturing Cost Breakdown',
-                  style: TextStyle(
+                Text(
+                  languageProvider.isEnglish ? 'Manufacturing Cost Breakdown' : 'تیاری کی لاگت کی تفصیل',
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF2D3142),
@@ -1240,9 +1315,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Total Manufacturing Cost:',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    Text(
+                      languageProvider.isEnglish ? 'Total Manufacturing Cost:' : 'کل تیاری لاگت:',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                     ),
                     Text(
                       NumberFormat.currency(symbol: 'PKR ').format(totalCost),
@@ -1262,7 +1337,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  Widget _buildBomSummaryItem(String label, String value, IconData icon, Color color) {
+  Widget _buildBomSummaryItem(String label, String value, IconData icon, Color color, LanguageProvider languageProvider) {
     return Column(
       children: [
         Icon(icon, color: color.withOpacity(0.8), size: 20),
@@ -1273,17 +1348,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             fontSize: 16,
             fontWeight: FontWeight.bold,
             color: color,
+            fontFamily: languageProvider.fontFamily,
           ),
         ),
         Text(
           label,
-          style: TextStyle(fontSize: 11, color: color.withOpacity(0.8)),
+          style: TextStyle(fontSize: 11, color: color.withOpacity(0.8), fontFamily: languageProvider.fontFamily),
         ),
       ],
     );
   }
 
-  Widget _buildBomComponentCard(BomComponent component, int number) {
+  Widget _buildBomComponentCard(BomComponent component, int number, LanguageProvider languageProvider) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1317,10 +1393,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               Expanded(
                 child: Text(
                   component.productName,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: Color(0xFF2D3142),
+                    fontFamily: languageProvider.fontFamily,
                   ),
                 ),
               ),
@@ -1346,9 +1423,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             children: [
               Expanded(
                 child: _buildComponentDetail(
-                  'Unit Cost',
+                  languageProvider.isEnglish ? 'Unit Cost' : 'فی یونٹ لاگت',
                   NumberFormat.currency(symbol: 'PKR ').format(component.costPerUnit),
                   Icons.attach_money,
+                  languageProvider,
                 ),
               ),
               Container(
@@ -1358,9 +1436,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ),
               Expanded(
                 child: _buildComponentDetail(
-                  'Total Cost',
+                  languageProvider.isEnglish ? 'Total Cost' : 'کل لاگت',
                   NumberFormat.currency(symbol: 'PKR ').format(component.totalCost),
                   Icons.calculate,
+                  languageProvider,
                 ),
               ),
             ],
@@ -1393,18 +1472,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  Widget _buildComponentDetail(String label, String value, IconData icon) {
+  Widget _buildComponentDetail(String label, String value, IconData icon, LanguageProvider languageProvider) {
     return Column(
       children: [
         Icon(icon, size: 14, color: Colors.grey[500]),
         const SizedBox(height: 4),
         Text(
           value,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, fontFamily: languageProvider.fontFamily),
         ),
         Text(
           label,
-          style: TextStyle(fontSize: 10, color: Colors.grey[500]),
+          style: TextStyle(fontSize: 10, color: Colors.grey[500], fontFamily: languageProvider.fontFamily),
         ),
       ],
     );
@@ -1437,16 +1516,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   void _deleteProduct() {
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Product'),
-        content: const Text(
-            'Are you sure you want to delete this product? This action cannot be undone.'),
+        title: Text(languageProvider.isEnglish ? 'Delete Product' : 'پروڈکٹ حذف کریں'),
+        content: Text(
+          languageProvider.isEnglish
+              ? 'Are you sure you want to delete this product? This action cannot be undone.'
+              : 'کیا آپ واقعی اس پروڈکٹ کو حذف کرنا چاہتے ہیں؟ یہ عمل واپس نہیں کیا جا سکتا۔',
+        ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+              child: Text(languageProvider.isEnglish ? 'Cancel' : 'منسوخ کریں')),
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
@@ -1456,19 +1539,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               await provider.deleteProduct(widget.productId);
               if (result['success'] && mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content:
-                        Text('Product deleted successfully')));
+                    SnackBar(
+                        content: Text(languageProvider.isEnglish
+                            ? 'Product deleted successfully'
+                            : 'پروڈکٹ کامیابی سے حذف ہو گئی')));
                 Navigator.pop(context, true);
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                     content: Text(result['error'] ??
-                        'Failed to delete product')));
+                        (languageProvider.isEnglish ? 'Failed to delete product' : 'پروڈکٹ حذف کرنے میں ناکامی'))));
               }
             },
             style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFF6B6B)),
-            child: const Text('Delete'),
+            child: Text(languageProvider.isEnglish ? 'Delete' : 'حذف کریں'),
           ),
         ],
       ),
@@ -1476,6 +1560,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   void _showUpdateStockDialog() {
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
     final quantityController = TextEditingController();
     String operation = 'add';
 
@@ -1483,56 +1568,61 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: const Text('Update Stock'),
+          title: Text(languageProvider.isEnglish ? 'Update Stock' : 'اسٹاک اپ ڈیٹ کریں'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
                 value: operation,
-                items: const [
+                items: [
                   DropdownMenuItem(
-                      value: 'add', child: Text('Add Stock')),
+                      value: 'add',
+                      child: Text(languageProvider.isEnglish ? 'Add Stock' : 'اسٹاک شامل کریں')),
                   DropdownMenuItem(
                       value: 'subtract',
-                      child: Text('Remove Stock')),
+                      child: Text(languageProvider.isEnglish ? 'Remove Stock' : 'اسٹاک ہٹائیں')),
                   DropdownMenuItem(
-                      value: 'set', child: Text('Set Quantity')),
+                      value: 'set',
+                      child: Text(languageProvider.isEnglish ? 'Set Quantity' : 'مقدار مقرر کریں')),
                 ],
                 onChanged: (value) =>
                     setState(() => operation = value!),
-                decoration: const InputDecoration(
-                    labelText: 'Operation',
-                    border: OutlineInputBorder()),
+                decoration: InputDecoration(
+                    labelText: languageProvider.isEnglish ? 'Operation' : 'آپریشن',
+                    border: const OutlineInputBorder()),
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: quantityController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                    labelText: 'Quantity',
-                    border: OutlineInputBorder()),
+                decoration: InputDecoration(
+                    labelText: languageProvider.isEnglish ? 'Quantity' : 'مقدار',
+                    border: const OutlineInputBorder()),
               ),
             ],
           ),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel')),
+                child: Text(languageProvider.isEnglish ? 'Cancel' : 'منسوخ کریں')),
             ElevatedButton(
               onPressed: () async {
                 if (quantityController.text.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Please enter quantity')));
+                      SnackBar(
+                          content: Text(languageProvider.isEnglish
+                              ? 'Please enter quantity'
+                              : 'براہ کرم مقدار درج کریں')));
                   return;
                 }
                 final quantity =
                 int.tryParse(quantityController.text);
                 if (quantity == null || quantity <= 0) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text(
-                              'Please enter a valid quantity')));
+                      SnackBar(
+                          content: Text(languageProvider.isEnglish
+                              ? 'Please enter a valid quantity'
+                              : 'براہ کرم ایک درست مقدار درج کریں')));
                   return;
                 }
                 Navigator.pop(context);
@@ -1545,16 +1635,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 if (result['success'] && mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                       content:
-                      Text(result['data']['message'] ?? 'Updated')));
+                      Text(result['data']['message'] ?? (languageProvider.isEnglish ? 'Updated' : 'اپ ڈیٹ ہو گیا'))));
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                       content: Text(result['error'] ??
-                          'Failed to update stock')));
+                          (languageProvider.isEnglish ? 'Failed to update stock' : 'اسٹاک اپ ڈیٹ کرنے میں ناکامی'))));
                 }
               },
               style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF7C3AED)),
-              child: const Text('Update'),
+              child: Text(languageProvider.isEnglish ? 'Update' : 'اپ ڈیٹ کریں'),
             ),
           ],
         ),
@@ -1564,7 +1654,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  PRODUCT HISTORY TAB  (unchanged — kept in same file)
+//  PRODUCT HISTORY TAB
 // ═══════════════════════════════════════════════════════════════════════════════
 
 class _SaleRecord {
@@ -1722,6 +1812,8 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
 
   @override
   Widget build(BuildContext context) {
+    final languageProvider = Provider.of<LanguageProvider>(context);
+
     if (_isLoading) {
       return const Center(
           child:
@@ -1743,7 +1835,7 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
             OutlinedButton.icon(
               onPressed: _loadHistory,
               icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
+              label: Text(languageProvider.isEnglish ? 'Retry' : 'دوبارہ کوشش کریں'),
               style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFF7C3AED),
                   side:
@@ -1777,22 +1869,24 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
           child: Row(
             children: [
               _summaryItem(Icons.sell_outlined,
-                  '${_sales.length}', 'Sales', Colors.white),
+                  '${_sales.length}', languageProvider.isEnglish ? 'Sales' : 'فروخت', Colors.white, languageProvider),
               _vertDivider(),
               _summaryItem(
                   Icons.attach_money,
                   _currency.format(totalRevenue),
-                  'Revenue ($totalSold units)',
-                  Colors.white),
+                  languageProvider.isEnglish ? 'Revenue ($totalSold units)' : 'آمدنی ($totalSold یونٹس)',
+                  Colors.white,
+                  languageProvider),
               _vertDivider(),
               _summaryItem(Icons.inventory_2_outlined,
-                  '${_purchases.length}', 'Receipts', Colors.white),
+                  '${_purchases.length}', languageProvider.isEnglish ? 'Receipts' : 'رسیدیں', Colors.white, languageProvider),
               _vertDivider(),
               _summaryItem(
                   Icons.shopping_cart_outlined,
                   _currency.format(totalCost),
-                  'Purchased ($totalReceived units)',
-                  Colors.white),
+                  languageProvider.isEnglish ? 'Purchased ($totalReceived units)' : 'خریداری ($totalReceived یونٹس)',
+                  Colors.white,
+                  languageProvider),
             ],
           ),
         ),
@@ -1823,7 +1917,7 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
                   children: [
                     const Icon(Icons.sell_outlined, size: 16),
                     const SizedBox(width: 6),
-                    Text('Sales (${_sales.length})'),
+                    Text('${languageProvider.isEnglish ? 'Sales' : 'فروخت'} (${_sales.length})'),
                   ],
                 ),
               ),
@@ -1833,7 +1927,7 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
                   children: [
                     const Icon(Icons.inventory_2_outlined, size: 16),
                     const SizedBox(width: 6),
-                    Text('Purchases (${_purchases.length})'),
+                    Text('${languageProvider.isEnglish ? 'Purchases' : 'خریداری'} (${_purchases.length})'),
                   ],
                 ),
               ),
@@ -1844,8 +1938,8 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
           child: TabBarView(
             controller: _tabController,
             children: [
-              _buildSalesTab(),
-              _buildPurchasesTab(),
+              _buildSalesTab(languageProvider),
+              _buildPurchasesTab(languageProvider),
             ],
           ),
         ),
@@ -1853,10 +1947,12 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
     );
   }
 
-  Widget _buildSalesTab() {
+  Widget _buildSalesTab(LanguageProvider languageProvider) {
     if (_sales.isEmpty) {
-      return _buildEmpty(Icons.sell_outlined, 'No sales recorded yet',
-          'Sales of this product will appear here');
+      return _buildEmpty(Icons.sell_outlined,
+          languageProvider.isEnglish ? 'No sales recorded yet' : 'ابھی تک کوئی فروخت ریکارڈ نہیں',
+          languageProvider.isEnglish ? 'Sales of this product will appear here' : 'اس پروڈکٹ کی فروخت یہاں ظاہر ہوگی',
+          languageProvider);
     }
     return RefreshIndicator(
       onRefresh: _loadHistory,
@@ -1864,12 +1960,12 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         itemCount: _sales.length,
-        itemBuilder: (ctx, i) => _buildSaleCard(_sales[i]),
+        itemBuilder: (ctx, i) => _buildSaleCard(_sales[i], languageProvider),
       ),
     );
   }
 
-  Widget _buildSaleCard(_SaleRecord sale) {
+  Widget _buildSaleCard(_SaleRecord sale, LanguageProvider languageProvider) {
     final isPaid = sale.paymentStatus == 'paid';
     final isCredit = sale.paymentMethod == 'credit';
     final isInvoice = sale.saleType == 'invoice';
@@ -1923,7 +2019,9 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        isInvoice ? 'Invoice' : 'POS',
+                        isInvoice
+                            ? (languageProvider.isEnglish ? 'Invoice' : 'انوائس')
+                            : (languageProvider.isEnglish ? 'POS' : 'پی او ایس'),
                         style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
@@ -1950,7 +2048,11 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    sale.paymentStatus.toUpperCase(),
+                    languageProvider.isEnglish
+                        ? sale.paymentStatus.toUpperCase()
+                        : sale.paymentStatus == 'paid' ? 'ادا شدہ'
+                        : sale.paymentStatus == 'partial' ? 'جزوی'
+                        : 'غیر ادا شدہ',
                     style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
@@ -1965,14 +2067,16 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
                 Expanded(
                   child: _infoChip(
                       Icons.person_outline,
-                      sale.customerName ?? 'Walk-in',
-                      const Color(0xFF6B7280)),
+                      sale.customerName ?? (languageProvider.isEnglish ? 'Walk-in' : 'واک ان'),
+                      const Color(0xFF6B7280),
+                      languageProvider),
                 ),
                 const SizedBox(width: 8),
                 _infoChip(
                     Icons.calendar_today_outlined,
                     _dateFormat.format(sale.date),
-                    const Color(0xFF6B7280)),
+                    const Color(0xFF6B7280),
+                    languageProvider),
               ],
             ),
             const SizedBox(height: 8),
@@ -1987,20 +2091,25 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
               ),
               child: Row(
                 children: [
-                  _amountCell('Qty', '${sale.quantity}',
-                      const Color(0xFF2D3142)),
+                  _amountCell(languageProvider.isEnglish ? 'Qty' : 'مقدار', '${sale.quantity}',
+                      const Color(0xFF2D3142), languageProvider),
                   _amountDivider(),
-                  _amountCell('Unit Price',
+                  _amountCell(languageProvider.isEnglish ? 'Unit Price' : 'فی یونٹ قیمت',
                       _currency.format(sale.unitPrice),
-                      const Color(0xFF7C3AED)),
+                      const Color(0xFF7C3AED),
+                      languageProvider),
                   _amountDivider(),
-                  _amountCell('Total',
+                  _amountCell(languageProvider.isEnglish ? 'Total' : 'کل',
                       _currency.format(sale.totalPrice),
-                      const Color(0xFF10B981)),
+                      const Color(0xFF10B981),
+                      languageProvider),
                   if (isCredit) ...[
                     _amountDivider(),
                     _amountCell(
-                        'Method', 'Credit', const Color(0xFFEF4444)),
+                        'Method',
+                        languageProvider.isEnglish ? 'Credit' : 'کریڈٹ',
+                        const Color(0xFFEF4444),
+                        languageProvider),
                   ],
                 ],
               ),
@@ -2011,12 +2120,12 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
     );
   }
 
-  Widget _buildPurchasesTab() {
+  Widget _buildPurchasesTab(LanguageProvider languageProvider) {
     if (_purchases.isEmpty) {
-      return _buildEmpty(
-          Icons.inventory_2_outlined,
-          'No purchase receipts yet',
-          'Stock received for this product will appear here');
+      return _buildEmpty(Icons.inventory_2_outlined,
+          languageProvider.isEnglish ? 'No purchase receipts yet' : 'ابھی تک کوئی خریداری رسید نہیں',
+          languageProvider.isEnglish ? 'Stock received for this product will appear here' : 'اس پروڈکٹ کے لیے موصول ہونے والا اسٹاک یہاں ظاہر ہوگا',
+          languageProvider);
     }
     return RefreshIndicator(
       onRefresh: _loadHistory,
@@ -2024,12 +2133,12 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         itemCount: _purchases.length,
-        itemBuilder: (ctx, i) => _buildPurchaseCard(_purchases[i]),
+        itemBuilder: (ctx, i) => _buildPurchaseCard(_purchases[i], languageProvider),
       ),
     );
   }
 
-  Widget _buildPurchaseCard(_PurchaseRecord purchase) {
+  Widget _buildPurchaseCard(_PurchaseRecord purchase, LanguageProvider languageProvider) {
     final isExpired = purchase.expiryDate != null &&
         purchase.expiryDate!.isBefore(DateTime.now());
     final expiringSoon = purchase.expiryDate != null &&
@@ -2099,14 +2208,16 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
                 Expanded(
                   child: _infoChip(
                       Icons.business_outlined,
-                      purchase.supplierName ?? 'Unknown Supplier',
-                      const Color(0xFF6B7280)),
+                      purchase.supplierName ?? (languageProvider.isEnglish ? 'Unknown Supplier' : 'نامعلوم سپلائر'),
+                      const Color(0xFF6B7280),
+                      languageProvider),
                 ),
                 const SizedBox(width: 8),
                 _infoChip(
                     Icons.calendar_today_outlined,
                     _dateFormat.format(purchase.date),
-                    const Color(0xFF6B7280)),
+                    const Color(0xFF6B7280),
+                    languageProvider),
               ],
             ),
             const SizedBox(height: 8),
@@ -2121,17 +2232,20 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
               ),
               child: Row(
                 children: [
-                  _amountCell('Received',
+                  _amountCell(languageProvider.isEnglish ? 'Received' : 'موصول شدہ',
                       '${purchase.quantityReceived}',
-                      const Color(0xFF2D3142)),
+                      const Color(0xFF2D3142),
+                      languageProvider),
                   _amountDivider(),
-                  _amountCell('Unit Cost',
+                  _amountCell(languageProvider.isEnglish ? 'Unit Cost' : 'فی یونٹ لاگت',
                       _currency.format(purchase.unitCost),
-                      const Color(0xFF7C3AED)),
+                      const Color(0xFF7C3AED),
+                      languageProvider),
                   _amountDivider(),
-                  _amountCell('Total Cost',
+                  _amountCell(languageProvider.isEnglish ? 'Total Cost' : 'کل لاگت',
                       _currency.format(purchase.totalCost),
-                      const Color(0xFF10B981)),
+                      const Color(0xFF10B981),
+                      languageProvider),
                 ],
               ),
             ),
@@ -2144,7 +2258,7 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
                     const Icon(Icons.qr_code,
                         size: 13, color: Color(0xFF9CA3AF)),
                     const SizedBox(width: 4),
-                    Text('Batch: ${purchase.batchNumber}',
+                    Text('${languageProvider.isEnglish ? 'Batch' : 'بیچ'}: ${purchase.batchNumber}',
                         style: const TextStyle(
                             fontSize: 11,
                             color: Color(0xFF6B7280))),
@@ -2160,8 +2274,8 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
                             : const Color(0xFF9CA3AF)),
                     const SizedBox(width: 4),
                     Text(
-                      'Exp: ${_dateFormat.format(purchase.expiryDate!)}'
-                          '${isExpired ? ' ⚠ Expired' : expiringSoon ? ' ⚠ Soon' : ''}',
+                      '${languageProvider.isEnglish ? 'Exp' : 'ختم ہونے کی تاریخ'}: ${_dateFormat.format(purchase.expiryDate!)}'
+                          '${isExpired ? (languageProvider.isEnglish ? ' ⚠ Expired' : ' ⚠ ختم شدہ') : expiringSoon ? (languageProvider.isEnglish ? ' ⚠ Soon' : ' ⚠ قریب') : ''}',
                       style: TextStyle(
                           fontSize: 11,
                           color: isExpired
@@ -2185,7 +2299,7 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
   }
 
   Widget _buildEmpty(
-      IconData icon, String title, String subtitle) {
+      IconData icon, String title, String subtitle, LanguageProvider languageProvider) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -2196,18 +2310,21 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
               style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: Colors.grey[500])),
+                  color: Colors.grey[500],
+                  fontFamily: languageProvider.fontFamily)),
           const SizedBox(height: 6),
           Text(subtitle,
-              style:
-              TextStyle(fontSize: 13, color: Colors.grey[400])),
+              style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey[400],
+                  fontFamily: languageProvider.fontFamily)),
         ],
       ),
     );
   }
 
   Widget _summaryItem(
-      IconData icon, String value, String label, Color color) {
+      IconData icon, String value, String label, Color color, LanguageProvider languageProvider) {
     return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -2218,11 +2335,14 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
               style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
-                  color: color),
+                  color: color,
+                  fontFamily: languageProvider.fontFamily),
               overflow: TextOverflow.ellipsis),
           Text(label,
               style: TextStyle(
-                  fontSize: 9, color: color.withOpacity(0.7)),
+                  fontSize: 9,
+                  color: color.withOpacity(0.7),
+                  fontFamily: languageProvider.fontFamily),
               overflow: TextOverflow.ellipsis),
         ],
       ),
@@ -2236,7 +2356,7 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
     color: Colors.white.withOpacity(0.3),
   );
 
-  Widget _infoChip(IconData icon, String text, Color color) {
+  Widget _infoChip(IconData icon, String text, Color color, LanguageProvider languageProvider) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -2244,14 +2364,14 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
         const SizedBox(width: 4),
         Flexible(
           child: Text(text,
-              style: TextStyle(fontSize: 12, color: color),
+              style: TextStyle(fontSize: 12, color: color, fontFamily: languageProvider.fontFamily),
               overflow: TextOverflow.ellipsis),
         ),
       ],
     );
   }
 
-  Widget _amountCell(String label, String value, Color color) {
+  Widget _amountCell(String label, String value, Color color, LanguageProvider languageProvider) {
     return Expanded(
       child: Column(
         children: [
@@ -2264,7 +2384,8 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
               style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: color),
+                  color: color,
+                  fontFamily: languageProvider.fontFamily),
               overflow: TextOverflow.ellipsis),
         ],
       ),

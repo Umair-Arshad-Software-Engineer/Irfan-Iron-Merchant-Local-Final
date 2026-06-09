@@ -22,7 +22,15 @@ const initBank = require('./Bank');
 const initBankTransaction = require('./BankTransaction');
 const initBankTransfer = require('./BankTransfer');
 const initCheque = require('./Cheque');
-const initCashbook = require('./Cashbook');          // ADD
+const initCashbook = require('./Cashbook');
+const initSimpleCashbook = require('./SimpleCashbook');
+const initDailyExpenseSession = require('./dailyExpenseSession');
+const initDailyExpense = require('./dailyExpense');
+const initEmployee        = require('./Employee');
+const initAttendance      = require('./Attendance');
+const initSalaryPayment   = require('./SalaryPayment');
+const initAdvancePayment  = require('./AdvancePayment');   // ← ADD
+const initEmployeeExpense = require('./EmployeeExpense');  // ← ADD
 
 const Category = initCategory(sequelize);
 const Subcategory = initSubcategory(sequelize);
@@ -44,9 +52,17 @@ const Bank = initBank(sequelize);
 const BankTransaction = initBankTransaction(sequelize);
 const BankTransfer = initBankTransfer(sequelize);
 const Cheque = initCheque(sequelize);
-const Cashbook = initCashbook(sequelize);            // ADD
+const Cashbook = initCashbook(sequelize);
+const SimpleCashbook = initSimpleCashbook(sequelize);
+const DailyExpenseSession = initDailyExpenseSession(sequelize);
+const DailyExpense = initDailyExpense(sequelize);
+const Employee        = initEmployee(sequelize);
+const Attendance      = initAttendance(sequelize);
+const SalaryPayment   = initSalaryPayment(sequelize);
+const AdvancePayment  = initAdvancePayment(sequelize);    // ← ADD
+const EmployeeExpense = initEmployeeExpense(sequelize);   // ← ADD
 
-// ── Associations (unchanged) ─────────────────────────────────────────────────
+// ── Associations ─────────────────────────────────────────────────────────────
 
 Category.hasMany(Subcategory, { foreignKey: 'category_id', as: 'subcategories' });
 Subcategory.belongsTo(Category, { foreignKey: 'category_id', as: 'category' });
@@ -115,8 +131,32 @@ Cheque.belongsTo(Bank, { foreignKey: 'bank_id', as: 'bank' });
 Cheque.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
 Cheque.belongsTo(BankTransaction, { foreignKey: 'bank_transaction_id', as: 'clearedTransaction' });
 
-// Cashbook has no FK associations — standalone table
-// (reference_id is a logical pointer, not a DB foreign key)
+DailyExpenseSession.hasMany(DailyExpense, { foreignKey: 'session_id', as: 'entries' });
+DailyExpense.belongsTo(DailyExpenseSession, { foreignKey: 'session_id', as: 'session' });
+DailyExpense.belongsTo(Supplier, { foreignKey: 'supplier_id', as: 'supplier' });
+DailyExpense.belongsTo(Bank, { foreignKey: 'bank_id', as: 'bank' });
+
+// ── Employee associations ─────────────────────────────────────────────────────
+Employee.hasMany(Attendance,       { foreignKey: 'employee_id', as: 'attendances',      onDelete: 'CASCADE' });
+Attendance.belongsTo(Employee,     { foreignKey: 'employee_id', as: 'employee' });
+
+Employee.hasMany(SalaryPayment,    { foreignKey: 'employee_id', as: 'salaryPayments',   onDelete: 'CASCADE' });
+SalaryPayment.belongsTo(Employee,  { foreignKey: 'employee_id', as: 'employee' });
+
+Employee.hasMany(AdvancePayment,   { foreignKey: 'employee_id', as: 'advances',         onDelete: 'CASCADE' }); // ← ADD
+AdvancePayment.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' });                              // ← ADD
+
+Employee.hasMany(EmployeeExpense,   { foreignKey: 'employee_id', as: 'expenses',        onDelete: 'CASCADE' }); // ← ADD
+EmployeeExpense.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' });                             // ← ADD
+
+// AdvancePayment ↔ SalaryPayment (which payment recovered it)
+SalaryPayment.hasMany(AdvancePayment,  { foreignKey: 'salary_payment_id', as: 'recoveredAdvances' }); // ← ADD
+AdvancePayment.belongsTo(SalaryPayment, { foreignKey: 'salary_payment_id', as: 'salaryPayment' });    // ← ADD
+
+SalaryPayment.hasMany(EmployeeExpense,  { foreignKey: 'salary_payment_id', as: 'recoveredExpenses' }); // ← ADD
+EmployeeExpense.belongsTo(SalaryPayment, { foreignKey: 'salary_payment_id', as: 'salaryPayment' });    // ← ADD
+
+// Cashbook / SimpleCashbook — standalone, no FK associations
 
 module.exports = {
   User,
@@ -140,6 +180,14 @@ module.exports = {
   BankTransaction,
   BankTransfer,
   Cheque,
-  Cashbook,                                          // ADD
+  Cashbook,
+  SimpleCashbook,
   sequelize,
+  DailyExpenseSession,
+  DailyExpense,
+  Employee,
+  Attendance,
+  SalaryPayment,
+  AdvancePayment,   // ← ADD
+  EmployeeExpense,  // ← ADD
 };

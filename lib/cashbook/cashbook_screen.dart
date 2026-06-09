@@ -117,6 +117,7 @@ class _CashbookScreenState extends State<CashbookScreen> {
     final descCtrl = TextEditingController();
     final refCtrl = TextEditingController();
     String entryType = 'cash_in';
+    DateTime entryDate = _selectedDate;
 
     await showDialog<bool>(
       context: context,
@@ -128,6 +129,46 @@ class _CashbookScreenState extends State<CashbookScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Date picker
+                GestureDetector(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      initialDate: entryDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now(),
+                      builder: (context, child) => Theme(
+                        data: Theme.of(context).copyWith(
+                          colorScheme: const ColorScheme.light(primary: Color(0xFF10B981)),
+                        ),
+                        child: child!,
+                      ),
+                    );
+                    if (picked != null) {
+                      setS(() => entryDate = picked);
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_today, size: 18, color: Color(0xFF10B981)),
+                        const SizedBox(width: 8),
+                        Text(
+                          _df.format(entryDate),
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                        const Spacer(),
+                        const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
                 // Type toggle
                 Row(
                   children: [
@@ -242,27 +283,6 @@ class _CashbookScreenState extends State<CashbookScreen> {
                         borderRadius: BorderRadius.circular(8)),
                   ),
                 ),
-                const SizedBox(height: 10),
-                // Show which date this will be added to
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.calendar_today,
-                          size: 14, color: Color(0xFF10B981)),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Entry for: ${_df.format(_selectedDate)}',
-                        style: const TextStyle(
-                            fontSize: 12, color: Color(0xFF10B981)),
-                      ),
-                    ],
-                  ),
-                ),
               ],
             ),
           ),
@@ -293,6 +313,7 @@ class _CashbookScreenState extends State<CashbookScreen> {
                   referenceNumber: refCtrl.text.trim().isEmpty
                       ? null
                       : refCtrl.text.trim(),
+                  entryDate: entryDate,
                 );
               },
               style: ElevatedButton.styleFrom(
@@ -310,11 +331,232 @@ class _CashbookScreenState extends State<CashbookScreen> {
     );
   }
 
+  Future<void> _showEditEntryDialog(Map<String, dynamic> entry) async {
+    final amountCtrl = TextEditingController(text: entry['amount'].toString());
+    final descCtrl = TextEditingController(text: entry['description'] ?? '');
+    final refCtrl = TextEditingController(text: entry['reference_number'] ?? '');
+    String entryType = entry['entry_type'];
+    DateTime entryDate = DateTime.parse(entry['entry_date']);
+
+    await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Edit Manual Entry'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Date picker
+                GestureDetector(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      initialDate: entryDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now(),
+                      builder: (context, child) => Theme(
+                        data: Theme.of(context).copyWith(
+                          colorScheme: const ColorScheme.light(primary: Color(0xFF10B981)),
+                        ),
+                        child: child!,
+                      ),
+                    );
+                    if (picked != null) {
+                      setS(() => entryDate = picked);
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_today, size: 18, color: Color(0xFF10B981)),
+                        const SizedBox(width: 8),
+                        Text(
+                          _df.format(entryDate),
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                        const Spacer(),
+                        const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Type toggle
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setS(() => entryType = 'cash_in'),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: entryType == 'cash_in'
+                                ? const Color(0xFF10B981).withOpacity(0.1)
+                                : Colors.grey[100],
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: entryType == 'cash_in'
+                                  ? const Color(0xFF10B981)
+                                  : Colors.grey.shade300,
+                              width: entryType == 'cash_in' ? 2 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Icon(Icons.arrow_downward_rounded,
+                                  color: entryType == 'cash_in'
+                                      ? const Color(0xFF10B981)
+                                      : Colors.grey,
+                                  size: 22),
+                              const SizedBox(height: 4),
+                              Text('Cash In',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: entryType == 'cash_in'
+                                        ? const Color(0xFF10B981)
+                                        : Colors.grey,
+                                  )),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setS(() => entryType = 'cash_out'),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: entryType == 'cash_out'
+                                ? Colors.red.withOpacity(0.1)
+                                : Colors.grey[100],
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: entryType == 'cash_out'
+                                  ? Colors.red
+                                  : Colors.grey.shade300,
+                              width: entryType == 'cash_out' ? 2 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Icon(Icons.arrow_upward_rounded,
+                                  color: entryType == 'cash_out'
+                                      ? Colors.red
+                                      : Colors.grey,
+                                  size: 22),
+                              const SizedBox(height: 4),
+                              Text('Cash Out',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: entryType == 'cash_out'
+                                        ? Colors.red
+                                        : Colors.grey,
+                                  )),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: amountCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Amount *',
+                    prefixText: 'Rs ',
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descCtrl,
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    labelText: 'Description *',
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: refCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Reference # (optional)',
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () async {
+                final amount = double.tryParse(amountCtrl.text);
+                if (amount == null || amount <= 0) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                      content: Text('Enter valid amount'),
+                      backgroundColor: Colors.red));
+                  return;
+                }
+                if (descCtrl.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                      content: Text('Description required'),
+                      backgroundColor: Colors.red));
+                  return;
+                }
+                Navigator.pop(ctx, true);
+                await _editManualEntry(
+                  id: entry['id'],
+                  entryType: entryType,
+                  amount: amount,
+                  description: descCtrl.text.trim(),
+                  referenceNumber: refCtrl.text.trim().isEmpty
+                      ? null
+                      : refCtrl.text.trim(),
+                  entryDate: entryDate,
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: entryType == 'cash_in'
+                    ? const Color(0xFF10B981)
+                    : Colors.red,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Update Entry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _submitManualEntry({
     required String entryType,
     required double amount,
     required String description,
     String? referenceNumber,
+    required DateTime entryDate,
   }) async {
     try {
       final res = await http.post(
@@ -328,7 +570,7 @@ class _CashbookScreenState extends State<CashbookScreen> {
           'amount': amount,
           'description': description,
           'reference_number': referenceNumber,
-          'entry_date': _selectedDate.toIso8601String().split('T').first,
+          'entry_date': entryDate.toIso8601String().split('T').first,
         }),
       );
       final json = jsonDecode(res.body);
@@ -341,6 +583,50 @@ class _CashbookScreenState extends State<CashbookScreen> {
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(json['message'] ?? 'Failed'),
+          backgroundColor: Colors.red,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  Future<void> _editManualEntry({
+    required int id,
+    required String entryType,
+    required double amount,
+    required String description,
+    String? referenceNumber,
+    required DateTime entryDate,
+  }) async {
+    try {
+      final res = await http.put(
+        Uri.parse('${ApiConfig.baseUrl}/cashbook/$id'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (_getToken() != null) 'Authorization': 'Bearer ${_getToken()}',
+        },
+        body: jsonEncode({
+          'entry_type': entryType,
+          'amount': amount,
+          'description': description,
+          'reference_number': referenceNumber,
+          'entry_date': entryDate.toIso8601String().split('T').first,
+        }),
+      );
+      final json = jsonDecode(res.body);
+      if (json['success'] == true && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(json['message'] ?? 'Entry updated'),
+          backgroundColor: Colors.green,
+        ));
+        _loadCashbook();
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(json['message'] ?? 'Failed to update'),
           backgroundColor: Colors.red,
         ));
       }
@@ -456,8 +742,6 @@ class _CashbookScreenState extends State<CashbookScreen> {
     );
   }
 
-  // ── Day navigator bar ──────────────────────────────────────────────────────
-  // ✅ FIXED: Removed duplicate color parameter
   Widget _buildDayNavigator() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
@@ -525,8 +809,6 @@ class _CashbookScreenState extends State<CashbookScreen> {
     );
   }
 
-  // ── Day summary cards ──────────────────────────────────────────────────────
-  // ✅ FIXED: Removed duplicate color parameter
   Widget _buildDaySummaryCards() {
     final currentBalance =
         double.tryParse(_summary['current_balance']?.toString() ?? '0') ?? 0.0;
@@ -542,7 +824,6 @@ class _CashbookScreenState extends State<CashbookScreen> {
       ),
       child: Column(
         children: [
-          // Cash on hand card (all-time)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -611,7 +892,6 @@ class _CashbookScreenState extends State<CashbookScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          // Day in/out row
           Row(
             children: [
               Expanded(
@@ -689,7 +969,6 @@ class _CashbookScreenState extends State<CashbookScreen> {
     );
   }
 
-  // ── Entries list ───────────────────────────────────────────────────────────
   Widget _buildEntriesList() {
     if (_entries.isEmpty) {
       return Center(
@@ -742,7 +1021,6 @@ class _CashbookScreenState extends State<CashbookScreen> {
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                // Direction icon
                 Container(
                   width: 38,
                   height: 38,
@@ -759,7 +1037,6 @@ class _CashbookScreenState extends State<CashbookScreen> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                // Description & source
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -803,7 +1080,6 @@ class _CashbookScreenState extends State<CashbookScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                // Amount & balance
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -823,10 +1099,21 @@ class _CashbookScreenState extends State<CashbookScreen> {
                     ),
                     if (isManual) ...[
                       const SizedBox(height: 4),
-                      GestureDetector(
-                        onTap: () => _deleteEntry(entry['id']),
-                        child: const Icon(Icons.delete_outline,
-                            size: 15, color: Colors.red),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GestureDetector(
+                            onTap: () => _showEditEntryDialog(entry),
+                            child: const Icon(Icons.edit_outlined,
+                                size: 15, color: Colors.blue),
+                          ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: () => _deleteEntry(entry['id']),
+                            child: const Icon(Icons.delete_outline,
+                                size: 15, color: Colors.red),
+                          ),
+                        ],
                       ),
                     ],
                   ],

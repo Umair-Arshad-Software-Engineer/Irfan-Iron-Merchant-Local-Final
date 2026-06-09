@@ -288,7 +288,7 @@ exports.getSupplierPayments = async (req, res) => {
 
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ✅ DELETE SUPPLIER PAYMENT + CREATE REVERSAL
+// ✅ DELETE SUPPLIER PAYMENT - Delete from everywhere
 // ═══════════════════════════════════════════════════════════════════════════
 exports.deleteSupplierPayment = async (req, res) => {
   const dbTransaction = await sequelize.transaction();
@@ -296,7 +296,7 @@ exports.deleteSupplierPayment = async (req, res) => {
   try {
     const { supplierId, paymentId } = req.params;
 
-    // ── Get the payment entry ──
+    // ── Get the payment entry with all details ──
     const entry = await SupplierLedger.findOne({
       where: {
         id: paymentId,
@@ -314,73 +314,134 @@ exports.deleteSupplierPayment = async (req, res) => {
       });
     }
 
+    const paymentAmount = parseFloat(entry.debit);
+
     // ═══════════════════════════════════════════════════════════════════════
-    // STEP 1: If bank payment exists, reverse bank transaction
+    // STEP 1: Reverse bank transaction if bank payment (delete the original)
     // ═══════════════════════════════════════════════════════════════════════
-    if ((entry.payment_method === 'bank' || entry.payment_method === 'cheque') && entry.bank_name) {
-      // Find bank by name (if no bank_id stored, use bank_name)
-      // Ideally you should store bank_id in SupplierLedger
-      // For now, we'll try to find it by name
-      const bank = await Bank.findOne({
-        where: { name: entry.bank_name },
-        transaction: dbTransaction
-      });
+    if (entry.payment_method === 'bank' && entry.bank_id) {
+      // Find bank by ID
+      const bank = await Bank.findByPk(entry.bank_id, { transaction: dbTransaction });
 
       if (bank) {
-        const paymentAmount = parseFloat(entry.debit);
+        // Reverse bank balance (add back the money)
         const newBankBalance = parseFloat(bank.balance) + paymentAmount;
-
-        // Reverse bank balance
         await bank.update(
           { balance: newBankBalance.toFixed(2) },
           { transaction: dbTransaction }
         );
 
-        // Create reversal bank transaction
-        await BankTransaction.create({
-          bank_id: bank.id,
-          transaction_type: 'in', // Reversal - money comes back
-          amount: paymentAmount.toFixed(2),
-          description: `Reversal of payment to ${entry.description}`,
-          reference_number: entry.reference_number ? `REV-${entry.reference_number}` : null,
-          balance_after: newBankBalance.toFixed(2),
-          created_by: req.user?.id,
-          transaction_date: new Date()
-        }, { transaction: dbTransaction });
+        // Delete the associated bank transaction
+        await BankTransaction.destroy({
+          where: {
+            bank_id: entry.bank_id,
+            reference_number: entry.reference_number,
+            amount: paymentAmount.toFixed(2),
+            transaction_type: 'out'
+          },
+          transaction: dbTransaction
+        });
       }
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // STEP 2: Create reversal ledger entry
+    // STEP 2: Delete cheque record if cheque payment
     // ═══════════════════════════════════════════════════════════════════════
-    await SupplierLedger.create({
-      supplier_id: supplierId,
-      reference_type: 'reversal',
-      reference_id: entry.id,
-      reference_number: entry.reference_number ? `REV-${entry.reference_number}` : null,
-      debit: '0.00',
-      credit: parseFloat(entry.debit).toFixed(2),
-      balance: '0.00', // temporary - will be recalculated
-      description: `Reversal of payment: ${entry.description}`,
-      transaction_date: new Date(),
-      created_by: req.user?.id,
-    }, { transaction: dbTransaction });
+    if (entry.cheque_number && entry.reference_id) {
+      // Delete the cheque record
+      await Cheque.destroy({
+        where: { id: entry.reference_id },
+        transaction: dbTransaction
+      });
+    }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // STEP 3: Delete original payment entry
+    // STEP 3: Delete cashbook entry if exists
+    // ═══════════════════════════════════════════════════════════════════════
+    const { SimpleCashbook } = require('../models');
+    
+    // Delete from SimpleCashbook
+    const simpleCashbookEntry = await SimpleCashbook.findOne({
+      where: {
+        source_type: 'supplier_payment',
+        reference_id: entry.id,
+      },
+      transaction: dbTransaction,
+    });
+
+    if (simpleCashbookEntry) {
+      await SimpleCashbook.destroy({
+        where: {
+          source_type: 'supplier_payment',
+          reference_id: entry.id,
+        },
+        transaction: dbTransaction,
+      });
+    }
+
+    // Delete from regular Cashbook if exists
+    const { Cashbook } = require('../models');
+    const cashbookEntry = await Cashbook.findOne({
+      where: {
+        source_type: 'supplier_payment',
+        reference_id: entry.id,
+      },
+      transaction: dbTransaction,
+    });
+
+    if (cashbookEntry) {
+      await Cashbook.destroy({
+        where: {
+          source_type: 'supplier_payment',
+          reference_id: entry.id,
+        },
+        transaction: dbTransaction,
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 4: Check if this payment is linked to a purchase receipt
+    // ═══════════════════════════════════════════════════════════════════════
+    // If the payment is linked to a purchase receipt, we need to handle that
+    const { PurchaseReceipt, PurchaseReceiptItem, PurchaseOrder } = require('../models');
+    
+    // Find if this payment is linked to any purchase receipt
+    // (You may need to add a payment_id field to purchase_receipts table)
+    // For now, we'll check if there's a receipt with this reference number
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 5: Delete the original payment entry
     // ═══════════════════════════════════════════════════════════════════════
     await entry.destroy({ transaction: dbTransaction });
 
     // ═══════════════════════════════════════════════════════════════════════
-    // STEP 4: Recalculate all ledger balances
+    // STEP 6: Recalculate all remaining ledger balances
     // ═══════════════════════════════════════════════════════════════════════
-    await recalculateBalances(supplierId, dbTransaction);
+    const remainingEntries = await SupplierLedger.findAll({
+      where: { supplier_id: supplierId },
+      order: [['transaction_date', 'ASC'], ['id', 'ASC']],
+      transaction: dbTransaction,
+    });
+
+    let runningBalance = 0;
+    for (const remainingEntry of remainingEntries) {
+      runningBalance += parseFloat(remainingEntry.credit) - parseFloat(remainingEntry.debit);
+      await remainingEntry.update({ balance: runningBalance.toFixed(2) }, { transaction: dbTransaction });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 7: Update supplier balance
+    // ═══════════════════════════════════════════════════════════════════════
+    await Supplier.update(
+      { balance: runningBalance.toFixed(2) },
+      { where: { id: supplierId }, transaction: dbTransaction }
+    );
 
     await dbTransaction.commit();
 
     return res.json({
       success: true,
-      message: 'Payment deleted, reversal entry created, and balances updated'
+      message: 'Payment deleted successfully from all records'
     });
 
   } catch (error) {
