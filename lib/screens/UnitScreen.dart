@@ -34,6 +34,11 @@ class _UnitScreenState extends State<UnitScreen> {
   final _formKey = GlobalKey<FormState>();
   final _convertFormKey = GlobalKey<FormState>();
 
+  // Responsive breakpoints
+  bool get _isMobile => MediaQuery.of(context).size.width < 600;
+  bool get _isTablet => MediaQuery.of(context).size.width >= 600 && MediaQuery.of(context).size.width < 1200;
+  bool get _isDesktop => MediaQuery.of(context).size.width >= 1200;
+
   @override
   void initState() {
     super.initState();
@@ -86,7 +91,7 @@ class _UnitScreenState extends State<UnitScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 CustomTextField(
                   controller: _symbolController,
                   labelText: languageProvider.isEnglish ? 'Symbol' : 'علامت',
@@ -101,7 +106,7 @@ class _UnitScreenState extends State<UnitScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 Consumer<UnitProvider>(
                   builder: (context, provider, child) {
                     return CustomDropdown(
@@ -130,54 +135,27 @@ class _UnitScreenState extends State<UnitScreen> {
                     );
                   },
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Consumer<UnitProvider>(
-                        builder: (context, provider, child) {
-                          final baseUnits = provider.getBaseUnits();
-                          return CustomDropdown(
-                            value: _selectedBaseUnitId,
-                            label: languageProvider.isEnglish ? 'Base Unit (Optional)' : 'بنیادی یونٹ (اختیاری)',
-                            hintText: languageProvider.isEnglish ? 'Select base unit' : 'بنیادی یونٹ منتخب کریں',
-                            items: [
-                              DropdownMenuItem(
-                                value: null,
-                                child: Text(languageProvider.isEnglish ? 'None (Base Unit)' : 'کوئی نہیں (بنیادی یونٹ)'),
-                              ),
-                              ...baseUnits.map((unit) {
-                                return DropdownMenuItem(
-                                  value: unit.id,
-                                  child: Text(unit.displayName),
-                                );
-                              }),
-                            ],
-                            onChanged: (value) {
-                              setState(() {
-                                _selectedBaseUnitId = value;
-                              });
-                            },
-                          );
-                        },
+                const SizedBox(height: 12),
+                if (_isDesktop)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildBaseUnitDropdown(languageProvider),
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: CustomTextField(
-                        controller: TextEditingController(
-                          text: _conversionFactor.toStringAsFixed(4),
-                        ),
-                        labelText: languageProvider.isEnglish ? 'Conversion Factor' : 'تبادلوں کا عنصر',
-                        hintText: '1.0',
-                        keyboardType: TextInputType.number,
-                        onChanged: (value) {
-                          _conversionFactor = double.tryParse(value) ?? 1.0;
-                        },
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildConversionField(languageProvider),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  )
+                else
+                  Column(
+                    children: [
+                      _buildBaseUnitDropdown(languageProvider),
+                      const SizedBox(height: 12),
+                      _buildConversionField(languageProvider),
+                    ],
+                  ),
               ],
             ),
           ),
@@ -206,6 +184,50 @@ class _UnitScreenState extends State<UnitScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildBaseUnitDropdown(LanguageProvider languageProvider) {
+    return Consumer<UnitProvider>(
+      builder: (context, provider, child) {
+        final baseUnits = provider.getBaseUnits();
+        return CustomDropdown(
+          value: _selectedBaseUnitId,
+          label: languageProvider.isEnglish ? 'Base Unit (Optional)' : 'بنیادی یونٹ (اختیاری)',
+          hintText: languageProvider.isEnglish ? 'Select base unit' : 'بنیادی یونٹ منتخب کریں',
+          items: [
+            DropdownMenuItem(
+              value: null,
+              child: Text(languageProvider.isEnglish ? 'None (Base Unit)' : 'کوئی نہیں (بنیادی یونٹ)'),
+            ),
+            ...baseUnits.map((unit) {
+              return DropdownMenuItem(
+                value: unit.id,
+                child: Text(unit.displayName),
+              );
+            }),
+          ],
+          onChanged: (value) {
+            setState(() {
+              _selectedBaseUnitId = value;
+            });
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildConversionField(LanguageProvider languageProvider) {
+    return CustomTextField(
+      controller: TextEditingController(
+        text: _conversionFactor.toStringAsFixed(4),
+      ),
+      labelText: languageProvider.isEnglish ? 'Conversion Factor' : 'تبادلوں کا عنصر',
+      hintText: '1.0',
+      keyboardType: TextInputType.number,
+      onChanged: (value) {
+        _conversionFactor = double.tryParse(value) ?? 1.0;
+      },
     );
   }
 
@@ -286,7 +308,7 @@ class _UnitScreenState extends State<UnitScreen> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     Consumer<UnitProvider>(
                       builder: (context, provider, child) {
                         return CustomDropdown(
@@ -315,7 +337,7 @@ class _UnitScreenState extends State<UnitScreen> {
                         );
                       },
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     Consumer<UnitProvider>(
                       builder: (context, provider, child) {
                         return CustomDropdown(
@@ -344,7 +366,7 @@ class _UnitScreenState extends State<UnitScreen> {
                         );
                       },
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     Consumer<UnitProvider>(
                       builder: (context, provider, child) {
                         if (provider.isConverting) {
@@ -361,7 +383,7 @@ class _UnitScreenState extends State<UnitScreen> {
                         if (provider.conversionResult != null) {
                           final result = provider.conversionResult!;
                           return Container(
-                            padding: const EdgeInsets.all(16),
+                            padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
                               color: const Color(0xFF7C3AED).withOpacity(0.1),
                               borderRadius: BorderRadius.circular(12),
@@ -371,24 +393,24 @@ class _UnitScreenState extends State<UnitScreen> {
                                 Text(
                                   '${result.originalValue} ${result.fromUnit} =',
                                   style: const TextStyle(
-                                    fontSize: 16,
+                                    fontSize: 14,
                                     color: Color(0xFF6B7280),
                                   ),
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 4),
                                 Text(
                                   '${result.convertedValue.toStringAsFixed(4)} ${result.symbol}',
                                   style: const TextStyle(
-                                    fontSize: 24,
+                                    fontSize: 20,
                                     fontWeight: FontWeight.bold,
                                     color: Color(0xFF7C3AED),
                                   ),
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 4),
                                 Text(
                                   '(${result.toUnit})',
                                   style: const TextStyle(
-                                    fontSize: 14,
+                                    fontSize: 12,
                                     color: Color(0xFF6B7280),
                                   ),
                                 ),
@@ -480,399 +502,38 @@ class _UnitScreenState extends State<UnitScreen> {
           builder: (context, provider, child) {
             return Scaffold(
               backgroundColor: const Color(0xFFFAFAFC),
-              body: Column(
-                children: [
-                  // Header
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border(
-                        bottom: BorderSide(color: Colors.grey[200]!),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              languageProvider.isEnglish ? 'Units Management' : 'یونٹس کا انتظام',
-                              style: const TextStyle(
-                                fontSize: 28,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF2D3142),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              languageProvider.isEnglish
-                                  ? 'Configure measurement units for your inventory'
-                                  : 'اپنی انوینٹری کے لیے پیمائش کے یونٹس ترتیب دیں',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey[600],
-                                fontFamily: languageProvider.fontFamily,
-                              ),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          children: [
-                            CustomButton(
-                              text: languageProvider.isEnglish ? 'Converter' : 'کنورٹر',
-                              icon: Icons.swap_horiz,
-                              onPressed: _showConversionDialog,
-                              backgroundColor: Colors.white,
-                              textColor: const Color(0xFF7C3AED),
-                              width: 140,
-                              height: 48,
-                            ),
-                            const SizedBox(width: 12),
-                            CustomButton(
-                              text: languageProvider.isEnglish ? 'Add Unit' : 'یونٹ شامل ',
-                              icon: Icons.add,
-                              onPressed: () => _showUnitDialog(),
-                              width: 140,
-                              height: 48,
-                              useGradient: true,
-                              gradientColors: const [Color(0xFF7C3AED), Color(0xFF6366F1)],
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
+              body: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Responsive Header
+                    _buildHeader(languageProvider, provider),
 
-                  // Search and Filter Bar
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      border: Border(bottom: BorderSide(color: Color(0xFFF0F0F5))),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            height: 45,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF5F6FA),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: TextField(
-                              controller: _searchController,
-                              style: TextStyle(fontFamily: languageProvider.fontFamily),
-                              decoration: InputDecoration(
-                                hintText: languageProvider.isEnglish ? 'Search units...' : 'یونٹس تلاش کریں...',
-                                hintStyle: TextStyle(color: Colors.grey[400]),
-                                prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
-                                border: InputBorder.none,
-                                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                              ),
-                              onChanged: (value) {
-                                provider.searchUnits(value);
-                              },
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Consumer<UnitProvider>(
-                          builder: (context, provider, child) {
-                            return Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF5F6FA),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<String>(
-                                  value: _selectedType,
-                                  hint: Text(languageProvider.isEnglish ? 'Filter by type' : 'قسم کے لحاظ سے فلٹر کریں'),
-                                  items: [
-                                    DropdownMenuItem(
-                                      value: null,
-                                      child: Text(languageProvider.isEnglish ? 'All Types' : 'تمام اقسام'),
-                                    ),
-                                    ...UnitType.all.map((type) {
-                                      return DropdownMenuItem(
-                                        value: type.value,
-                                        child: Text(languageProvider.isEnglish ? type.label : type.labelUrdu),
-                                      );
-                                    }),
-                                  ],
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _selectedType = value;
-                                    });
-                                    provider.filterByType(value);
-                                  },
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(width: 12),
-                        Consumer<UnitProvider>(
-                          builder: (context, provider, child) {
-                            return Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF5F6FA),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.filter_list, color: Color(0xFF6B7280), size: 20),
-                                  const SizedBox(width: 8),
-                                  Switch(
-                                    value: provider.showActiveOnly,
-                                    onChanged: (value) {
-                                      provider.filterActive(value);
-                                    },
-                                    activeColor: const Color(0xFF7C3AED),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(languageProvider.isEnglish ? 'Active Only' : 'صرف فعال'),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
+                    // Stats Cards - Responsive Grid
+                    if (!_isMobile)
+                      _buildStatsCards(languageProvider, provider)
+                    else
+                      _buildMobileStatsCards(languageProvider, provider),
 
-                  // Stats Cards
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      border: Border(bottom: BorderSide(color: Color(0xFFF0F0F5))),
-                    ),
-                    child: Row(
-                      children: [
-                        _buildStatCard(
-                          languageProvider.isEnglish ? 'Total Units' : 'کل یونٹس',
-                          provider.units.length.toString(),
-                          Icons.square_foot,
-                          languageProvider,
-                        ),
-                        const SizedBox(width: 16),
-                        _buildStatCard(
-                          languageProvider.isEnglish ? 'Active Units' : 'فعال یونٹس',
-                          provider.activeUnits.length.toString(),
-                          Icons.check_circle,
-                          languageProvider,
-                        ),
-                        const SizedBox(width: 16),
-                        _buildStatCard(
-                          languageProvider.isEnglish ? 'Base Units' : 'بنیادی یونٹس',
-                          provider.getBaseUnits().length.toString(),
-                          Icons.layers,
-                          languageProvider,
-                        ),
-                      ],
-                    ),
-                  ),
+                    // Responsive Search and Filter Bar
+                    _buildSearchFilterBar(languageProvider, provider),
 
-                  // Units List
-                  Expanded(
-                    child: provider.isLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : provider.units.isEmpty
-                        ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.square_foot_outlined,
-                              size: 80, color: Colors.grey[300]),
-                          const SizedBox(height: 16),
-                          Text(
-                            languageProvider.isEnglish ? 'No units found' : 'کوئی یونٹ نہیں ملا',
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.grey,
-                              fontFamily: languageProvider.fontFamily,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            languageProvider.isEnglish
-                                ? 'Add your first unit or seed default units'
-                                : 'اپنا پہلا یونٹ شامل کریں یا ڈیفالٹ یونٹس سیڈ کریں',
-                            style: TextStyle(
-                              color: Colors.grey[400],
-                              fontFamily: languageProvider.fontFamily,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          CustomButton(
-                            text: languageProvider.isEnglish ? 'Seed Default Units' : 'ڈیفالٹ یونٹس سیڈ کریں',
-                            icon: Icons.download,
-                            onPressed: () async {
-                              final result = await provider.seedDefaultUnits();
-                              if (!mounted) return;
+                    // Units List
+                    if (provider.isLoading)
+                      const Padding(
+                        padding: EdgeInsets.all(40.0),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (provider.units.isEmpty)
+                      _buildEmptyState(languageProvider, provider)
+                    else
+                      _isDesktop
+                          ? _buildDesktopUnitList(languageProvider, provider)
+                          : _buildMobileUnitList(languageProvider, provider),
 
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    result['success']
-                                        ? (languageProvider.isEnglish ? 'Default units seeded successfully' : 'ڈیفالٹ یونٹس کامیابی سے سیڈ ہوگئے')
-                                        : result['message'],
-                                  ),
-                                  backgroundColor: result['success']
-                                      ? Colors.green
-                                      : Colors.red,
-                                ),
-                              );
-                            },
-                            width: 200,
-                            backgroundColor: Colors.white,
-                            textColor: const Color(0xFF7C3AED),
-                          ),
-                        ],
-                      ),
-                    )
-                        : ListView.builder(
-                      padding: const EdgeInsets.all(24),
-                      itemCount: provider.units.length,
-                      itemBuilder: (context, index) {
-                        final unit = provider.units[index];
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: unit.isActive
-                                  ? const Color(0xFFF0F0F5)
-                                  : Colors.grey[300]!,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: ListTile(
-                            leading: Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                color: _getUnitColor(unit.type),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Icon(
-                                _getUnitIcon(unit.type),
-                                color: Colors.white,
-                                size: 24,
-                              ),
-                            ),
-                            title: Row(
-                              children: [
-                                Text(
-                                  unit.name,
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: unit.isActive
-                                        ? const Color(0xFF2D3142)
-                                        : Colors.grey[500],
-                                    decoration: unit.isActive
-                                        ? null
-                                        : TextDecoration.lineThrough,
-                                    fontFamily: languageProvider.fontFamily,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: _getUnitColor(unit.type)
-                                        .withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    languageProvider.isEnglish ? unit.typeDisplay : unit.typeDisplayUrdu,
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                      color: _getUnitColor(unit.type),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 4),
-                                Text(
-                                  '${languageProvider.isEnglish ? 'Symbol' : 'علامت'}: ${unit.symbol}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey[600],
-                                    fontFamily: languageProvider.fontFamily,
-                                  ),
-                                ),
-                                if (unit.baseUnit != null) ...[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '${languageProvider.isEnglish ? 'Base' : 'بنیادی'}: ${unit.baseUnit!.name}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey[600],
-                                      fontFamily: languageProvider.fontFamily,
-                                    ),
-                                  ),
-                                ],
-                                if (unit.conversionFactor != 1) ...[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '${languageProvider.isEnglish ? 'Conversion' : 'تبادلوں'}: ${unit.conversionFactor}x',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey[600],
-                                      fontFamily: languageProvider.fontFamily,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Switch(
-                                  value: unit.isActive,
-                                  onChanged: (_) => _toggleUnitStatus(unit),
-                                  activeColor: const Color(0xFF7C3AED),
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  onPressed: () => _showUnitDialog(unit: unit),
-                                  icon: Icon(Icons.edit,
-                                      color: Colors.grey[600], size: 20),
-                                  tooltip: languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں',
-                                ),
-                                IconButton(
-                                  onPressed: () => _deleteUnit(unit.id),
-                                  icon: Icon(Icons.delete,
-                                      color: Colors.red[400], size: 20),
-                                  tooltip: languageProvider.isEnglish ? 'Delete' : 'حذف کریں',
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                  ],
+                ),
               ),
             );
           },
@@ -881,26 +542,770 @@ class _UnitScreenState extends State<UnitScreen> {
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, LanguageProvider languageProvider) {
+  Widget _buildHeader(LanguageProvider languageProvider, UnitProvider provider) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: _isMobile ? 16 : (_isTablet ? 20 : 24),
+        vertical: _isMobile ? 12 : 16,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(color: Colors.grey[200]!),
+        ),
+      ),
+      child: _isMobile
+          ? Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            languageProvider.isEnglish ? 'Units Management' : 'یونٹس کا انتظام',
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF2D3142),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            languageProvider.isEnglish
+                ? 'Configure measurement units for your inventory'
+                : 'اپنی انوینٹری کے لیے پیمائش کے یونٹس ترتیب دیں',
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey[600],
+              fontFamily: languageProvider.fontFamily,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: CustomButton(
+                  text: languageProvider.isEnglish ? 'Converter' : 'کنورٹر',
+                  icon: Icons.swap_horiz,
+                  onPressed: _showConversionDialog,
+                  backgroundColor: Colors.white,
+                  textColor: const Color(0xFF7C3AED),
+                  height: 36,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: CustomButton(
+                  text: languageProvider.isEnglish ? 'Add Unit' : 'یونٹ شامل',
+                  icon: Icons.add,
+                  onPressed: () => _showUnitDialog(),
+                  height: 36,
+                  useGradient: true,
+                  gradientColors: const [Color(0xFF7C3AED), Color(0xFF6366F1)],
+                ),
+              ),
+            ],
+          ),
+        ],
+      )
+          : Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                languageProvider.isEnglish ? 'Units Management' : 'یونٹس کا انتظام',
+                style: TextStyle(
+                  fontSize: _isDesktop ? 22 : 20,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF2D3142),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                languageProvider.isEnglish
+                    ? 'Configure measurement units for your inventory'
+                    : 'اپنی انوینٹری کے لیے پیمائش کے یونٹس ترتیب دیں',
+                style: TextStyle(
+                  fontSize: _isDesktop ? 13 : 12,
+                  color: Colors.grey[600],
+                  fontFamily: languageProvider.fontFamily,
+                ),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              CustomButton(
+                text: languageProvider.isEnglish ? 'Converter' : 'کنورٹر',
+                icon: Icons.swap_horiz,
+                onPressed: _showConversionDialog,
+                backgroundColor: Colors.white,
+                textColor: const Color(0xFF7C3AED),
+                width: _isDesktop ? 120 : 100,
+                height: 38,
+              ),
+              const SizedBox(width: 10),
+              CustomButton(
+                text: languageProvider.isEnglish ? 'Add Unit' : 'یونٹ شامل',
+                icon: Icons.add,
+                onPressed: () => _showUnitDialog(),
+                width: _isDesktop ? 120 : 100,
+                height: 38,
+                useGradient: true,
+                gradientColors: const [Color(0xFF7C3AED), Color(0xFF6366F1)],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchFilterBar(LanguageProvider languageProvider, UnitProvider provider) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: _isMobile ? 16 : 24,
+        vertical: _isMobile ? 10 : 12,
+      ),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFF0F0F5))),
+      ),
+      child: _isMobile
+          ? Column(
+        children: [
+          _buildSearchField(languageProvider, provider),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: _buildTypeFilter(languageProvider, provider),
+              ),
+              const SizedBox(width: 6),
+              _buildActiveFilter(languageProvider, provider),
+            ],
+          ),
+        ],
+      )
+          : Row(
+        children: [
+          Expanded(
+            child: _buildSearchField(languageProvider, provider),
+          ),
+          const SizedBox(width: 10),
+          _buildTypeFilter(languageProvider, provider),
+          const SizedBox(width: 10),
+          _buildActiveFilter(languageProvider, provider),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchField(LanguageProvider languageProvider, UnitProvider provider) {
+    return Container(
+      height: 38,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F6FA),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: TextField(
+        controller: _searchController,
+        style: TextStyle(fontFamily: languageProvider.fontFamily, fontSize: _isMobile ? 13 : 14),
+        decoration: InputDecoration(
+          hintText: languageProvider.isEnglish ? 'Search units...' : 'یونٹس تلاش کریں...',
+          hintStyle: TextStyle(color: Colors.grey[400], fontSize: _isMobile ? 12 : 13),
+          prefixIcon: Icon(Icons.search, color: Colors.grey[400], size: _isMobile ? 18 : 20),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+        ),
+        onChanged: (value) {
+          provider.searchUnits(value);
+        },
+      ),
+    );
+  }
+
+  Widget _buildTypeFilter(LanguageProvider languageProvider, UnitProvider provider) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F6FA),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedType,
+          hint: Text(
+            languageProvider.isEnglish ? 'Filter' : 'فلٹر',
+            style: TextStyle(fontSize: _isMobile ? 11 : 13),
+          ),
+          items: [
+            DropdownMenuItem(
+              value: null,
+              child: Text(
+                languageProvider.isEnglish ? 'All Types' : 'تمام اقسام',
+                style: TextStyle(fontSize: _isMobile ? 11 : 13),
+              ),
+            ),
+            ...UnitType.all.map((type) {
+              return DropdownMenuItem(
+                value: type.value,
+                child: Text(
+                  languageProvider.isEnglish ? type.label : type.labelUrdu,
+                  style: TextStyle(fontSize: _isMobile ? 11 : 13),
+                ),
+              );
+            }),
+          ],
+          onChanged: (value) {
+            setState(() {
+              _selectedType = value;
+            });
+            provider.filterByType(value);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActiveFilter(LanguageProvider languageProvider, UnitProvider provider) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: _isMobile ? 6 : 12, vertical: 2),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F6FA),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!_isMobile)
+            Icon(Icons.filter_list, color: const Color(0xFF6B7280), size: 18),
+          if (!_isMobile) const SizedBox(width: 6),
+          Switch(
+            value: provider.showActiveOnly,
+            onChanged: (value) {
+              provider.filterActive(value);
+            },
+            activeColor: const Color(0xFF7C3AED),
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          if (!_isMobile) ...[
+            const SizedBox(width: 2),
+            Text(
+              languageProvider.isEnglish ? 'Active Only' : 'صرف فعال',
+              style: TextStyle(fontSize: 11),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatsCards(LanguageProvider languageProvider, UnitProvider provider) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: _isMobile ? 16 : 24,
+        vertical: _isMobile ? 10 : 12,
+      ),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFF0F0F5))),
+      ),
+      child: _isDesktop
+          ? Row(
+        children: [
+          _buildStatCard(
+            languageProvider.isEnglish ? 'Total Units' : 'کل یونٹس',
+            provider.units.length.toString(),
+            Icons.square_foot,
+            languageProvider,
+            isDesktop: true,
+          ),
+          const SizedBox(width: 12),
+          _buildStatCard(
+            languageProvider.isEnglish ? 'Active Units' : 'فعال یونٹس',
+            provider.activeUnits.length.toString(),
+            Icons.check_circle,
+            languageProvider,
+            isDesktop: true,
+          ),
+          const SizedBox(width: 12),
+          _buildStatCard(
+            languageProvider.isEnglish ? 'Base Units' : 'بنیادی یونٹس',
+            provider.getBaseUnits().length.toString(),
+            Icons.layers,
+            languageProvider,
+            isDesktop: true,
+          ),
+        ],
+      )
+          : Row(
+        children: [
+          Expanded(
+            child: _buildStatCard(
+              languageProvider.isEnglish ? 'Total' : 'کل',
+              provider.units.length.toString(),
+              Icons.square_foot,
+              languageProvider,
+              isDesktop: false,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _buildStatCard(
+              languageProvider.isEnglish ? 'Active' : 'فعال',
+              provider.activeUnits.length.toString(),
+              Icons.check_circle,
+              languageProvider,
+              isDesktop: false,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _buildStatCard(
+              languageProvider.isEnglish ? 'Base' : 'بنیادی',
+              provider.getBaseUnits().length.toString(),
+              Icons.layers,
+              languageProvider,
+              isDesktop: false,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileStatsCards(LanguageProvider languageProvider, UnitProvider provider) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFF0F0F5))),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _buildMobileStatCard(
+              languageProvider.isEnglish ? 'Total' : 'کل',
+              provider.units.length.toString(),
+              Icons.square_foot,
+              languageProvider,
+            ),
+            const SizedBox(width: 6),
+            _buildMobileStatCard(
+              languageProvider.isEnglish ? 'Active' : 'فعال',
+              provider.activeUnits.length.toString(),
+              Icons.check_circle,
+              languageProvider,
+            ),
+            const SizedBox(width: 6),
+            _buildMobileStatCard(
+              languageProvider.isEnglish ? 'Base' : 'بنیادی',
+              provider.getBaseUnits().length.toString(),
+              Icons.layers,
+              languageProvider,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobileStatCard(String title, String value, IconData icon, LanguageProvider languageProvider) {
+    return Container(
+      width: 80,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F6FA),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: const Color(0xFF7C3AED), size: 16),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF2D3142),
+            ),
+          ),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 9,
+              color: Colors.grey[600],
+              fontFamily: languageProvider.fontFamily,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(LanguageProvider languageProvider, UnitProvider provider) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.square_foot_outlined, size: _isMobile ? 60 : 80, color: Colors.grey[300]),
+            const SizedBox(height: 12),
+            Text(
+              languageProvider.isEnglish ? 'No units found' : 'کوئی یونٹ نہیں ملا',
+              style: TextStyle(
+                fontSize: _isMobile ? 15 : 17,
+                color: Colors.grey,
+                fontFamily: languageProvider.fontFamily,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              languageProvider.isEnglish
+                  ? 'Add your first unit or seed default units'
+                  : 'اپنا پہلا یونٹ شامل کریں یا ڈیفالٹ یونٹس سیڈ کریں',
+              style: TextStyle(
+                color: Colors.grey[400],
+                fontFamily: languageProvider.fontFamily,
+                fontSize: _isMobile ? 11 : 13,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            CustomButton(
+              text: languageProvider.isEnglish ? 'Add Units' : 'یو نٹس ایڈ کریں',
+              icon: Icons.download,
+              onPressed: () async {
+                final result = await provider.seedDefaultUnits();
+                if (!mounted) return;
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      result['success']
+                          ? (languageProvider.isEnglish ? 'Default units seeded successfully' : 'ڈیفالٹ یونٹس کامیابی سے سیڈ ہوگئے')
+                          : result['message'],
+                    ),
+                    backgroundColor: result['success'] ? Colors.green : Colors.red,
+                  ),
+                );
+              },
+              width: _isMobile ? 160 : 180,
+              height: _isMobile ? 36 : 42,
+              backgroundColor: Colors.white,
+              textColor: const Color(0xFF7C3AED),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopUnitList(LanguageProvider languageProvider, UnitProvider provider) {
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      itemCount: provider.units.length,
+      itemBuilder: (context, index) {
+        final unit = provider.units[index];
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: unit.isActive ? const Color(0xFFF0F0F5) : Colors.grey[300]!,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 6,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: _getUnitColor(unit.type),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  _getUnitIcon(unit.type),
+                  color: Colors.white,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          unit.name,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: unit.isActive ? const Color(0xFF2D3142) : Colors.grey[500],
+                            decoration: unit.isActive ? null : TextDecoration.lineThrough,
+                            fontFamily: languageProvider.fontFamily,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: _getUnitColor(unit.type).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            languageProvider.isEnglish ? unit.typeDisplay : unit.typeDisplayUrdu,
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w600,
+                              color: _getUnitColor(unit.type),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Text(
+                          '${languageProvider.isEnglish ? 'Symbol' : 'علامت'}: ${unit.symbol}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey[600],
+                            fontFamily: languageProvider.fontFamily,
+                          ),
+                        ),
+                        if (unit.baseUnit != null) ...[
+                          const SizedBox(width: 12),
+                          Text(
+                            '${languageProvider.isEnglish ? 'Base' : 'بنیادی'}: ${unit.baseUnit!.name}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[600],
+                              fontFamily: languageProvider.fontFamily,
+                            ),
+                          ),
+                        ],
+                        if (unit.conversionFactor != 1) ...[
+                          const SizedBox(width: 12),
+                          Text(
+                            '${languageProvider.isEnglish ? 'Conversion' : 'تبادلوں'}: ${unit.conversionFactor}x',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[600],
+                              fontFamily: languageProvider.fontFamily,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Switch(
+                    value: unit.isActive,
+                    onChanged: (_) => _toggleUnitStatus(unit),
+                    activeColor: const Color(0xFF7C3AED),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    onPressed: () => _showUnitDialog(unit: unit),
+                    icon: Icon(Icons.edit, color: Colors.grey[600], size: 18),
+                    tooltip: languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    onPressed: () => _deleteUnit(unit.id),
+                    icon: Icon(Icons.delete, color: Colors.red[400], size: 18),
+                    tooltip: languageProvider.isEnglish ? 'Delete' : 'حذف کریں',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildMobileUnitList(LanguageProvider languageProvider, UnitProvider provider) {
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      itemCount: provider.units.length,
+      itemBuilder: (context, index) {
+        final unit = provider.units[index];
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: unit.isActive ? const Color(0xFFF0F0F5) : Colors.grey[300]!,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 6,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+            leading: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: _getUnitColor(unit.type),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                _getUnitIcon(unit.type),
+                color: Colors.white,
+                size: 16,
+              ),
+            ),
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    unit.name,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: unit.isActive ? const Color(0xFF2D3142) : Colors.grey[500],
+                      decoration: unit.isActive ? null : TextDecoration.lineThrough,
+                      fontFamily: languageProvider.fontFamily,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: _getUnitColor(unit.type).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    languageProvider.isEnglish ? unit.typeDisplay : unit.typeDisplayUrdu,
+                    style: TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.w600,
+                      color: _getUnitColor(unit.type),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 2),
+                Text(
+                  '${languageProvider.isEnglish ? 'Symbol' : 'علامت'}: ${unit.symbol}',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey[600],
+                    fontFamily: languageProvider.fontFamily,
+                  ),
+                ),
+                if (unit.baseUnit != null) ...[
+                  const SizedBox(height: 1),
+                  Text(
+                    '${languageProvider.isEnglish ? 'Base' : 'بنیادی'}: ${unit.baseUnit!.name}',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey[600],
+                      fontFamily: languageProvider.fontFamily,
+                    ),
+                  ),
+                ],
+                if (unit.conversionFactor != 1) ...[
+                  const SizedBox(height: 1),
+                  Text(
+                    '${languageProvider.isEnglish ? 'Conversion' : 'تبادلوں'}: ${unit.conversionFactor}x',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey[600],
+                      fontFamily: languageProvider.fontFamily,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Switch(
+                  value: unit.isActive,
+                  onChanged: (_) => _toggleUnitStatus(unit),
+                  activeColor: const Color(0xFF7C3AED),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                IconButton(
+                  onPressed: () => _showUnitDialog(unit: unit),
+                  icon: Icon(Icons.edit, color: Colors.grey[600], size: 16),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+                IconButton(
+                  onPressed: () => _deleteUnit(unit.id),
+                  icon: Icon(Icons.delete, color: Colors.red[400], size: 16),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStatCard(String title, String value, IconData icon, LanguageProvider languageProvider, {required bool isDesktop}) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: const Color(0xFFF5F6FA),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: isDesktop ? 32 : 28,
+              height: isDesktop ? 32 : 28,
               decoration: BoxDecoration(
                 color: const Color(0xFF7C3AED).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(6),
               ),
-              child: Icon(icon, color: const Color(0xFF7C3AED), size: 20),
+              child: Icon(icon, color: const Color(0xFF7C3AED), size: isDesktop ? 16 : 14),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -908,18 +1313,18 @@ class _UnitScreenState extends State<UnitScreen> {
                   Text(
                     title,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: isDesktop ? 10 : 9,
                       color: Colors.grey[600],
                       fontFamily: languageProvider.fontFamily,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 1),
                   Text(
                     value,
-                    style: const TextStyle(
-                      fontSize: 18,
+                    style: TextStyle(
+                      fontSize: isDesktop ? 16 : 13,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF2D3142),
+                      color: const Color(0xFF2D3142),
                     ),
                   ),
                 ],

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/employee.dart';
 import '../models/advance_expense.dart';
 import '../providers/employee_provider.dart';
+import '../providers/lanprovider.dart';
 
 class EmpExpenseLedgerScreen extends StatefulWidget {
   final Employee employee;
@@ -50,11 +51,26 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
     'Other':   Icons.category_outlined,
   };
 
+  // Category translations
+  Map<String, String> _getCategoryTranslations(LanguageProvider lang) {
+    return {
+      'Travel':  lang.isEnglish ? 'Travel' : 'سفر',
+      'Food':    lang.isEnglish ? 'Food' : 'کھانا',
+      'Medical': lang.isEnglish ? 'Medical' : 'طبی',
+      'Uniform': lang.isEnglish ? 'Uniform' : 'یونیفارم',
+      'Fine':    lang.isEnglish ? 'Fine' : 'جرمانہ',
+      'Other':   lang.isEnglish ? 'Other' : 'دیگر',
+    };
+  }
+
   Color _catColor(String cat)   => _catColors[cat] ?? const Color(0xFF6B7280);
   IconData _catIcon(String cat) => _catIcons[cat]  ?? Icons.category_outlined;
 
   // ── Add / Edit dialog ────────────────────────────────────────────────────
   void _showDialog({EmployeeExpense? existing}) {
+    final lang = Provider.of<LanguageProvider>(context, listen: false);
+    final catTranslations = _getCategoryTranslations(lang);
+
     final amtCtrl  = TextEditingController(text: existing?.amount.toStringAsFixed(0) ?? '');
     final descCtrl = TextEditingController(text: existing?.description ?? '');
     DateTime selectedDate = existing?.date ?? DateTime.now();
@@ -88,13 +104,17 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
                           child: const Icon(Icons.receipt_long_outlined, color: Colors.white),
                         ),
                         const SizedBox(width: 12),
-                        Text(existing == null ? 'Add Expense' : 'Edit Expense',
-                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
+                        Text(
+                          existing == null
+                              ? (lang.isEnglish ? 'Add Expense' : 'خرچ شامل کریں')
+                              : (lang.isEnglish ? 'Edit Expense' : 'خرچ میں ترمیم کریں'),
+                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+                        ),
                       ]),
                       const SizedBox(height: 20),
 
                       // Date
-                      _label('Date'),
+                      _label(lang.isEnglish ? 'Date' : 'تاریخ'),
                       InkWell(
                         onTap: () async {
                           final d = await showDatePicker(
@@ -124,13 +144,14 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
                       const SizedBox(height: 12),
 
                       // Category chips
-                      _label('Category'),
+                      _label(lang.isEnglish ? 'Category' : 'زمرہ'),
                       Wrap(
                         spacing: 8, runSpacing: 8,
                         children: ExpenseCategory.values.map((cat) {
                           final name     = cat.name;
                           final selected = selectedCat == name;
                           final color    = _catColor(name);
+                          final displayName = catTranslations[name] ?? name;
                           return GestureDetector(
                             onTap: () => setS(() => selectedCat = name),
                             child: Container(
@@ -144,7 +165,7 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
                                 Icon(_catIcon(name), size: 14,
                                     color: selected ? Colors.white : color),
                                 const SizedBox(width: 5),
-                                Text(name, style: TextStyle(
+                                Text(displayName, style: TextStyle(
                                     fontSize: 12, fontWeight: FontWeight.w600,
                                     color: selected ? Colors.white : color)),
                               ]),
@@ -155,27 +176,38 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
                       const SizedBox(height: 12),
 
                       // Amount
-                      _label('Amount (Rs.)'),
+                      _label(lang.isEnglish ? 'Amount (Rs.)' : 'رقم (روپے)'),
                       TextFormField(
                         controller: amtCtrl,
                         keyboardType: TextInputType.number,
                         decoration: _inputDec(Icons.currency_rupee),
                         validator: (v) {
-                          if (v == null || v.isEmpty) return 'Required';
-                          if (double.tryParse(v) == null || double.parse(v) <= 0) return 'Enter valid amount';
+                          if (v == null || v.isEmpty) return lang.isEnglish ? 'Required' : 'ضروری';
+                          if (double.tryParse(v) == null || double.parse(v) <= 0) {
+                            return lang.isEnglish ? 'Enter valid amount' : 'درست رقم درج کریں';
+                          }
                           return null;
                         },
                       ),
                       const SizedBox(height: 12),
 
                       // Description
-                      _label('Description (optional)'),
-                      TextFormField(controller: descCtrl, maxLines: 2, decoration: _inputDec(Icons.notes_outlined)),
+                      _label(lang.isEnglish ? 'Description (optional)' : 'تفصیل (اختیاری)'),
+                      TextFormField(
+                          controller: descCtrl,
+                          maxLines: 2,
+                          decoration: _inputDec(Icons.notes_outlined)
+                      ),
                       const SizedBox(height: 20),
 
                       Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                        TextButton(onPressed: () => Navigator.pop(ctx),
-                            child: const Text('Cancel', style: TextStyle(color: Color(0xFF6B7280)))),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: Text(
+                              lang.isEnglish ? 'Cancel' : 'منسوخ کریں',
+                              style: const TextStyle(color: Color(0xFF6B7280))
+                          ),
+                        ),
                         const SizedBox(width: 12),
                         ElevatedButton(
                           onPressed: () async {
@@ -198,7 +230,10 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
                             Navigator.pop(ctx);
                             if (!res['success']) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(res['message'] ?? 'Error'), backgroundColor: Colors.red),
+                                SnackBar(
+                                  content: Text(res['message'] ?? (lang.isEnglish ? 'Error' : 'خرابی')),
+                                  backgroundColor: Colors.red,
+                                ),
                               );
                             }
                           },
@@ -207,7 +242,11 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
                             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          child: Text(existing == null ? 'Add' : 'Update'),
+                          child: Text(
+                            existing == null
+                                ? (lang.isEnglish ? 'Add' : 'شامل کریں')
+                                : (lang.isEnglish ? 'Update' : 'اپ ڈیٹ کریں'),
+                          ),
                         ),
                       ]),
                     ],
@@ -222,24 +261,46 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
   }
 
   Future<void> _delete(EmployeeExpense exp) async {
+    final lang = Provider.of<LanguageProvider>(context, listen: false);
+    final catTranslations = _getCategoryTranslations(lang);
+    final categoryDisplay = catTranslations[exp.category.name] ?? exp.category.name;
+
     if (exp.status == ExpenseStatus.recovered) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cannot delete a recovered expense'), backgroundColor: Colors.orange),
+        SnackBar(
+          content: Text(
+              lang.isEnglish
+                  ? 'Cannot delete a recovered expense'
+                  : 'واپس شدہ خرچ کو حذف نہیں کیا جا سکتا'
+          ),
+          backgroundColor: Colors.orange,
+        ),
       );
       return;
     }
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Delete Expense'),
-        content: Text('Delete ${exp.category.name} expense of Rs. ${exp.amount.toStringAsFixed(0)}?'),
+        title: Text(lang.isEnglish ? 'Delete Expense' : 'خرچ حذف کریں'),
+        content: Text(
+          lang.isEnglish
+              ? 'Delete $categoryDisplay expense of Rs. ${exp.amount.toStringAsFixed(0)}?'
+              : 'روپے ${exp.amount.toStringAsFixed(0)} کا $categoryDisplay خرچ حذف کریں؟',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(lang.isEnglish ? 'Cancel' : 'منسوخ کریں'),
+          ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-            child: const Text('Delete'),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white
+            ),
+            child: Text(lang.isEnglish ? 'Delete' : 'حذف کریں'),
           ),
         ],
       ),
@@ -254,6 +315,9 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final lang = Provider.of<LanguageProvider>(context);
+    final catTranslations = _getCategoryTranslations(lang);
+
     return Consumer<EmployeeProvider>(
       builder: (context, provider, _) {
         final expenses = provider.empExpenses;
@@ -270,12 +334,16 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
             title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(widget.employee.name,
                   style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
-              const Text('Expense Ledger', style: TextStyle(fontSize: 13, color: Color(0xFFEF4444))),
+              Text(
+                lang.isEnglish ? 'Expense Ledger' : 'خرچ لیجر',
+                style: const TextStyle(fontSize: 13, color: Color(0xFFEF4444)),
+              ),
             ]),
             actions: [
               IconButton(
                 icon: const Icon(Icons.add_circle, color: Color(0xFFEF4444), size: 28),
                 onPressed: () => _showDialog(),
+                tooltip: lang.isEnglish ? 'Add Expense' : 'خرچ شامل کریں',
               ),
               const SizedBox(width: 8),
             ],
@@ -283,7 +351,7 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
           body: provider.empExpenseLoading
               ? const Center(child: CircularProgressIndicator())
               : Column(children: [
-            if (summary != null) _buildSummaryBanner(summary),
+            if (summary != null) _buildSummaryBanner(summary, lang),
 
             // ── Filters ─────────────────────────────────────────────
             Padding(
@@ -293,21 +361,21 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
                 children: [
                   // Status filter
                   Row(children: [
-                    _filterChip('All',       'all'),
+                    _filterChip(lang.isEnglish ? 'All' : 'تمام', 'all'),
                     const SizedBox(width: 8),
-                    _filterChip('Pending',   'pending'),
+                    _filterChip(lang.isEnglish ? 'Pending' : 'زیر التواء', 'pending'),
                     const SizedBox(width: 8),
-                    _filterChip('Recovered', 'recovered'),
+                    _filterChip(lang.isEnglish ? 'Recovered' : 'واپس شدہ', 'recovered'),
                   ]),
                   const SizedBox(height: 8),
                   // Category filter
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(children: [
-                      _catChip('All', null),
+                      _catChip(lang.isEnglish ? 'All' : 'تمام', null, lang),
                       ...ExpenseCategory.values.map((c) => Padding(
                         padding: const EdgeInsets.only(left: 8),
-                        child: _catChip(c.name, c.name),
+                        child: _catChip(catTranslations[c.name] ?? c.name, c.name, lang),
                       )),
                     ]),
                   ),
@@ -318,11 +386,11 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
 
             Expanded(
               child: expenses.isEmpty
-                  ? _empty()
+                  ? _empty(lang)
                   : ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: expenses.length,
-                itemBuilder: (_, i) => _buildRow(expenses[i], i, expenses.length),
+                itemBuilder: (_, i) => _buildRow(expenses[i], i, expenses.length, lang, catTranslations),
               ),
             ),
           ]),
@@ -331,7 +399,7 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
     );
   }
 
-  Widget _buildSummaryBanner(LedgerSummary s) => Container(
+  Widget _buildSummaryBanner(LedgerSummary s, LanguageProvider lang) => Container(
     margin: const EdgeInsets.all(16),
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
@@ -341,11 +409,11 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
     child: Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        _bannerStat('Total',     s.totalAmount,    Colors.white),
+        _bannerStat(lang.isEnglish ? 'Total' : 'کل', s.totalAmount, Colors.white),
         _vDivider(),
-        _bannerStat('Recovered', s.totalRecovered, const Color(0xFFA5F3FC)),
+        _bannerStat(lang.isEnglish ? 'Recovered' : 'واپس شدہ', s.totalRecovered, const Color(0xFFA5F3FC)),
         _vDivider(),
-        _bannerStat('Pending',   s.pendingBalance, const Color(0xFFFDE68A)),
+        _bannerStat(lang.isEnglish ? 'Pending' : 'زیر التواء', s.pendingBalance, const Color(0xFFFDE68A)),
       ],
     ),
   );
@@ -359,11 +427,15 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
 
   Widget _vDivider() => Container(width: 1, height: 36, color: Colors.white.withOpacity(0.3));
 
-  Widget _buildRow(EmployeeExpense exp, int index, int total) {
+  Widget _buildRow(EmployeeExpense exp, int index, int total, LanguageProvider lang, Map<String, String> catTranslations) {
     final isPending   = exp.status == ExpenseStatus.pending;
     final statusColor = isPending ? const Color(0xFFF59E0B) : const Color(0xFF10B981);
     final catColor    = _catColor(exp.category.name);
     final isLast      = index == total - 1;
+    final categoryDisplay = catTranslations[exp.category.name] ?? exp.category.name;
+    final statusLabel = isPending
+        ? (lang.isEnglish ? 'Pending' : 'زیر التواء')
+        : (lang.isEnglish ? 'Recovered' : 'واپس شدہ');
 
     return Container(
       margin: EdgeInsets.only(bottom: isLast ? 20 : 0),
@@ -409,7 +481,7 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         Icon(_catIcon(exp.category.name), size: 12, color: catColor),
                         const SizedBox(width: 4),
-                        Text(exp.category.name,
+                        Text(categoryDisplay,
                             style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: catColor)),
                       ]),
                     ),
@@ -420,7 +492,7 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                         color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                    child: Text(isPending ? 'Pending' : 'Recovered',
+                    child: Text(statusLabel,
                         style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: statusColor)),
                   ),
                 ]),
@@ -434,9 +506,9 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
                 if (isPending) ...[
                   const SizedBox(height: 10),
                   Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                    _iconBtn(Icons.edit_outlined, const Color(0xFF6366F1), () => _showDialog(existing: exp)),
+                    _iconBtn(Icons.edit_outlined, const Color(0xFF6366F1), () => _showDialog(existing: exp), lang),
                     const SizedBox(width: 8),
-                    _iconBtn(Icons.delete_outline, const Color(0xFFEF4444), () => _delete(exp)),
+                    _iconBtn(Icons.delete_outline, const Color(0xFFEF4444), () => _delete(exp), lang),
                   ]),
                 ],
               ]),
@@ -465,7 +537,7 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
     );
   }
 
-  Widget _catChip(String label, String? value) {
+  Widget _catChip(String label, String? value, LanguageProvider lang) {
     final selected = _catFilter == value;
     final color    = value != null ? _catColor(value) : const Color(0xFF6B7280);
     return GestureDetector(
@@ -485,7 +557,7 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
     );
   }
 
-  Widget _iconBtn(IconData icon, Color color, VoidCallback onTap) => InkWell(
+  Widget _iconBtn(IconData icon, Color color, VoidCallback onTap, LanguageProvider lang) => InkWell(
     onTap: onTap,
     borderRadius: BorderRadius.circular(8),
     child: Container(
@@ -495,16 +567,19 @@ class _EmpExpenseLedgerScreenState extends State<EmpExpenseLedgerScreen> {
     ),
   );
 
-  Widget _empty() => Center(
+  Widget _empty(LanguageProvider lang) => Center(
     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey[300]),
       const SizedBox(height: 12),
-      Text('No expense records found', style: TextStyle(color: Colors.grey[500], fontSize: 15)),
+      Text(
+        lang.isEnglish ? 'No expense records found' : 'کوئی خرچ ریکارڈ نہیں ملا',
+        style: TextStyle(color: Colors.grey[500], fontSize: 15),
+      ),
       const SizedBox(height: 8),
       ElevatedButton.icon(
         onPressed: () => _showDialog(),
         icon: const Icon(Icons.add),
-        label: const Text('Add Expense'),
+        label: Text(lang.isEnglish ? 'Add Expense' : 'خرچ شامل کریں'),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFEF4444), foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

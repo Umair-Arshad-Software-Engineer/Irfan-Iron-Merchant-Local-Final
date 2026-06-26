@@ -44,6 +44,11 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
   int _sortColumnIndex = 0;
   bool _sortAscending = true;
 
+  // Responsive breakpoints
+  bool get _isMobile => MediaQuery.of(context).size.width < 600;
+  bool get _isTablet => MediaQuery.of(context).size.width >= 600 && MediaQuery.of(context).size.width < 1200;
+  bool get _isDesktop => MediaQuery.of(context).size.width >= 1200;
+
   static const _purple = Color(0xFF7C3AED);
   static const _red = Color(0xFFDC2626);
   static const _teal = Color(0xFF059669);
@@ -110,33 +115,47 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
       builder: (context, languageProvider, _) {
         return Scaffold(
           backgroundColor: _surface,
-          body: Column(
-            children: [
-              _buildHeader(languageProvider),
-              _buildStatsRow(languageProvider),
-              _buildToolbar(languageProvider),
-              if (_showFilters) _buildFiltersPanel(languageProvider),
-              Expanded(
-                child: Consumer<ProductProvider>(
+          body: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(languageProvider),
+                _buildStatsRow(languageProvider),
+                _buildToolbar(languageProvider),
+                if (_showFilters) _buildFiltersPanel(languageProvider),
+                Consumer<ProductProvider>(
                   builder: (context, provider, _) {
                     if (provider.isLoading && provider.products.isEmpty) {
-                      return const LoadingIndicator();
+                      return const Padding(
+                        padding: EdgeInsets.all(40.0),
+                        child: LoadingIndicator(),
+                      );
                     }
                     if (provider.errorMessage != null) {
-                      return CustomErrorWidget(
-                        message: provider.errorMessage!,
-                        onRetry: () => provider.fetchProducts(refresh: true),
+                      return Padding(
+                        padding: const EdgeInsets.all(40.0),
+                        child: CustomErrorWidget(
+                          message: provider.errorMessage!,
+                          onRetry: () => provider.fetchProducts(refresh: true),
+                        ),
                       );
                     }
                     if (provider.products.isEmpty) return _buildEmptyState(languageProvider);
                     return _buildTableView(provider, languageProvider);
                   },
                 ),
-              ),
-              _buildPagination(languageProvider),
-            ],
+                _buildPagination(languageProvider),
+                const SizedBox(height: 16),
+              ],
+            ),
           ),
-          floatingActionButton: FloatingActionButton.extended(
+          floatingActionButton: _isMobile
+              ? FloatingActionButton(
+            onPressed: _navigateToAddProduct,
+            backgroundColor: _purple,
+            child: const Icon(Icons.add, color: Colors.white),
+          )
+              : FloatingActionButton.extended(
             onPressed: _navigateToAddProduct,
             label: Text(
               languageProvider.isEnglish ? 'Add Product' : 'پروڈکٹ شامل کریں',
@@ -154,9 +173,58 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
 
   Widget _buildHeader(LanguageProvider languageProvider) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+      padding: EdgeInsets.symmetric(
+        horizontal: _isMobile ? 16 : 24,
+        vertical: _isMobile ? 12 : 16,
+      ),
       color: Colors.white,
-      child: Row(
+      child: _isMobile
+          ? Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                languageProvider.isEnglish ? 'Products' : 'پروڈکٹس',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: _textPrimary,
+                  fontFamily: languageProvider.fontFamily,
+                ),
+              ),
+              Row(
+                children: [
+                  _headerIconBtn(
+                    Icons.download_outlined,
+                    languageProvider.isEnglish ? 'Export' : 'ایکسپورٹ',
+                    _showExportOptions,
+                  ),
+                  const SizedBox(width: 8),
+                  _headerIconBtn(
+                    Icons.inventory_2_outlined,
+                    languageProvider.isEnglish ? 'Bulk' : 'بلک',
+                    _showBulkOperations,
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            languageProvider.isEnglish
+                ? 'Manage your products inventory'
+                : 'اپنی پروڈکٹ انوینٹری کا انتظام کریں',
+            style: TextStyle(
+              fontSize: 12,
+              color: _textSecondary,
+              fontFamily: languageProvider.fontFamily,
+            ),
+          ),
+        ],
+      )
+          : Row(
         children: [
           Text(
             languageProvider.isEnglish ? 'Products' : 'پروڈکٹس',
@@ -191,14 +259,14 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
         child: Container(
-          width: 36,
-          height: 36,
+          width: _isMobile ? 32 : 36,
+          height: _isMobile ? 32 : 36,
           decoration: BoxDecoration(
             border: Border.all(color: _border),
             borderRadius: BorderRadius.circular(8),
             color: Colors.white,
           ),
-          child: Icon(icon, size: 18, color: _textSecondary),
+          child: Icon(icon, size: _isMobile ? 16 : 18, color: _textSecondary),
         ),
       ),
     );
@@ -211,26 +279,79 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
       builder: (context, provider, _) {
         return Container(
           color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
-          child: Row(
+          padding: EdgeInsets.symmetric(
+            horizontal: _isMobile ? 16 : 24,
+            vertical: _isMobile ? 8 : 12,
+          ),
+          child: _isMobile
+              ? SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _statCard(
+                  languageProvider.isEnglish ? 'Total' : 'کل',
+                  provider.totalProducts.toString(),
+                  Icons.inventory_2_rounded,
+                  _purple,
+                  _bgPurple,
+                  languageProvider,
+                  isCompact: true,
+                ),
+                const SizedBox(width: 8),
+                _statCard(
+                  languageProvider.isEnglish ? 'Low Stock' : 'کم اسٹاک',
+                  provider.lowStockCount.toString(),
+                  Icons.warning_amber_rounded,
+                  _red,
+                  _bgRed,
+                  languageProvider,
+                  isCompact: true,
+                ),
+                const SizedBox(width: 8),
+                _statCard(
+                  languageProvider.isEnglish ? 'Value' : 'ویلیو',
+                  NumberFormat.compactCurrency(symbol: 'PKR ', decimalDigits: 0)
+                      .format(provider.totalInventoryValue),
+                  Icons.account_balance_wallet_outlined,
+                  _teal,
+                  _bgTeal,
+                  languageProvider,
+                  isCompact: true,
+                ),
+              ],
+            ),
+          )
+              : Row(
             children: [
               Expanded(child: _statCard(
                 languageProvider.isEnglish ? 'Total Products' : 'کل پروڈکٹس',
                 provider.totalProducts.toString(),
-                Icons.inventory_2_rounded, _purple, _bgPurple, languageProvider,
+                Icons.inventory_2_rounded,
+                _purple,
+                _bgPurple,
+                languageProvider,
+                isCompact: false,
               )),
               const SizedBox(width: 12),
               Expanded(child: _statCard(
                 languageProvider.isEnglish ? 'Low Stock' : 'کم اسٹاک',
                 provider.lowStockCount.toString(),
-                Icons.warning_amber_rounded, _red, _bgRed, languageProvider,
+                Icons.warning_amber_rounded,
+                _red,
+                _bgRed,
+                languageProvider,
+                isCompact: false,
               )),
               const SizedBox(width: 12),
               Expanded(child: _statCard(
                 languageProvider.isEnglish ? 'Inventory Value' : 'انوینٹری ویلیو',
                 NumberFormat.compactCurrency(symbol: 'PKR ', decimalDigits: 2)
                     .format(provider.totalInventoryValue),
-                Icons.account_balance_wallet_outlined, _teal, _bgTeal, languageProvider,
+                Icons.account_balance_wallet_outlined,
+                _teal,
+                _bgTeal,
+                languageProvider,
+                isCompact: false,
               )),
             ],
           ),
@@ -239,9 +360,13 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
     );
   }
 
-  Widget _statCard(String label, String value, IconData icon, Color color, Color bg, LanguageProvider languageProvider) {
+  Widget _statCard(String label, String value, IconData icon, Color color, Color bg, LanguageProvider languageProvider, {required bool isCompact}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      width: isCompact ? 110 : double.infinity,
+      padding: EdgeInsets.symmetric(
+        horizontal: isCompact ? 10 : 14,
+        vertical: isCompact ? 8 : 12,
+      ),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(10),
@@ -250,15 +375,15 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
       child: Row(
         children: [
           Container(
-            width: 38,
-            height: 38,
+            width: isCompact ? 28 : 38,
+            height: isCompact ? 28 : 38,
             decoration: BoxDecoration(
               color: color.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(6),
             ),
-            child: Icon(icon, color: color, size: 20),
+            child: Icon(icon, color: color, size: isCompact ? 16 : 20),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: isCompact ? 6 : 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -266,16 +391,16 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
                 Text(
                   label,
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: isCompact ? 9 : 11,
                     color: _textSecondary,
                     fontFamily: languageProvider.fontFamily,
                   ),
                 ),
-                const SizedBox(height: 2),
+                SizedBox(height: isCompact ? 1 : 2),
                 Text(
                   value,
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: isCompact ? 13 : 16,
                     fontWeight: FontWeight.w700,
                     color: _textPrimary,
                     fontFamily: languageProvider.fontFamily,
@@ -295,8 +420,72 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
   Widget _buildToolbar(LanguageProvider languageProvider) {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-      child: Row(
+      padding: EdgeInsets.symmetric(
+        horizontal: _isMobile ? 16 : 24,
+        vertical: _isMobile ? 8 : 12,
+      ),
+      child: _isMobile
+          ? Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: _surface,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: _border),
+                  ),
+                  child: TextField(
+                    controller: _searchController,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: _textPrimary,
+                      fontFamily: languageProvider.fontFamily,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: languageProvider.isEnglish
+                          ? 'Search...'
+                          : 'تلاش کریں…',
+                      hintStyle: const TextStyle(color: _textTertiary, fontSize: 12),
+                      prefixIcon: const Icon(Icons.search, size: 18, color: _textTertiary),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _toolbarBtn(
+                icon: Icons.tune_rounded,
+                label: '',
+                active: _showFilters,
+                onTap: () => setState(() => _showFilters = !_showFilters),
+                languageProvider: languageProvider,
+                isCompact: true,
+              ),
+              const SizedBox(width: 8),
+              InkWell(
+                onTap: _refreshProducts,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: _border),
+                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.white,
+                  ),
+                  child: const Icon(Icons.refresh, size: 18, color: _textSecondary),
+                ),
+              ),
+            ],
+          ),
+          if (_showFilters) const SizedBox(height: 8),
+        ],
+      )
+          : Row(
         children: [
           Expanded(
             child: Container(
@@ -320,7 +509,7 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
                   hintStyle: const TextStyle(color: _textTertiary, fontSize: 13),
                   prefixIcon: const Icon(Icons.search, size: 18, color: _textTertiary),
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                 ),
               ),
             ),
@@ -332,6 +521,7 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
             active: _showFilters,
             onTap: () => setState(() => _showFilters = !_showFilters),
             languageProvider: languageProvider,
+            isCompact: false,
           ),
           const SizedBox(width: 8),
           InkWell(
@@ -359,19 +549,23 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
     required bool active,
     required VoidCallback onTap,
     required LanguageProvider languageProvider,
+    required bool isCompact,
   }) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        height: 38,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        height: isCompact ? 36 : 38,
+        width: isCompact ? 36 : null,
+        padding: isCompact ? null : const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: active ? _bgPurple : Colors.white,
           border: Border.all(color: active ? _purple : _border),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Row(
+        child: isCompact
+            ? Icon(icon, size: 18, color: active ? _purple : _textSecondary)
+            : Row(
           children: [
             Icon(icon, size: 16, color: active ? _purple : _textSecondary),
             const SizedBox(width: 6),
@@ -397,15 +591,119 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
       builder: (context, catProvider, supProvider, unitProvider, _) {
         return Container(
           color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 14),
+          padding: EdgeInsets.symmetric(
+            horizontal: _isMobile ? 16 : 24,
+            vertical: _isMobile ? 8 : 14,
+          ),
           child: Container(
-            padding: const EdgeInsets.all(14),
+            padding: EdgeInsets.all(_isMobile ? 10 : 14),
             decoration: BoxDecoration(
               color: _surface,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: _border),
             ),
-            child: Column(
+            child: _isMobile
+                ? Column(
+              children: [
+                _filterDropdown<String>(
+                  languageProvider.isEnglish ? 'Category' : 'کیٹگری',
+                  _selectedCategory,
+                  [
+                    DropdownMenuItem(
+                        value: null,
+                        child: Text(languageProvider.isEnglish ? 'All' : 'تمام')
+                    ),
+                    ...catProvider.categories.map((c) =>
+                        DropdownMenuItem(value: c.id, child: Text(c.name))),
+                  ],
+                      (v) { setState(() => _selectedCategory = v); _applyFilters(); },
+                  languageProvider,
+                  isCompact: true,
+                ),
+                const SizedBox(height: 8),
+                _filterDropdown<String>(
+                  languageProvider.isEnglish ? 'Supplier' : 'سپلائر',
+                  _selectedSupplier,
+                  [
+                    DropdownMenuItem(
+                        value: null,
+                        child: Text(languageProvider.isEnglish ? 'All' : 'تمام')
+                    ),
+                    ...supProvider.suppliers.map((s) =>
+                        DropdownMenuItem(value: s.id.toString(), child: Text(s.name))),
+                  ],
+                      (v) { setState(() => _selectedSupplier = v); _applyFilters(); },
+                  languageProvider,
+                  isCompact: true,
+                ),
+                const SizedBox(height: 8),
+                _filterDropdown<String>(
+                  languageProvider.isEnglish ? 'Unit' : 'یونٹ',
+                  _selectedUnit,
+                  [
+                    DropdownMenuItem(
+                        value: null,
+                        child: Text(languageProvider.isEnglish ? 'All' : 'تمام')
+                    ),
+                    ...unitProvider.units.map((u) =>
+                        DropdownMenuItem(value: u.id, child: Text(u.symbol))),
+                  ],
+                      (v) { setState(() => _selectedUnit = v); _applyFilters(); },
+                  languageProvider,
+                  isCompact: true,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    _filterChip(
+                      Icons.warning_amber_rounded,
+                      languageProvider.isEnglish ? 'Low Stock' : 'کم اسٹاک',
+                      _lowStockOnly ?? false,
+                          (v) { setState(() => _lowStockOnly = v); _applyFilters(); },
+                      languageProvider,
+                      isCompact: true,
+                    ),
+                    const SizedBox(width: 6),
+                    _filterChip(
+                      Icons.check_circle_outline,
+                      languageProvider.isEnglish ? 'Active' : 'فعال',
+                      _activeOnly ?? false,
+                          (v) { setState(() => _activeOnly = v); _applyFilters(); },
+                      languageProvider,
+                      isCompact: true,
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: _clearFilters,
+                      style: TextButton.styleFrom(
+                        minimumSize: Size.zero,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: Text(
+                        languageProvider.isEnglish ? 'Clear' : 'صاف کریں',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    ElevatedButton(
+                      onPressed: _applyFilters,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _purple,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        textStyle: const TextStyle(fontSize: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: Text(languageProvider.isEnglish ? 'Apply' : 'لاگو کریں'),
+                    ),
+                  ],
+                ),
+              ],
+            )
+                : Column(
               children: [
                 Row(
                   children: [
@@ -423,6 +721,7 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
                         ],
                             (v) { setState(() => _selectedCategory = v); _applyFilters(); },
                         languageProvider,
+                        isCompact: false,
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -440,6 +739,7 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
                         ],
                             (v) { setState(() => _selectedSupplier = v); _applyFilters(); },
                         languageProvider,
+                        isCompact: false,
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -457,6 +757,7 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
                         ],
                             (v) { setState(() => _selectedUnit = v); _applyFilters(); },
                         languageProvider,
+                        isCompact: false,
                       ),
                     ),
                   ],
@@ -470,6 +771,7 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
                       _lowStockOnly ?? false,
                           (v) { setState(() => _lowStockOnly = v); _applyFilters(); },
                       languageProvider,
+                      isCompact: false,
                     ),
                     const SizedBox(width: 8),
                     _filterChip(
@@ -478,6 +780,7 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
                       _activeOnly ?? false,
                           (v) { setState(() => _activeOnly = v); _applyFilters(); },
                       languageProvider,
+                      isCompact: false,
                     ),
                     const Spacer(),
                     TextButton(
@@ -514,15 +817,16 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
       T? value,
       List<DropdownMenuItem<T>> items,
       void Function(T?) onChanged,
-      LanguageProvider languageProvider,
-      ) {
+      LanguageProvider languageProvider, {
+        required bool isCompact,
+      }) {
     return Container(
-      height: 38,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      height: isCompact ? 34 : 38,
+      padding: EdgeInsets.symmetric(horizontal: isCompact ? 6 : 10),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: _border),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<T>(
@@ -530,48 +834,58 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
           items: items,
           onChanged: onChanged,
           hint: Text(
-              label,
-              style: TextStyle(
-                  fontSize: 13,
-                  color: _textTertiary,
-                  fontFamily: languageProvider.fontFamily
-              )
+            label,
+            style: TextStyle(
+              fontSize: isCompact ? 11 : 13,
+              color: _textTertiary,
+              fontFamily: languageProvider.fontFamily,
+            ),
           ),
           isExpanded: true,
           style: TextStyle(
-              fontSize: 13,
-              color: _textPrimary,
-              fontFamily: languageProvider.fontFamily
+            fontSize: isCompact ? 11 : 13,
+            color: _textPrimary,
+            fontFamily: languageProvider.fontFamily,
           ),
-          icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+          icon: Icon(Icons.keyboard_arrow_down, size: isCompact ? 14 : 18),
         ),
       ),
     );
   }
 
-  Widget _filterChip(IconData icon, String label, bool selected, void Function(bool) onSelected, LanguageProvider languageProvider) {
+  Widget _filterChip(
+      IconData icon,
+      String label,
+      bool selected,
+      void Function(bool) onSelected,
+      LanguageProvider languageProvider, {
+        required bool isCompact,
+      }) {
     return GestureDetector(
       onTap: () => onSelected(!selected),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: EdgeInsets.symmetric(
+          horizontal: isCompact ? 8 : 12,
+          vertical: isCompact ? 4 : 6,
+        ),
         decoration: BoxDecoration(
           color: selected ? _bgPurple : Colors.white,
           border: Border.all(color: selected ? _purple.withOpacity(0.5) : _border),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(isCompact ? 14 : 20),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (selected)
-              Icon(Icons.check, size: 13, color: _purple)
+              Icon(Icons.check, size: isCompact ? 10 : 13, color: _purple)
             else
-              Icon(icon, size: 13, color: _textSecondary),
-            const SizedBox(width: 5),
+              Icon(icon, size: isCompact ? 10 : 13, color: _textSecondary),
+            SizedBox(width: isCompact ? 3 : 5),
             Text(
               label,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: isCompact ? 10 : 12,
                 color: selected ? _purple : _textSecondary,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
                 fontFamily: languageProvider.fontFamily,
@@ -591,57 +905,376 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
         // Row count bar
         Container(
           color: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+          padding: EdgeInsets.symmetric(
+            horizontal: _isMobile ? 16 : 24,
+            vertical: _isMobile ? 6 : 8,
+          ),
           child: Row(
             children: [
               Text(
-                languageProvider.isEnglish
+                _isMobile
+                    ? '${provider.products.length} of ${provider.totalProducts}'
+                    : languageProvider.isEnglish
                     ? 'Showing ${provider.products.length} of ${provider.totalProducts} products'
                     : '${provider.products.length} میں سے ${provider.totalProducts} پروڈکٹس دکھا رہے ہیں',
                 style: TextStyle(
-                    fontSize: 12,
-                    color: _textSecondary,
-                    fontFamily: languageProvider.fontFamily
+                  fontSize: _isMobile ? 11 : 12,
+                  color: _textSecondary,
+                  fontFamily: languageProvider.fontFamily,
                 ),
               ),
             ],
           ),
         ),
         const Divider(height: 1, color: _border),
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: () => provider.fetchProducts(refresh: true),
-            child: Scrollbar(
-              controller: _horizontalScrollController,
-              thumbVisibility: true,
-              child: SingleChildScrollView(
-                controller: _horizontalScrollController,
-                scrollDirection: Axis.horizontal,
-                child: SizedBox(
-                  width: MediaQuery.of(context).size.width - 48,
+        _isMobile
+            ? _buildMobileCardsView(provider, languageProvider)
+            : _buildDesktopTableView(provider, languageProvider),
+      ],
+    );
+  }
+
+  Widget _buildDesktopTableView(ProductProvider provider, LanguageProvider languageProvider) {
+    return Expanded(
+      child: RefreshIndicator(
+        onRefresh: () => provider.fetchProducts(refresh: true),
+        child: Scrollbar(
+          controller: _horizontalScrollController,
+          thumbVisibility: true,
+          child: SingleChildScrollView(
+            controller: _horizontalScrollController,
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: MediaQuery.of(context).size.width - 48,
+              child: Column(
+                children: [
+                  _buildTableHeader(languageProvider),
+                  Expanded(
+                    child: ListView.builder(
+                      controller: _scrollController,
+                      itemCount: provider.products.length,
+                      itemBuilder: (context, index) {
+                        final product = provider.products[index];
+                        return _buildTableRow(product, index, languageProvider);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobileCardsView(ProductProvider provider, LanguageProvider languageProvider) {
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(8),
+      itemCount: provider.products.length,
+      itemBuilder: (context, index) {
+        final product = provider.products[index];
+        return _buildMobileCard(product, languageProvider);
+      },
+    );
+  }
+
+  Widget _buildMobileCard(ProductModel product, LanguageProvider languageProvider) {
+    final isLowStock = product.physicalQty <= product.minStock;
+    final isBom = product.isBom;
+    final formatter = NumberFormat.currency(symbol: 'PKR ', decimalDigits: 0);
+    final costForMargin = isBom ? (product.bomTotalCost ?? product.costPrice) : product.costPrice;
+    final margin = costForMargin > 0
+        ? ((product.salePrice - costForMargin) / product.salePrice * 100)
+        : 0.0;
+
+    return GestureDetector(
+      onTap: () => _navigateToProductDetail(product.id),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                // Image / icon
+                Consumer<ProductImageProvider>(
+                  builder: (context, imgProvider, _) {
+                    final img = imgProvider.getPrimaryImage(product.id);
+                    return Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: _bgPurple,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: img != null
+                          ? ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          img.imageUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                          const Icon(Icons.inventory_2, color: _purple, size: 20),
+                        ),
+                      )
+                          : Icon(
+                        isBom ? Icons.precision_manufacturing_outlined : Icons.inventory_2_outlined,
+                        color: _purple,
+                        size: 20,
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(width: 10),
+                Expanded(
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildTableHeader(languageProvider),
-                      Expanded(
-                        child: ListView.builder(
-                          controller: _scrollController,
-                          itemCount: provider.products.length,
-                          itemBuilder: (context, index) {
-                            final product = provider.products[index];
-                            return _buildTableRow(product, index, languageProvider);
-                          },
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              product.itemName,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: _textPrimary,
+                                fontFamily: languageProvider.fontFamily,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (isBom) ...[
+                            const SizedBox(width: 4),
+                            _inlineBadge(
+                              languageProvider.isEnglish ? 'BOM' : 'بی او ایم',
+                              _purple,
+                              _bgPurple,
+                              languageProvider,
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Text(
+                            product.barcode ?? '',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: _textTertiary,
+                              fontFamily: languageProvider.fontFamily,
+                            ),
+                          ),
+                          if (product.barcode != null && product.category != null) ...[
+                            const SizedBox(width: 4),
+                            Text(
+                              '·',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: _textTertiary,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(
+                            product.category?.name ?? (languageProvider.isEnglish ? 'Uncategorized' : 'غیر درجہ بند'),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: _textTertiary,
+                              fontFamily: languageProvider.fontFamily,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        languageProvider.isEnglish ? 'Stock' : 'اسٹاک',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: _textTertiary,
+                          fontFamily: languageProvider.fontFamily,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Text(
+                            '${product.physicalQty} ${product.unit?.symbol ?? ''}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: isLowStock ? _red : _teal,
+                              fontFamily: languageProvider.fontFamily,
+                            ),
+                          ),
+                          if (isLowStock) ...[
+                            const SizedBox(width: 4),
+                            Icon(Icons.warning_amber_rounded, size: 14, color: _red),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        languageProvider.isEnglish ? 'Cost' : 'لاگت',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: _textTertiary,
+                          fontFamily: languageProvider.fontFamily,
+                        ),
+                      ),
+                      Text(
+                        formatter.format(isBom ? (product.bomTotalCost ?? product.costPrice) : product.costPrice),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: _textPrimary,
+                          fontFamily: languageProvider.fontFamily,
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        languageProvider.isEnglish ? 'Sale Price' : 'فروخت قیمت',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: _textTertiary,
+                          fontFamily: languageProvider.fontFamily,
+                        ),
+                      ),
+                      Text(
+                        formatter.format(product.salePrice),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: _textPrimary,
+                          fontFamily: languageProvider.fontFamily,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        languageProvider.isEnglish ? 'Margin' : 'مارجن',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: _textTertiary,
+                          fontFamily: languageProvider.fontFamily,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Icon(
+                            margin >= 20 ? Icons.trending_up : Icons.trending_down,
+                            size: 14,
+                            color: margin >= 20 ? _teal : _amber,
+                          ),
+                          const SizedBox(width: 2),
+                          Text(
+                            '${margin.toStringAsFixed(1)}%',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: margin >= 20 ? _teal : _amber,
+                              fontFamily: languageProvider.fontFamily,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                product.isActive
+                    ? _inlineBadge(
+                  languageProvider.isEnglish ? 'Active' : 'فعال',
+                  _teal,
+                  _bgTeal,
+                  languageProvider,
+                )
+                    : _inlineBadge(
+                  languageProvider.isEnglish ? 'Inactive' : 'غیر فعال',
+                  _textSecondary,
+                  const Color(0xFFF3F4F6),
+                  languageProvider,
+                ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.edit_outlined, size: 18),
+                      color: _textSecondary,
+                      onPressed: () => _navigateToEditProduct(product),
+                      tooltip: languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: Icon(Icons.delete_outline, size: 18),
+                      color: _red.withOpacity(0.7),
+                      onPressed: () => _showDeleteConfirmation(product, languageProvider),
+                      tooltip: languageProvider.isEnglish ? 'Delete' : 'حذف کریں',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
+
+  // ─── TABLE HEADER ───────────────────────────────────────────────────────
 
   Widget _buildTableHeader(LanguageProvider languageProvider) {
     return Container(
@@ -1052,50 +1685,56 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
   // ─── EMPTY ────────────────────────────────────────────────────────────────
 
   Widget _buildEmptyState(LanguageProvider languageProvider) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(color: _bgPurple, borderRadius: BorderRadius.circular(18)),
-            child: const Icon(Icons.inventory_2_outlined, size: 36, color: _purple),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            languageProvider.isEnglish ? 'No Products Found' : 'کوئی پروڈکٹ نہیں ملی',
-            style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-                color: _textPrimary,
-                fontFamily: languageProvider.fontFamily
+    return Padding(
+      padding: const EdgeInsets.all(40.0),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: _isMobile ? 60 : 72,
+              height: _isMobile ? 60 : 72,
+              decoration: BoxDecoration(color: _bgPurple, borderRadius: BorderRadius.circular(18)),
+              child: Icon(Icons.inventory_2_outlined, size: _isMobile ? 30 : 36, color: _purple),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            languageProvider.isEnglish
-                ? 'Add your first product to get started'
-                : 'شروع کرنے کے لیے اپنی پہلی پروڈکٹ شامل کریں',
-            style: TextStyle(
-                fontSize: 13,
-                color: _textSecondary,
-                fontFamily: languageProvider.fontFamily
+            const SizedBox(height: 16),
+            Text(
+              languageProvider.isEnglish ? 'No Products Found' : 'کوئی پروڈکٹ نہیں ملی',
+              style: TextStyle(
+                  fontSize: _isMobile ? 16 : 17,
+                  fontWeight: FontWeight.w600,
+                  color: _textPrimary,
+                  fontFamily: languageProvider.fontFamily
+              ),
             ),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: _navigateToAddProduct,
-            icon: const Icon(Icons.add),
-            label: Text(languageProvider.isEnglish ? 'Add Product' : 'پروڈکٹ شامل کریں'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _purple,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            const SizedBox(height: 6),
+            Text(
+              languageProvider.isEnglish
+                  ? 'Add your first product to get started'
+                  : 'شروع کرنے کے لیے اپنی پہلی پروڈکٹ شامل کریں',
+              style: TextStyle(
+                  fontSize: _isMobile ? 12 : 13,
+                  color: _textSecondary,
+                  fontFamily: languageProvider.fontFamily
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: _navigateToAddProduct,
+              icon: const Icon(Icons.add),
+              label: Text(languageProvider.isEnglish ? 'Add Product' : 'پروڈکٹ شامل کریں'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _purple,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(
+                  horizontal: _isMobile ? 16 : 24,
+                  vertical: _isMobile ? 10 : 12,
+                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1107,12 +1746,44 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
       builder: (context, provider, _) {
         if (provider.totalPages <= 1) return const SizedBox.shrink();
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+          padding: EdgeInsets.symmetric(
+            horizontal: _isMobile ? 16 : 24,
+            vertical: _isMobile ? 8 : 10,
+          ),
           decoration: const BoxDecoration(
             color: Colors.white,
             border: Border(top: BorderSide(color: _border)),
           ),
-          child: Row(
+          child: _isMobile
+              ? Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${provider.currentPage}/${provider.totalPages}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: _textSecondary,
+                  fontFamily: languageProvider.fontFamily,
+                ),
+              ),
+              Row(
+                children: [
+                  _pageBtn(
+                    icon: Icons.chevron_left,
+                    enabled: provider.currentPage > 1,
+                    onTap: () => provider.setPage(provider.currentPage - 1),
+                  ),
+                  const SizedBox(width: 4),
+                  _pageBtn(
+                    icon: Icons.chevron_right,
+                    enabled: provider.currentPage < provider.totalPages,
+                    onTap: () => provider.setPage(provider.currentPage + 1),
+                  ),
+                ],
+              ),
+            ],
+          )
+              : Row(
             children: [
               Text(
                 languageProvider.isEnglish
@@ -1185,15 +1856,15 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(6),
       child: Container(
-        width: 30,
-        height: 30,
+        width: _isMobile ? 28 : 30,
+        height: _isMobile ? 28 : 30,
         margin: const EdgeInsets.only(right: 4),
         decoration: BoxDecoration(
           border: Border.all(color: _border),
           borderRadius: BorderRadius.circular(6),
           color: Colors.white,
         ),
-        child: Icon(icon, size: 16, color: enabled ? _textSecondary : _textTertiary),
+        child: Icon(icon, size: _isMobile ? 14 : 16, color: enabled ? _textSecondary : _textTertiary),
       ),
     );
   }

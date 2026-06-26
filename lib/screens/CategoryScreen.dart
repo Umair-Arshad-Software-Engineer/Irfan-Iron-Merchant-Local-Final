@@ -22,6 +22,11 @@ class _CategoryScreenState extends State<CategoryScreen> {
   String _viewMode = 'categories'; // 'categories' or 'subcategories'
   final _formKey = GlobalKey<FormState>();
 
+  // Responsive breakpoints
+  bool get _isMobile => MediaQuery.of(context).size.width < 600;
+  bool get _isTablet => MediaQuery.of(context).size.width >= 600 && MediaQuery.of(context).size.width < 1200;
+  bool get _isDesktop => MediaQuery.of(context).size.width >= 1200;
+
   @override
   void initState() {
     super.initState();
@@ -152,151 +157,221 @@ class _CategoryScreenState extends State<CategoryScreen> {
           builder: (context, provider, child) {
             return Scaffold(
               backgroundColor: const Color(0xFFFAFAFC),
-              body: Column(
-                children: [
-                  // Header
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border(
-                        bottom: BorderSide(color: Colors.grey[200]!),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              languageProvider.isEnglish ? 'Categories' : 'کیٹگریز',
-                              style: const TextStyle(
-                                fontSize: 28,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF2D3142),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              languageProvider.isEnglish
-                                  ? 'Manage your product categories and subcategories'
-                                  : 'اپنی پروڈکٹ کی کیٹگریز اور ذیلی کیٹگریز کا انتظام کریں',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          children: [
-                            // View Mode Toggle
-                            Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF5F6FA),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                children: [
-                                  _buildViewModeButton(
-                                    languageProvider.isEnglish ? 'Categories' : 'کیٹگریز',
-                                    Icons.category,
-                                    languageProvider,
-                                  ),
-                                  _buildViewModeButton(
-                                    languageProvider.isEnglish ? 'Subcategories' : 'ذیلی کیٹگریز',
-                                    Icons.category_outlined,
-                                    languageProvider,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            CustomButton(
-                              text: languageProvider.isEnglish ? 'Add Category' : 'کیٹگری شامل کریں',
-                              icon: Icons.add,
-                              onPressed: () => _showCategoryDialog(),
-                              width: 160,
-                              height: 48,
-                              useGradient: true,
-                              gradientColors: const [Color(0xFF7C3AED), Color(0xFF6366F1)],
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
+              body: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header
+                    _buildHeader(languageProvider, provider),
 
-                  // Search and Filter Bar
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      border: Border(bottom: BorderSide(color: Color(0xFFF0F0F5))),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            height: 45,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF5F6FA),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: TextField(
-                              controller: _searchController,
-                              style: TextStyle(fontFamily: languageProvider.fontFamily),
-                              decoration: InputDecoration(
-                                hintText: languageProvider.isEnglish
-                                    ? 'Search categories...'
-                                    : 'کیٹگریز تلاش کریں...',
-                                hintStyle: TextStyle(color: Colors.grey[400]),
-                                prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
-                                border: InputBorder.none,
-                                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                              ),
-                              onChanged: (value) {
-                                provider.searchCategories(value);
-                              },
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF5F6FA),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.filter_list, color: Colors.grey[600], size: 20),
-                              const SizedBox(width: 8),
-                              Text(
-                                languageProvider.isEnglish ? 'Filter' : 'فلٹر',
-                                style: TextStyle(color: Colors.grey[600]),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                    // Search and Filter Bar
+                    _buildSearchFilterBar(languageProvider, provider),
 
-                  // Content
-                  Expanded(
-                    child: _viewMode == 'categories'
-                        ? _buildCategoriesList(provider, languageProvider)
-                        : _buildSubcategoriesScreen(languageProvider),
-                  ),
-                ],
+                    // Content
+                    if (provider.isLoading)
+                      const Padding(
+                        padding: EdgeInsets.all(40.0),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (_viewMode == 'categories')
+                      _buildCategoriesList(provider, languageProvider)
+                    else
+                      _buildSubcategoriesScreen(languageProvider),
+
+                    const SizedBox(height: 16),
+                  ],
+                ),
               ),
             );
           },
         );
       },
+    );
+  }
+
+  Widget _buildHeader(LanguageProvider languageProvider, CategoryProvider provider) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: _isMobile ? 12 : (_isTablet ? 16 : 20),
+        vertical: _isMobile ? 8 : 12,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(color: Colors.grey[200]!),
+        ),
+      ),
+      child: _isMobile
+          ? Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                languageProvider.isEnglish ? 'Categories' : 'کیٹگریز',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF2D3142),
+                ),
+              ),
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: const Icon(
+                    Icons.add,
+                    size: 18,
+                    color: Colors.white,
+                  ),
+                  style: IconButton.styleFrom(
+                    backgroundColor: const Color(0xFF7C3AED),
+                  ),
+                  onPressed: () => _showCategoryDialog(),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            languageProvider.isEnglish
+                ? 'Manage categories & subcategories'
+                : 'کیٹگریز اور ذیلی کیٹگریز کا انتظام کریں',
+            style: TextStyle(
+              fontSize: 10,
+              color: Colors.grey[600],
+              fontFamily: languageProvider.fontFamily,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: _buildViewModeButton(
+                  languageProvider.isEnglish ? 'Categories' : 'کیٹگریز',
+                  Icons.category,
+                  languageProvider,
+                ),
+              ),
+              // const SizedBox(width: 4),
+              Expanded(
+                child: _buildViewModeButton(
+                  languageProvider.isEnglish ? 'Subcategories' : 'ذیلی کیٹگریز',
+                  Icons.category_outlined,
+                  languageProvider,
+                ),
+              ),
+            ],
+          ),
+        ],
+      )
+          : Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Text(
+                languageProvider.isEnglish ? 'Categories' : 'کیٹگریز',
+                style: TextStyle(
+                  fontSize: _isDesktop ? 18 : 16,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF2D3142),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5F6FA),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    _buildViewModeButton(
+                      languageProvider.isEnglish ? 'Categories' : 'کیٹگریز',
+                      Icons.category,
+                      languageProvider,
+                    ),
+                    _buildViewModeButton(
+                      languageProvider.isEnglish ? 'Subcategories' : 'ذیلی کیٹگریز',
+                      Icons.category_outlined,
+                      languageProvider,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              CustomButton(
+                text: languageProvider.isEnglish ? 'Add' : 'شامل کریں',
+                icon: Icons.add,
+                onPressed: () => _showCategoryDialog(),
+                width: _isDesktop ? 100 : 80,
+                height: 32,
+                useGradient: true,
+                gradientColors: const [Color(0xFF7C3AED), Color(0xFF6366F1)],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchFilterBar(LanguageProvider languageProvider, CategoryProvider provider) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: _isMobile ? 16 : 24,
+        vertical: _isMobile ? 10 : 12,
+      ),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFF0F0F5))),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              height: 38,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F6FA),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: TextField(
+                controller: _searchController,
+                style: TextStyle(
+                  fontFamily: languageProvider.fontFamily,
+                  fontSize: _isMobile ? 13 : 14,
+                ),
+                decoration: InputDecoration(
+                  hintText: languageProvider.isEnglish
+                      ? 'Search categories...'
+                      : 'کیٹگریز تلاش کریں...',
+                  hintStyle: TextStyle(
+                    color: Colors.grey[400],
+                    fontSize: _isMobile ? 12 : 13,
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    color: Colors.grey[400],
+                    size: _isMobile ? 18 : 20,
+                  ),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                ),
+                onChanged: (value) {
+                  provider.searchCategories(value);
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -309,32 +384,36 @@ class _CategoryScreenState extends State<CategoryScreen> {
           _viewMode = label.toLowerCase();
         });
       },
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(6),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: EdgeInsets.symmetric(
+          horizontal: _isMobile ? 8 : 10,
+          vertical: _isMobile ? 4 : 6,
+        ),
         decoration: BoxDecoration(
           color: isSelected ? Colors.white : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(6),
           boxShadow: isSelected
               ? [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 3,
+              offset: const Offset(0, 1),
             ),
           ]
               : null,
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon,
-                size: 18,
+                size: _isMobile ? 14 : 16,
                 color: isSelected ? const Color(0xFF7C3AED) : Colors.grey[600]),
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
             Text(
               label,
               style: TextStyle(
-                fontSize: 14,
+                fontSize: _isMobile ? 10 : 12,
                 fontWeight: FontWeight.w500,
                 color: isSelected ? const Color(0xFF7C3AED) : Colors.grey[600],
                 fontFamily: languageProvider.fontFamily,
@@ -345,75 +424,83 @@ class _CategoryScreenState extends State<CategoryScreen> {
       ),
     );
   }
-
   Widget _buildCategoriesList(CategoryProvider provider, LanguageProvider languageProvider) {
-    if (provider.isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
     if (provider.categories.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.category_outlined,
-                size: 80, color: Colors.grey[300]),
-            const SizedBox(height: 16),
-            Text(
-              languageProvider.isEnglish ? 'No categories found' : 'کوئی کیٹگری نہیں ملی',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey[500],
-                fontFamily: languageProvider.fontFamily,
+      return Padding(
+        padding: const EdgeInsets.all(40.0),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.category_outlined,
+                  size: _isMobile ? 60 : 80, color: Colors.grey[300]),
+              const SizedBox(height: 12),
+              Text(
+                languageProvider.isEnglish ? 'No categories found' : 'کوئی کیٹگری نہیں ملی',
+                style: TextStyle(
+                  fontSize: _isMobile ? 15 : 17,
+                  color: Colors.grey[500],
+                  fontFamily: languageProvider.fontFamily,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              languageProvider.isEnglish
-                  ? 'Add your first category to get started'
-                  : 'شروع کرنے کے لیے اپنی پہلی کیٹگری شامل کریں',
-              style: TextStyle(color: Colors.grey[400], fontFamily: languageProvider.fontFamily),
-            ),
-          ],
+              const SizedBox(height: 4),
+              Text(
+                languageProvider.isEnglish
+                    ? 'Add your first category to get started'
+                    : 'شروع کرنے کے لیے اپنی پہلی کیٹگری شامل کریں',
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontFamily: languageProvider.fontFamily,
+                  fontSize: _isMobile ? 11 : 13,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(24),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.symmetric(
+        horizontal: _isMobile ? 16 : 24,
+        vertical: _isMobile ? 8 : 12,
+      ),
       itemCount: provider.categories.length,
       itemBuilder: (context, index) {
         final category = provider.categories[index];
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: const EdgeInsets.only(bottom: 8),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: const Color(0xFFF0F0F5)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 6,
+                offset: const Offset(0, 1),
               ),
             ],
           ),
           child: ExpansionTile(
+            tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
             leading: Container(
-              width: 40,
-              height: 40,
+              width: 32,
+              height: 32,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   colors: [Color(0xFF7C3AED), Color(0xFF6366F1)],
                 ),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.category, color: Colors.white, size: 20),
+              child: const Icon(Icons.category, color: Colors.white, size: 16),
             ),
             title: Text(
               category.name,
               style: TextStyle(
-                fontSize: 16,
+                fontSize: _isMobile ? 13 : 14,
                 fontWeight: FontWeight.w600,
                 color: const Color(0xFF2D3142),
                 fontFamily: languageProvider.fontFamily,
@@ -423,7 +510,11 @@ class _CategoryScreenState extends State<CategoryScreen> {
               languageProvider.isEnglish
                   ? '${category.subcategories?.length ?? 0} subcategories'
                   : 'ذیلی کیٹگریز: ${category.subcategories?.length ?? 0}',
-              style: TextStyle(color: Colors.grey[600], fontFamily: languageProvider.fontFamily),
+              style: TextStyle(
+                fontSize: _isMobile ? 10 : 11,
+                color: Colors.grey[600],
+                fontFamily: languageProvider.fontFamily,
+              ),
             ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
@@ -433,12 +524,17 @@ class _CategoryScreenState extends State<CategoryScreen> {
                     categoryId: category.id,
                     categoryName: category.name,
                   ),
-                  icon: Icon(Icons.edit, color: Colors.grey[600], size: 20),
+                  icon: Icon(Icons.edit, color: Colors.grey[600], size: _isMobile ? 16 : 18),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                   tooltip: languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں',
                 ),
+                const SizedBox(width: 4),
                 IconButton(
                   onPressed: () => _deleteCategory(category.id),
-                  icon: Icon(Icons.delete, color: Colors.red[400], size: 20),
+                  icon: Icon(Icons.delete, color: Colors.red[400], size: _isMobile ? 16 : 18),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                   tooltip: languageProvider.isEnglish ? 'Delete' : 'حذف کریں',
                 ),
               ],
@@ -446,13 +542,14 @@ class _CategoryScreenState extends State<CategoryScreen> {
             children: [
               _buildSubcategoriesList(category, languageProvider),
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 child: CustomButton(
                   text: languageProvider.isEnglish ? 'Add Subcategory' : 'ذیلی کیٹگری شامل کریں',
                   icon: Icons.add,
                   onPressed: () => _showSubcategoryDialog(category, languageProvider: languageProvider),
                   backgroundColor: Colors.transparent,
                   textColor: const Color(0xFF7C3AED),
+                  height: 32,
                 ),
               ),
             ],
@@ -467,44 +564,48 @@ class _CategoryScreenState extends State<CategoryScreen> {
 
     if (subcategories.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Text(
           languageProvider.isEnglish ? 'No subcategories yet' : 'ابھی تک کوئی ذیلی کیٹگری نہیں',
-          style: TextStyle(color: Colors.grey[500], fontFamily: languageProvider.fontFamily),
+          style: TextStyle(
+            fontSize: _isMobile ? 11 : 12,
+            color: Colors.grey[500],
+            fontFamily: languageProvider.fontFamily,
+          ),
           textAlign: TextAlign.center,
         ),
       );
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Column(
         children: subcategories.map((subcategory) {
           return Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
               color: const Color(0xFFFAFAFC),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
               children: [
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 28,
+                  height: 28,
                   decoration: BoxDecoration(
                     color: const Color(0xFF7C3AED).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(6),
                   ),
                   child: Icon(Icons.category_outlined,
-                      size: 18, color: const Color(0xFF7C3AED)),
+                      size: 14, color: const Color(0xFF7C3AED)),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     subcategory.name,
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: _isMobile ? 12 : 13,
                       fontWeight: FontWeight.w500,
                       color: const Color(0xFF2D3142),
                       fontFamily: languageProvider.fontFamily,
@@ -513,12 +614,17 @@ class _CategoryScreenState extends State<CategoryScreen> {
                 ),
                 IconButton(
                   onPressed: () => _showSubcategoryDialog(category, subcategory: subcategory, languageProvider: languageProvider),
-                  icon: Icon(Icons.edit, size: 18, color: Colors.grey[600]),
+                  icon: Icon(Icons.edit, size: 14, color: Colors.grey[600]),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                   tooltip: languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں',
                 ),
+                const SizedBox(width: 4),
                 IconButton(
                   onPressed: () => _deleteSubcategory(subcategory.id),
-                  icon: Icon(Icons.delete, size: 18, color: Colors.red[400]),
+                  icon: Icon(Icons.delete, size: 14, color: Colors.red[400]),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                   tooltip: languageProvider.isEnglish ? 'Delete' : 'حذف کریں',
                 ),
               ],
@@ -537,59 +643,76 @@ class _CategoryScreenState extends State<CategoryScreen> {
             .toList();
 
         if (allSubcategories.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.category_outlined,
-                    size: 80, color: Colors.grey[300]),
-                const SizedBox(height: 16),
-                Text(
-                  languageProvider.isEnglish ? 'No subcategories found' : 'کوئی ذیلی کیٹگری نہیں ملی',
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: Colors.grey[500],
-                    fontFamily: languageProvider.fontFamily,
+          return Padding(
+            padding: const EdgeInsets.all(40.0),
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.category_outlined,
+                      size: _isMobile ? 60 : 80, color: Colors.grey[300]),
+                  const SizedBox(height: 12),
+                  Text(
+                    languageProvider.isEnglish ? 'No subcategories found' : 'کوئی ذیلی کیٹگری نہیں ملی',
+                    style: TextStyle(
+                      fontSize: _isMobile ? 15 : 17,
+                      color: Colors.grey[500],
+                      fontFamily: languageProvider.fontFamily,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           );
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.all(24),
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: EdgeInsets.symmetric(
+            horizontal: _isMobile ? 16 : 24,
+            vertical: _isMobile ? 8 : 12,
+          ),
           itemCount: allSubcategories.length,
           itemBuilder: (context, index) {
             final subcategory = allSubcategories[index];
             final category = provider.categories.firstWhere(
                   (cat) => cat.subcategories?.contains(subcategory) ?? false,
-              orElse: () => provider.categories[0],
+              orElse: () => provider.categories.isNotEmpty
+                  ? provider.categories[0]
+                  : Category(
+                id: '',
+                name: '',
+                createdAt: DateTime.now(),
+                updatedAt: DateTime.now(),
+              ),
             );
-
             return Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: EdgeInsets.symmetric(
+                horizontal: _isMobile ? 10 : 12,
+                vertical: _isMobile ? 8 : 10,
+              ),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFFF0F0F5)),
               ),
               child: Row(
                 children: [
                   Container(
-                    width: 40,
-                    height: 40,
+                    width: 32,
+                    height: 32,
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         colors: [Color(0xFF10B981), Color(0xFF34D399)],
                       ),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Icon(Icons.category_outlined,
-                        color: Colors.white, size: 20),
+                        color: Colors.white, size: 16),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -597,19 +720,19 @@ class _CategoryScreenState extends State<CategoryScreen> {
                         Text(
                           subcategory.name,
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: _isMobile ? 13 : 14,
                             fontWeight: FontWeight.w600,
                             color: const Color(0xFF2D3142),
                             fontFamily: languageProvider.fontFamily,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2),
                         Text(
                           languageProvider.isEnglish
                               ? 'Category: ${category.name}'
                               : 'کیٹگری: ${category.name}',
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: _isMobile ? 10 : 11,
                             color: Colors.grey[600],
                             fontFamily: languageProvider.fontFamily,
                           ),
@@ -622,12 +745,17 @@ class _CategoryScreenState extends State<CategoryScreen> {
                     children: [
                       IconButton(
                         onPressed: () => _showSubcategoryDialog(category, subcategory: subcategory, languageProvider: languageProvider),
-                        icon: Icon(Icons.edit, color: Colors.grey[600], size: 20),
+                        icon: Icon(Icons.edit, color: Colors.grey[600], size: _isMobile ? 16 : 18),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
                         tooltip: languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں',
                       ),
+                      const SizedBox(width: 4),
                       IconButton(
                         onPressed: () => _deleteSubcategory(subcategory.id),
-                        icon: Icon(Icons.delete, color: Colors.red[400], size: 20),
+                        icon: Icon(Icons.delete, color: Colors.red[400], size: _isMobile ? 16 : 18),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
                         tooltip: languageProvider.isEnglish ? 'Delete' : 'حذف کریں',
                       ),
                     ],
@@ -663,12 +791,12 @@ class _CategoryScreenState extends State<CategoryScreen> {
                     ? 'Category: ${category.name}'
                     : 'کیٹگری: ${category.name}',
                 style: const TextStyle(
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: FontWeight.w500,
                   color: Color(0xFF6B7280),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               CustomTextField(
                 controller: subcategoryNameController,
                 labelText: languageProvider.isEnglish ? 'Subcategory Name' : 'ذیلی کیٹگری کا نام',

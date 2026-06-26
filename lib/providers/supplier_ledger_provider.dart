@@ -166,6 +166,7 @@ class SupplierLedgerProvider with ChangeNotifier {
     required BuildContext context,
     required int supplierId,
     int page = 1,
+    int limit = 50,  // Add this parameter with default value
     String? fromDate,
     String? toDate,
     String? referenceType,

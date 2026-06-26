@@ -13,6 +13,11 @@ import '../components/error_widget.dart';
 import '../providers/lanprovider.dart';
 import 'add_edit_purchase_order_screen.dart';
 
+// ─── Breakpoints ───────────────────────────────────────────────
+// mobile  : width < 600
+// tablet  : 600 ≤ width < 1100
+// desktop : width ≥ 1100
+
 class PurchaseOrdersListScreen extends StatefulWidget {
   const PurchaseOrdersListScreen({super.key});
 
@@ -23,6 +28,7 @@ class PurchaseOrdersListScreen extends StatefulWidget {
 class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  Timer? _debounceTimer;
 
   String? _selectedStatus;
   int? _selectedSupplierId;
@@ -33,7 +39,6 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
   final DateFormat _dateFormat = DateFormat('MMM dd, yyyy');
   final NumberFormat _currencyFormat = NumberFormat.currency(symbol: 'Rs ');
 
-  // Status options with bilingual labels
   List<Map<String, String>> _getStatusOptions(LanguageProvider lp) => [
     {'value': 'draft', 'label': lp.isEnglish ? 'Draft' : 'ڈرافٹ'},
     {'value': 'ordered', 'label': lp.isEnglish ? 'Ordered' : 'آرڈر شدہ'},
@@ -46,13 +51,12 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadInitialData();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadInitialData());
   }
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -61,7 +65,6 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
   Future<void> _loadInitialData() async {
     final poProvider = Provider.of<PurchaseOrderProvider>(context, listen: false);
     final supplierProvider = Provider.of<SupplierProvider>(context, listen: false);
-
     await Future.wait([
       poProvider.fetchPurchaseOrders(),
       supplierProvider.fetchSuppliers(context: context),
@@ -70,329 +73,537 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
 
   void _onSearchChanged() {
     _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
-      _applyFilters();
-    });
+    _debounceTimer = Timer(const Duration(milliseconds: 500), _applyFilters);
   }
 
-  Timer? _debounceTimer;
+  // ── Helpers ────────────────────────────────────────────────────
+
+  bool _isMobile(BuildContext ctx) => MediaQuery.of(ctx).size.width < 600;
+  bool _isTablet(BuildContext ctx) {
+    final w = MediaQuery.of(ctx).size.width;
+    return w >= 600 && w < 1100;
+  }
+  bool _isDesktop(BuildContext ctx) => MediaQuery.of(ctx).size.width >= 1100;
+
+  double _horizontalPadding(BuildContext ctx) {
+    if (_isDesktop(ctx)) return 40;
+    if (_isTablet(ctx)) return 28;
+    return 16;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  BUILD
+  // ══════════════════════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
     return Consumer<LanguageProvider>(
-      builder: (context, languageProvider, _) {
-        final statusOptions = _getStatusOptions(languageProvider);
+      builder: (context, lp, _) {
+        final statusOptions = _getStatusOptions(lp);
+        final isMobile = _isMobile(context);
+        final isDesktop = _isDesktop(context);
+        final hp = _horizontalPadding(context);
 
         return Scaffold(
           backgroundColor: const Color(0xFFFAFAFC),
+          // Desktop/tablet: no FAB — action lives in header
+          floatingActionButton: isMobile
+              ? FloatingActionButton.extended(
+            onPressed: _navigateToAddOrder,
+            label: Text(
+              lp.isEnglish ? 'New Order' : 'نیا آرڈر',
+              style: const TextStyle(color: Colors.white),
+            ),
+            icon: const Icon(Icons.add, color: Colors.white),
+            backgroundColor: const Color(0xFF7C3AED),
+          )
+              : null,
           body: Column(
             children: [
-              _buildHeader(languageProvider),
-              _buildStatsCards(languageProvider),
-              _buildSearchAndFilterBar(languageProvider),
-              if (_showFilters) _buildFiltersPanel(languageProvider, statusOptions),
+              _buildHeader(lp, hp),
+              // Desktop: stats inline in a row; mobile/tablet: scrollable row
+              _buildStatsCards(lp, hp),
+              _buildSearchAndFilterBar(lp, hp),
+              if (_showFilters) _buildFiltersPanel(lp, statusOptions, hp),
               Expanded(
                 child: Consumer<PurchaseOrderProvider>(
-                  builder: (context, provider, child) {
+                  builder: (context, provider, _) {
                     if (provider.isLoading && provider.purchaseOrders.isEmpty) {
                       return const LoadingIndicator();
                     }
-
                     if (provider.errorMessage != null) {
                       return CustomErrorWidget(
                         message: provider.errorMessage!,
                         onRetry: () => provider.fetchPurchaseOrders(refresh: true),
                       );
                     }
-
                     if (provider.purchaseOrders.isEmpty) {
-                      return _buildEmptyState(languageProvider);
+                      return _buildEmptyState(lp);
                     }
 
+                    // Desktop: two-column grid; tablet: single column wider; mobile: single column tight
                     return RefreshIndicator(
                       onRefresh: () => provider.fetchPurchaseOrders(refresh: true),
-                      child: ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-                        itemCount: provider.purchaseOrders.length,
-                        itemBuilder: (context, index) {
-                          final order = provider.purchaseOrders[index];
-                          return _buildOrderCard(order, languageProvider);
-                        },
-                      ),
+                      child: isDesktop
+                          ? _buildDesktopGrid(provider, lp, hp)
+                          : _buildMobileList(provider, lp, hp),
                     );
                   },
                 ),
               ),
-              _buildPagination(),
+              _buildPagination(lp),
             ],
-          ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => _navigateToAddOrder(),
-            label: Text(languageProvider.isEnglish ? 'New Purchase Order' : 'نیا پرچیز آرڈر',
-                style: const TextStyle(color: Colors.white)),
-            icon: const Icon(Icons.add, color: Colors.white),
-            backgroundColor: const Color(0xFF7C3AED),
           ),
         );
       },
     );
   }
 
-  Widget _buildHeader(LanguageProvider lp) {
+  // ── Header ─────────────────────────────────────────────────────
+
+  Widget _buildHeader(LanguageProvider lp, double hp) {
+    final isMobile = _isMobile(context);
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+      padding: EdgeInsets.fromLTRB(hp, isMobile ? 14 : 20, hp, isMobile ? 8 : 12),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFF0F0F5), width: 1)),
+      ),
       child: Row(
         children: [
           Text(
             lp.isEnglish ? 'Purchase Orders' : 'پرچیز آرڈرز',
-            style: const TextStyle(
-              fontSize: 28,
+            style: TextStyle(
+              fontSize: isMobile ? 20 : 26,
               fontWeight: FontWeight.bold,
-              color: Color(0xFF2D3142),
+              color: const Color(0xFF2D3142),
             ),
           ),
           const Spacer(),
+          // Desktop/tablet: CTA button in header
+          if (!isMobile)
+            ElevatedButton.icon(
+              onPressed: _navigateToAddOrder,
+              icon: const Icon(Icons.add, size: 18),
+              label: Text(lp.isEnglish ? 'New Purchase Order' : 'نیا پرچیز آرڈر'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF7C3AED),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildStatsCards(LanguageProvider lp) {
-    return Consumer<PurchaseOrderProvider>(
-      builder: (context, provider, child) {
-        int draftCount = provider.purchaseOrders.where((po) => po.status == 'draft').length;
-        int orderedCount = provider.purchaseOrders.where((po) => po.status == 'ordered').length;
-        int receivedCount = provider.purchaseOrders.where((po) => po.status == 'received').length;
-        double totalValue = provider.purchaseOrders.fold(0, (sum, po) => sum + po.totalAmount);
+  // ── Stats Cards ────────────────────────────────────────────────
 
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+  Widget _buildStatsCards(LanguageProvider lp, double hp) {
+    return Consumer<PurchaseOrderProvider>(
+      builder: (context, provider, _) {
+        final draftCount = provider.purchaseOrders.where((po) => po.status == 'draft').length;
+        final orderedCount = provider.purchaseOrders.where((po) => po.status == 'ordered').length;
+        final receivedCount = provider.purchaseOrders.where((po) => po.status == 'received').length;
+        final totalValue = provider.purchaseOrders.fold<double>(0, (s, po) => s + po.totalAmount);
+
+        final stats = [
+          _StatData(lp.isEnglish ? 'Draft' : 'ڈرافٹ', draftCount.toString(),
+              Icons.drafts, Colors.grey),
+          _StatData(lp.isEnglish ? 'Ordered' : 'آرڈر شدہ', orderedCount.toString(),
+              Icons.shopping_cart, Colors.blue),
+          _StatData(lp.isEnglish ? 'Received' : 'موصول شدہ', receivedCount.toString(),
+              Icons.check_circle, Colors.green),
+          _StatData(lp.isEnglish ? 'Total Value' : 'کل قیمت',
+              _currencyFormat.format(totalValue), Icons.attach_money, Colors.purple),
+        ];
+
+        final isMobile = _isMobile(context);
+        final isDesktop = _isDesktop(context);
+
+        // Mobile: horizontal scroll; tablet/desktop: fixed row
+        if (isMobile) {
+          return SizedBox(
+            height: 84,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: EdgeInsets.symmetric(horizontal: hp, vertical: 10),
+              itemCount: stats.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (_, i) => _buildStatCardCompact(stats[i], lp),
+            ),
+          );
+        }
+
+        return Padding(
+          padding: EdgeInsets.fromLTRB(hp, 16, hp, 0),
           child: Row(
-            children: [
-              _buildStatCard(lp.isEnglish ? 'Draft' : 'ڈرافٹ', draftCount.toString(),
-                  Icons.drafts, Colors.grey, lp),
-              const SizedBox(width: 16),
-              _buildStatCard(lp.isEnglish ? 'Ordered' : 'آرڈر شدہ', orderedCount.toString(),
-                  Icons.shopping_cart, Colors.blue, lp),
-              const SizedBox(width: 16),
-              _buildStatCard(lp.isEnglish ? 'Received' : 'موصول شدہ', receivedCount.toString(),
-                  Icons.check_circle, Colors.green, lp),
-              const SizedBox(width: 16),
-              _buildStatCard(lp.isEnglish ? 'Total Value' : 'کل قیمت',
-                  _currencyFormat.format(totalValue), Icons.attach_money, Colors.purple, lp),
-            ],
+            children: stats
+                .map((s) => Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(right: s != stats.last ? (isDesktop ? 16 : 12) : 0),
+                child: _buildStatCardFull(s, lp),
+              ),
+            ))
+                .toList(),
           ),
         );
       },
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color, LanguageProvider lp) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFF0F0F5), width: 1.5),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: color, size: 20),
+  Widget _buildStatCardFull(_StatData s, LanguageProvider lp) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFF0F0F5), width: 1.5),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: s.color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(fontSize: 12, color: Color(0xFF6B7280), fontFamily: lp.fontFamily),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    value,
+            child: Icon(s.icon, color: s.color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(s.title,
                     style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2D3142),
-                      fontFamily: lp.fontFamily,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
+                        fontSize: 12,
+                        color: const Color(0xFF6B7280),
+                        fontFamily: lp.fontFamily)),
+                const SizedBox(height: 4),
+                Text(s.value,
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF2D3142),
+                        fontFamily: lp.fontFamily),
+                    overflow: TextOverflow.ellipsis),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildSearchAndFilterBar(LanguageProvider lp) {
+  Widget _buildStatCardCompact(_StatData s, LanguageProvider lp) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      width: 150,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFF0F0F5), width: 1.5),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: s.color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(s.icon, color: s.color, size: 16),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(s.title,
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: const Color(0xFF6B7280),
+                        fontFamily: lp.fontFamily),
+                    overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
+                Text(s.value,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF2D3142),
+                        fontFamily: lp.fontFamily),
+                    overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Search + Filter bar ────────────────────────────────────────
+
+  Widget _buildSearchAndFilterBar(LanguageProvider lp, double hp) {
+    final isMobile = _isMobile(context);
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: hp, vertical: isMobile ? 10 : 14),
       child: Row(
         children: [
           Expanded(
             child: Container(
-              height: 45,
+              height: 44,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: const Color(0xFFF0F0F5), width: 1.5),
               ),
               child: TextField(
                 controller: _searchController,
-                style: TextStyle(fontFamily: lp.fontFamily),
+                style: TextStyle(fontFamily: lp.fontFamily, fontSize: 13),
                 decoration: InputDecoration(
-                  hintText: lp.isEnglish ? 'Search by PO number or supplier...' : 'PO نمبر یا سپلائر سے تلاش کریں...',
-                  hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
-                  prefixIcon: Icon(Icons.search, color: Colors.grey[400], size: 20),
+                  hintText: lp.isEnglish
+                      ? 'Search by PO number or supplier...'
+                      : 'PO نمبر یا سپلائر سے تلاش کریں...',
+                  hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
+                  prefixIcon: Icon(Icons.search, color: Colors.grey[400], size: 18),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(vertical: 12),
                 ),
               ),
             ),
           ),
-          const SizedBox(width: 12),
-          Container(
-            height: 45,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _showFilters ? const Color(0xFF7C3AED) : const Color(0xFFF0F0F5),
-                width: 1.5,
-              ),
-            ),
-            child: IconButton(
-              onPressed: () => setState(() => _showFilters = !_showFilters),
-              icon: Icon(
-                Icons.filter_list,
-                color: _showFilters ? const Color(0xFF7C3AED) : Colors.grey[600],
-              ),
-              tooltip: lp.isEnglish ? 'Filters' : 'فلٹرز',
-            ),
+          const SizedBox(width: 10),
+          // Filter button
+          _buildIconBtn(
+            icon: Icons.filter_list,
+            active: _showFilters,
+            tooltip: lp.isEnglish ? 'Filters' : 'فلٹرز',
+            onTap: () => setState(() => _showFilters = !_showFilters),
           ),
+          const SizedBox(width: 8),
+          // Refresh button (desktop convenience)
+          if (!isMobile) ...[
+            _buildIconBtn(
+              icon: Icons.refresh,
+              active: false,
+              tooltip: lp.isEnglish ? 'Refresh' : 'ریفریش',
+              onTap: () {
+                Provider.of<PurchaseOrderProvider>(context, listen: false)
+                    .fetchPurchaseOrders(refresh: true);
+              },
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildFiltersPanel(LanguageProvider lp, List<Map<String, String>> statusOptions) {
+  Widget _buildIconBtn({
+    required IconData icon,
+    required bool active,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      height: 44,
+      width: 44,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: active ? const Color(0xFF7C3AED) : const Color(0xFFF0F0F5),
+          width: 1.5,
+        ),
+      ),
+      child: IconButton(
+        onPressed: onTap,
+        icon: Icon(icon,
+            color: active ? const Color(0xFF7C3AED) : Colors.grey[600], size: 20),
+        tooltip: tooltip,
+        padding: EdgeInsets.zero,
+      ),
+    );
+  }
+
+  // ── Filters Panel ──────────────────────────────────────────────
+
+  Widget _buildFiltersPanel(
+      LanguageProvider lp, List<Map<String, String>> statusOptions, double hp) {
     return Consumer<SupplierProvider>(
-      builder: (context, supplierProvider, child) {
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      builder: (context, supplierProvider, _) {
+        final isMobile = _isMobile(context);
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          margin: EdgeInsets.fromLTRB(hp, 0, hp, 8),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: const Color(0xFFF0F0F5), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2)),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                lp.isEnglish ? 'Filters' : 'فلٹرز',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 16),
               Row(
                 children: [
-                  Expanded(
-                    child: _buildFilterDropdown(
-                      label: lp.isEnglish ? 'Status' : 'حالت',
-                      value: _selectedStatus,
-                      items: [
-                        const DropdownMenuItem(value: null, child: Text('All Statuses')),
-                        ...statusOptions.map((opt) => DropdownMenuItem(
-                          value: opt['value'],
-                          child: Text(opt['label']!),
-                        )),
-                      ],
-                      onChanged: (value) {
-                        setState(() => _selectedStatus = value);
-                        _applyFilters();
-                      },
-                      lp: lp,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildFilterDropdown<int?>(
-                      label: lp.isEnglish ? 'Supplier' : 'سپلائر',
-                      value: _selectedSupplierId,
-                      items: [
-                        DropdownMenuItem<int?>(value: null, child: Text(lp.isEnglish ? 'All Suppliers' : 'تمام سپلائرز')),
-                        ...supplierProvider.suppliers.map((s) => DropdownMenuItem<int?>(
-                          value: s.id,
-                          child: Text(s.name),
-                        )),
-                      ],
-                      onChanged: (value) {
-                        setState(() => _selectedSupplierId = value);
-                        _applyFilters();
-                      },
-                      lp: lp,
-                    ),
-                  ),
+                  const Icon(Icons.tune, size: 16, color: Color(0xFF7C3AED)),
+                  const SizedBox(width: 6),
+                  Text(lp.isEnglish ? 'Filters' : 'فلٹرز',
+                      style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF2D3142))),
                 ],
               ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => _selectDateRange(lp),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: const Color(0xFFF0F0F5)),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _getDateRangeText(lp),
-                                style: const TextStyle(fontSize: 13),
-                              ),
-                            ),
-                            const Icon(Icons.arrow_drop_down, color: Colors.grey),
-                          ],
-                        ),
+              const SizedBox(height: 14),
+              // Status + Supplier — stack on mobile, row on tablet+
+              if (isMobile) ...[
+                _buildFilterDropdown<String?>(
+                  label: lp.isEnglish ? 'Status' : 'حالت',
+                  value: _selectedStatus,
+                  items: [
+                    DropdownMenuItem(
+                        value: null,
+                        child: Text(lp.isEnglish ? 'All Statuses' : 'تمام حالات')),
+                    ...statusOptions.map((opt) =>
+                        DropdownMenuItem(value: opt['value'], child: Text(opt['label']!))),
+                  ],
+                  onChanged: (v) {
+                    setState(() => _selectedStatus = v);
+                    _applyFilters();
+                  },
+                  lp: lp,
+                ),
+                const SizedBox(height: 10),
+                _buildFilterDropdown<int?>(
+                  label: lp.isEnglish ? 'Supplier' : 'سپلائر',
+                  value: _selectedSupplierId,
+                  items: [
+                    DropdownMenuItem<int?>(
+                        value: null,
+                        child: Text(lp.isEnglish ? 'All Suppliers' : 'تمام سپلائرز')),
+                    ...supplierProvider.suppliers.map((s) =>
+                        DropdownMenuItem<int?>(value: s.id, child: Text(s.name))),
+                  ],
+                  onChanged: (v) {
+                    setState(() => _selectedSupplierId = v);
+                    _applyFilters();
+                  },
+                  lp: lp,
+                ),
+              ] else
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildFilterDropdown<String?>(
+                        label: lp.isEnglish ? 'Status' : 'حالت',
+                        value: _selectedStatus,
+                        items: [
+                          DropdownMenuItem(
+                              value: null,
+                              child:
+                              Text(lp.isEnglish ? 'All Statuses' : 'تمام حالات')),
+                          ...statusOptions.map((opt) => DropdownMenuItem(
+                              value: opt['value'], child: Text(opt['label']!))),
+                        ],
+                        onChanged: (v) {
+                          setState(() => _selectedStatus = v);
+                          _applyFilters();
+                        },
+                        lp: lp,
                       ),
                     ),
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildFilterDropdown<int?>(
+                        label: lp.isEnglish ? 'Supplier' : 'سپلائر',
+                        value: _selectedSupplierId,
+                        items: [
+                          DropdownMenuItem<int?>(
+                              value: null,
+                              child: Text(
+                                  lp.isEnglish ? 'All Suppliers' : 'تمام سپلائرز')),
+                          ...supplierProvider.suppliers.map((s) =>
+                              DropdownMenuItem<int?>(value: s.id, child: Text(s.name))),
+                        ],
+                        onChanged: (v) {
+                          setState(() => _selectedSupplierId = v);
+                          _applyFilters();
+                        },
+                        lp: lp,
+                      ),
+                    ),
+                  ],
+                ),
               const SizedBox(height: 12),
+              // Date range
+              InkWell(
+                onTap: () => _selectDateRange(lp),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0xFFF0F0F5), width: 1.5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.calendar_today, size: 15, color: Colors.grey[600]),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(_getDateRangeText(lp),
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontFamily: lp.fontFamily,
+                                color: _fromDate != null
+                                    ? const Color(0xFF2D3142)
+                                    : Colors.grey[500])),
+                      ),
+                      if (_fromDate != null)
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _fromDate = null;
+                              _toDate = null;
+                            });
+                            _applyFilters();
+                          },
+                          child: const Icon(Icons.close, size: 14, color: Colors.grey),
+                        )
+                      else
+                        const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
                     onPressed: _clearFilters,
-                    child: Text(lp.isEnglish ? 'Clear All' : 'سب صاف کریں'),
+                    child: Text(lp.isEnglish ? 'Clear All' : 'سب صاف کریں',
+                        style: const TextStyle(color: Color(0xFF7C3AED))),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   ElevatedButton(
                     onPressed: _applyFilters,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF7C3AED),
                       foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
                     ),
-                    child: Text(lp.isEnglish ? 'Apply Filters' : 'فلٹرز لاگو کریں'),
+                    child: Text(lp.isEnglish ? 'Apply' : 'لاگو کریں'),
                   ),
                 ],
               ),
@@ -421,18 +632,57 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
           value: value,
           items: items,
           onChanged: onChanged,
-          hint: Text(label, style: TextStyle(fontFamily: lp.fontFamily)),
+          hint: Text(label, style: TextStyle(fontFamily: lp.fontFamily, fontSize: 13)),
           isExpanded: true,
           icon: const Icon(Icons.keyboard_arrow_down),
-          style: TextStyle(fontFamily: lp.fontFamily),
+          style: TextStyle(
+              fontFamily: lp.fontFamily,
+              fontSize: 13,
+              color: const Color(0xFF2D3142)),
         ),
       ),
     );
   }
 
-  Widget _buildOrderCard(PurchaseOrderModel order, LanguageProvider lp) {
+  // ── Desktop Grid ───────────────────────────────────────────────
+
+  Widget _buildDesktopGrid(
+      PurchaseOrderProvider provider, LanguageProvider lp, double hp) {
+    return GridView.builder(
+      controller: _scrollController,
+      padding: EdgeInsets.fromLTRB(hp, 12, hp, 80),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 560,
+        mainAxisSpacing: 14,
+        crossAxisSpacing: 16,
+        mainAxisExtent: 200, // fixed card height — adjust if needed
+      ),
+      itemCount: provider.purchaseOrders.length,
+      itemBuilder: (_, i) =>
+          _buildOrderCard(provider.purchaseOrders[i], lp, compact: false),
+    );
+  }
+
+  // ── Mobile / Tablet List ───────────────────────────────────────
+
+  Widget _buildMobileList(
+      PurchaseOrderProvider provider, LanguageProvider lp, double hp) {
+    final isMobile = _isMobile(context);
+    return ListView.builder(
+      controller: _scrollController,
+      padding: EdgeInsets.fromLTRB(hp, 8, hp, isMobile ? 88 : 20),
+      itemCount: provider.purchaseOrders.length,
+      itemBuilder: (_, i) =>
+          _buildOrderCard(provider.purchaseOrders[i], lp, compact: isMobile),
+    );
+  }
+
+  // ── Order Card ─────────────────────────────────────────────────
+
+  Widget _buildOrderCard(PurchaseOrderModel order, LanguageProvider lp,
+      {bool compact = false}) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: EdgeInsets.only(bottom: compact ? 10 : 0),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -440,8 +690,14 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
           color: order.hasOverReceivedItems
               ? Colors.red.withOpacity(0.4)
               : const Color(0xFFF0F0F5),
-          width: order.hasOverReceivedItems ? 1.5 : 1.5,
+          width: 1.5,
         ),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 6,
+              offset: const Offset(0, 2)),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
@@ -449,67 +705,62 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
           onTap: () => _navigateToOrderDetail(order.id),
           borderRadius: BorderRadius.circular(12),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.all(compact ? 12 : 16),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Top row: icon + PO number + status badge + date
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      width: 50,
-                      height: 50,
+                      width: compact ? 40 : 46,
+                      height: compact ? 40 : 46,
                       decoration: BoxDecoration(
                         color: order.statusColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Icon(
-                        _getStatusIcon(order.status),
-                        color: order.statusColor,
-                        size: 30,
-                      ),
+                      child: Icon(_getStatusIcon(order.status),
+                          color: order.statusColor, size: compact ? 22 : 26),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             children: [
-                              Text(
-                                order.poNumber,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF2D3142),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: order.statusColor.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
+                              Flexible(
                                 child: Text(
-                                  order.statusText,
+                                  order.poNumber,
                                   style: TextStyle(
-                                    fontSize: 11,
-                                    color: order.statusColor,
-                                    fontWeight: FontWeight.w600,
-                                    fontFamily: lp.fontFamily,
+                                    fontSize: compact ? 13 : 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF2D3142),
                                   ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
+                              const SizedBox(width: 6),
+                              _buildStatusBadge(order),
                             ],
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 3),
                           Row(
                             children: [
-                              Icon(Icons.business, size: 12, color: Colors.grey[400]),
+                              Icon(Icons.business, size: 11, color: Colors.grey[400]),
                               const SizedBox(width: 4),
-                              Expanded(
+                              Flexible(
                                 child: Text(
-                                  order.supplier?.name ?? (lp.isEnglish ? 'Unknown Supplier' : 'نامعلوم سپلائر'),
-                                  style: TextStyle(fontSize: 12, color: Colors.grey[600], fontFamily: lp.fontFamily),
+                                  order.supplier?.name ??
+                                      (lp.isEnglish
+                                          ? 'Unknown Supplier'
+                                          : 'نامعلوم سپلائر'),
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                      fontFamily: lp.fontFamily),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ],
@@ -517,57 +768,76 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
                         ],
                       ),
                     ),
+                    // Date — shown on right on desktop/tablet
+                    if (!compact) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        _dateFormat.format(order.orderDate),
+                        style:
+                        TextStyle(fontSize: 11, color: Colors.grey[500]),
+                      ),
+                    ],
                   ],
                 ),
-                const SizedBox(height: 16),
+
+                const SizedBox(height: 10),
+                const Divider(height: 1, color: Color(0xFFF5F5F8)),
+                const SizedBox(height: 10),
+
+                // Info chips row
                 Row(
                   children: [
+                    if (compact)
+                      Expanded(
+                          child: _buildInfoChip(
+                              label: lp.isEnglish ? 'Date' : 'تاریخ',
+                              value: _dateFormat.format(order.orderDate),
+                              color: Colors.blue,
+                              lp: lp)),
+                    if (compact) const SizedBox(width: 6),
                     Expanded(
-                      child: _buildInfoChip(
-                        label: lp.isEnglish ? 'Order Date' : 'آرڈر کی تاریخ',
-                        value: _dateFormat.format(order.orderDate),
-                        color: Colors.blue,
-                        lp: lp,
-                      ),
-                    ),
+                        child: _buildInfoChip(
+                            label: lp.isEnglish ? 'Items' : 'آئٹمز',
+                            value:
+                            '${order.items?.length ?? 0} ${lp.isEnglish ? 'items' : 'آئٹمز'}',
+                            color: Colors.purple,
+                            lp: lp)),
+                    const SizedBox(width: 6),
                     Expanded(
-                      child: _buildInfoChip(
-                        label: lp.isEnglish ? 'Items' : 'آئٹمز',
-                        value: '${order.items?.length ?? 0} ${lp.isEnglish ? 'items' : 'آئٹمز'}',
-                        color: Colors.purple,
-                        lp: lp,
-                      ),
-                    ),
-                    Expanded(
-                      child: _buildInfoChip(
-                        label: lp.isEnglish ? 'Total' : 'کل',
-                        value: _currencyFormat.format(order.totalAmount),
-                        color: Colors.green,
-                        lp: lp,
-                      ),
-                    ),
+                        child: _buildInfoChip(
+                            label: lp.isEnglish ? 'Total' : 'کل',
+                            value: _currencyFormat.format(order.totalAmount),
+                            color: Colors.green,
+                            lp: lp)),
                   ],
                 ),
+
+                // Over-received warning
                 if (order.hasOverReceivedItems) ...[
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                     decoration: BoxDecoration(
                       color: Colors.red.withOpacity(0.07),
-                      borderRadius: BorderRadius.circular(7),
-                      border: Border.all(color: Colors.red.withOpacity(0.35)),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.red.withOpacity(0.3)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 15),
+                        const Icon(Icons.warning_amber_rounded,
+                            color: Colors.red, size: 14),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
                             lp.isEnglish
                                 ? 'Over-received: ${_overReceivedCount(order)} item${_overReceivedCount(order) > 1 ? 's exceed' : ' exceeds'} the ordered quantity'
                                 : 'زیادہ موصول: ${_overReceivedCount(order)} آئٹم آرڈر کردہ مقدار سے زیادہ ہے',
-                            style: const TextStyle(fontSize: 11, color: Colors.red, fontWeight: FontWeight.w500),
+                            style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.red,
+                                fontWeight: FontWeight.w500),
                           ),
                         ),
                       ],
@@ -582,61 +852,105 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
     );
   }
 
-  int _overReceivedCount(PurchaseOrderModel order) =>
-      order.items?.where((i) => i.isOverReceived).length ?? 0;
-
-  Widget _buildInfoChip({required String label, required String value, required Color color, required LanguageProvider lp}) {
+  Widget _buildStatusBadge(PurchaseOrderModel order) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: order.statusColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        order.statusText,
+        style: TextStyle(
+          fontSize: 10,
+          color: order.statusColor,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoChip({
+    required String label,
+    required String value,
+    required Color color,
+    required LanguageProvider lp,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(6),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '$label: ',
-            style: TextStyle(fontSize: 11, color: color.withOpacity(0.7), fontFamily: lp.fontFamily),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold, fontFamily: lp.fontFamily),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 9,
+                  color: color.withOpacity(0.7),
+                  fontFamily: lp.fontFamily)),
+          const SizedBox(height: 2),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 11,
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: lp.fontFamily),
+              overflow: TextOverflow.ellipsis),
         ],
       ),
     );
   }
+
+  // ── Empty State ────────────────────────────────────────────────
 
   Widget _buildEmptyState(LanguageProvider lp) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.shopping_cart_outlined, size: 80, color: Colors.grey[300]),
-          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F0FF),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.shopping_cart_outlined,
+                size: 56, color: Colors.grey[400]),
+          ),
+          const SizedBox(height: 20),
           Text(
             lp.isEnglish ? 'No Purchase Orders' : 'کوئی پرچیز آرڈر نہیں',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.grey[600],
+            style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[700],
                 fontFamily: lp.fontFamily),
           ),
           const SizedBox(height: 8),
           Text(
-            lp.isEnglish ? 'Create your first purchase order' : 'اپنا پہلا پرچیز آرڈر بنائیں',
-            style: TextStyle(fontSize: 14, color: Colors.grey[500], fontFamily: lp.fontFamily),
+            lp.isEnglish
+                ? 'Create your first purchase order to get started'
+                : 'شروع کرنے کے لیے اپنا پہلا پرچیز آرڈر بنائیں',
+            style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[500],
+                fontFamily: lp.fontFamily),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
           ElevatedButton.icon(
-            onPressed: () => _navigateToAddOrder(),
+            onPressed: _navigateToAddOrder,
             icon: const Icon(Icons.add),
             label: Text(lp.isEnglish ? 'New Purchase Order' : 'نیا پرچیز آرڈر'),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF7C3AED),
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              padding:
+              const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
           ),
         ],
@@ -644,54 +958,58 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
     );
   }
 
-  Widget _buildPagination() {
-    return Consumer<PurchaseOrderProvider>(
-      builder: (context, provider, child) {
-        if (provider.totalPages <= 1) return const SizedBox.shrink();
+  // ── Pagination ─────────────────────────────────────────────────
 
-        return Consumer<LanguageProvider>(
-          builder: (context, lp, _) {
-            return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: Color(0xFFF0F0F5), width: 1)),
+  Widget _buildPagination(LanguageProvider lp) {
+    return Consumer<PurchaseOrderProvider>(
+      builder: (context, provider, _) {
+        if (provider.totalPages <= 1) return const SizedBox.shrink();
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: Color(0xFFF0F0F5), width: 1)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                onPressed: provider.currentPage > 1
+                    ? () => provider.setPage(provider.currentPage - 1)
+                    : null,
+                icon: const Icon(Icons.chevron_left),
+                color: provider.currentPage > 1
+                    ? const Color(0xFF7C3AED)
+                    : Colors.grey,
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                    onPressed: provider.currentPage > 1
-                        ? () => provider.setPage(provider.currentPage - 1)
-                        : null,
-                    icon: const Icon(Icons.chevron_left),
-                    color: provider.currentPage > 1 ? const Color(0xFF7C3AED) : Colors.grey,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    lp.isEnglish
-                        ? 'Page ${provider.currentPage} of ${provider.totalPages}'
-                        : 'صفحہ ${provider.currentPage} / ${provider.totalPages}',
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: provider.currentPage < provider.totalPages
-                        ? () => provider.setPage(provider.currentPage + 1)
-                        : null,
-                    icon: const Icon(Icons.chevron_right),
-                    color: provider.currentPage < provider.totalPages
-                        ? const Color(0xFF7C3AED)
-                        : Colors.grey,
-                  ),
-                ],
+              const SizedBox(width: 8),
+              Text(
+                lp.isEnglish
+                    ? 'Page ${provider.currentPage} of ${provider.totalPages}'
+                    : 'صفحہ ${provider.currentPage} / ${provider.totalPages}',
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
               ),
-            );
-          },
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: provider.currentPage < provider.totalPages
+                    ? () => provider.setPage(provider.currentPage + 1)
+                    : null,
+                icon: const Icon(Icons.chevron_right),
+                color: provider.currentPage < provider.totalPages
+                    ? const Color(0xFF7C3AED)
+                    : Colors.grey,
+              ),
+            ],
+          ),
         );
       },
     );
   }
+
+  // ── Utilities ──────────────────────────────────────────────────
+
+  int _overReceivedCount(PurchaseOrderModel order) =>
+      order.items?.where((i) => i.isOverReceived).length ?? 0;
 
   IconData _getStatusIcon(String status) {
     switch (status) {
@@ -712,7 +1030,7 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
 
   String _getDateRangeText(LanguageProvider lp) {
     if (_fromDate != null && _toDate != null) {
-      return '${_dateFormat.format(_fromDate!)} - ${_dateFormat.format(_toDate!)}';
+      return '${_dateFormat.format(_fromDate!)} – ${_dateFormat.format(_toDate!)}';
     } else if (_fromDate != null) {
       return lp.isEnglish
           ? 'From ${_dateFormat.format(_fromDate!)}'
@@ -721,42 +1039,36 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
       return lp.isEnglish
           ? 'To ${_dateFormat.format(_toDate!)}'
           : 'تک ${_dateFormat.format(_toDate!)}';
-    } else {
-      return lp.isEnglish ? 'Select date range' : 'تاریخ کی حد منتخب کریں';
     }
+    return lp.isEnglish ? 'Select date range' : 'تاریخ کی حد منتخب کریں';
   }
 
   Future<void> _selectDateRange(LanguageProvider lp) async {
-    final DateTimeRange? picked = await showDateRangePicker(
+    final picked = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2020),
       lastDate: DateTime.now().add(const Duration(days: 365)),
       initialDateRange: _fromDate != null && _toDate != null
           ? DateTimeRange(start: _fromDate!, end: _toDate!)
           : null,
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFF7C3AED),
-            ),
-          ),
-          child: child!,
-        );
-      },
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(primary: Color(0xFF7C3AED)),
+        ),
+        child: child!,
+      ),
     );
-
     if (picked != null) {
       setState(() {
         _fromDate = picked.start;
         _toDate = picked.end;
       });
+      _applyFilters();
     }
   }
 
   void _applyFilters() {
-    final provider = Provider.of<PurchaseOrderProvider>(context, listen: false);
-    provider.fetchPurchaseOrders(
+    Provider.of<PurchaseOrderProvider>(context, listen: false).fetchPurchaseOrders(
       status: _selectedStatus,
       supplierId: _selectedSupplierId,
       fromDate: _fromDate,
@@ -774,30 +1086,33 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
       _toDate = null;
       _searchController.clear();
     });
-
-    final provider = Provider.of<PurchaseOrderProvider>(context, listen: false);
-    provider.fetchPurchaseOrders(refresh: true);
+    Provider.of<PurchaseOrderProvider>(context, listen: false)
+        .fetchPurchaseOrders(refresh: true);
   }
 
   void _navigateToOrderDetail(int id) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => PurchaseOrderDetailScreen(orderId: id),
-      ),
+      MaterialPageRoute(builder: (_) => PurchaseOrderDetailScreen(orderId: id)),
     );
   }
 
   void _navigateToAddOrder() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const AddEditPurchaseOrderScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const AddEditPurchaseOrderScreen()),
     ).then((refresh) {
-      if (refresh == true) {
-        _loadInitialData();
-      }
+      if (refresh == true) _loadInitialData();
     });
   }
+}
+
+// ── Internal data holder ───────────────────────────────────────
+
+class _StatData {
+  final String title;
+  final String value;
+  final IconData icon;
+  final Color color;
+  const _StatData(this.title, this.value, this.icon, this.color);
 }

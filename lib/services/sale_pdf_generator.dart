@@ -23,7 +23,7 @@ class SalePdfGenerator {
     required double amountPaid,
     DateTime? dueDate,
     String? notes,
-    double? previousBalance,  // ✅ ADD THIS PARAMETER
+    double? previousBalance,
   }) async {
     final pdf = pw.Document();
 
@@ -52,16 +52,15 @@ class SalePdfGenerator {
 
     // Get invoice number
     final invoiceNumber = saleData['invoice_number'] ?? 'N/A';
-    final referenceNumber = saleData['reference'] ?? saleData['reference_number'] ?? 'N/A';  // ✅ Handle both keys
+    final referenceNumber = saleData['reference'] ?? saleData['reference_number'] ?? 'N/A';
     final isSarya = saleData['sale_category'] == 'sarya';
 
     // Calculate amounts
     double paidAmount = amountPaid;
-    double remainingAmount = grandTotal - paidAmount;
-    // double previousBalance = 0.0; // You can fetch this if needed
-    // double newBalance = previousBalance + grandTotal;
     final double previousBalanceValue = previousBalance ?? 0.0;
     final double newBalance = previousBalanceValue + grandTotal;
+    // double remainingAmount = grandTotal - paidAmount;
+    double remainingAmount = newBalance - paidAmount;
 
     // Format date
     final now = DateTime.now();
@@ -74,16 +73,30 @@ class SalePdfGenerator {
           'Customer Address: ${customer?.address ?? 'N/A'}',
     );
 
-    // Pre-generate images for all items
+    // ✅ Pre-generate images for all items with description
     List<pw.MemoryImage> itemNameImages = [];
     List<pw.MemoryImage> descriptionImages = [];
     List<pw.MemoryImage> lengthImages = [];
+    List<pw.MemoryImage> combinedNameDescImages = []; // ✅ New: Combined name + description
 
     for (var item in items) {
+      // Product name image
       final nameImage = await _createTextImage(item['product_name'] ?? 'N/A');
-      final descImage = await _createTextImage(item['description'] ?? '');
       itemNameImages.add(nameImage);
+
+      // ✅ Description image - show full description or "N/A"
+      final descriptionText = item['description']?.toString() ?? '';
+      final descImage = await _createTextImage(
+          descriptionText.isNotEmpty ? descriptionText : 'N/A'
+      );
       descriptionImages.add(descImage);
+
+      // ✅ Combined name + description for better display
+      final combinedText = descriptionText.isNotEmpty
+          ? '${item['product_name']}\n${descriptionText}'
+          : item['product_name'] ?? 'N/A';
+      final combinedImg = await _createTextImage(combinedText);
+      combinedNameDescImages.add(combinedImg);
 
       // Generate lengths text
       String lengthsText = '';
@@ -127,10 +140,6 @@ class SalePdfGenerator {
                         isPosMode ? 'POS Receipt' : 'Sale Invoice',
                         style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
                       ),
-                      // pw.Text(
-                      //   'Invoice: $invoiceNumber',
-                      //   style: pw.TextStyle(fontSize: 10),
-                      // ),
                       pw.Text(
                         'Zulfiqar Ahmad: ',
                         style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
@@ -152,6 +161,7 @@ class SalePdfGenerator {
                 ],
               ),
               pw.Divider(),
+
               // Customer Information
               pw.Image(customerDetailsImage, width: 250, dpi: 1000),
               pw.Text('Customer Number: ${customer?.contact ?? 'N/A'}', style: const pw.TextStyle(fontSize: 12)),
@@ -160,7 +170,7 @@ class SalePdfGenerator {
                 children: [
                   pw.Text('Date: $formattedDate', style: const pw.TextStyle(fontSize: 10)),
                   pw.SizedBox(height: 2),
-                  pw.Text('Reference: $referenceNumber', style: const pw.TextStyle(fontSize: 10)),  // ✅ Use the variable
+                  pw.Text('Reference: $referenceNumber', style: const pw.TextStyle(fontSize: 10)),
                 ],
               ),
               if (paymentMethod == 'credit' && dueDate != null)
@@ -170,7 +180,6 @@ class SalePdfGenerator {
 
               pw.SizedBox(height: 10),
 
-              // Items Table
               pw.Table.fromTextArray(
                 headers: [
                   pw.Container(
@@ -204,15 +213,16 @@ class SalePdfGenerator {
                   final quantity = isSarya
                       ? (item['weight'] ?? 0.0).toStringAsFixed(2)
                       : (item['quantity'] ?? 0).toStringAsFixed(0);
-                  // final quantityUnit = isSarya ? 'Kg' : 'pcs';
 
                   return [
-                    pw.Image(itemNameImages[index], dpi: 1000),
-                    pw.Image(descriptionImages[index], dpi: 1000),
+                    pw.Image(itemNameImages[index], dpi: 1000),        // name only
+                    pw.Image(descriptionImages[index], dpi: 1000),     // description only
                     pw.Text(quantity, style: const pw.TextStyle(fontSize: 10)),
                     pw.Image(lengthImages[index], dpi: 1000),
-                    pw.Text((item['unit_price'] ?? 0.0).toStringAsFixed(2), style: const pw.TextStyle(fontSize: 10)),
-                    pw.Text((item['total'] ?? 0.0).toStringAsFixed(2), style: const pw.TextStyle(fontSize: 10)),
+                    pw.Text((item['unit_price'] ?? 0.0).toStringAsFixed(2),
+                        style: const pw.TextStyle(fontSize: 10)),
+                    pw.Text((item['total'] ?? 0.0).toStringAsFixed(2),
+                        style: const pw.TextStyle(fontSize: 10)),
                   ];
                 }).toList(),
               ),
@@ -330,7 +340,7 @@ class SalePdfGenerator {
 
     textPainter.layout();
 
-    // 2. Use actual painted dimensions — no extra scaleFactor multiply
+    // 2. Use actual painted dimensions — no extra scaleFactor multiplys
     final double width = textPainter.width;
     final double height = textPainter.height;
 

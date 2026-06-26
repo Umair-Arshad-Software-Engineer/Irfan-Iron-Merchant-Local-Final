@@ -1,13 +1,26 @@
-// lib/services/supplier_ledger_pdf_generator.dart
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'package:flutter/cupertino.dart' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../Banks/banknames.dart';
+import '../providers/lanprovider.dart';
+
+// ─── Ledger View Type Enum ──────────────────────────────────────────────────
+enum LedgerViewType {
+  consolidated,
+  itemized,
+}
+
+// ─── PDF Type Enum ──────────────────────────────────────────────────────────
+enum PdfType {
+  summary,
+  detailed,
+}
 
 class SupplierLedgerPdfGenerator {
   static final NumberFormat _cf = NumberFormat('#,##0.00');
@@ -35,95 +48,153 @@ class SupplierLedgerPdfGenerator {
   static const PdfColor _rowAlt   = PdfColor.fromInt(0xFFFAFAFC);
   static const PdfColor _hdrBg    = PdfColor.fromInt(0xFFF5F5F7);
   static const PdfColor _white    = PdfColor.fromInt(0xFFFFFFFF);
+  static const PdfColor _itemBg   = PdfColor.fromInt(0xFFF0F7FF);
 
-  // Cache for bank logos
   static final Map<String, pw.MemoryImage> _bankLogoCache = {};
+  static final Map<String, pw.MemoryImage> _textImageCache = {};
 
-  // Cache for description images to avoid re-rendering same text
-  static final Map<String, pw.MemoryImage> _descriptionCache = {};
+  // ─── Helper to convert Flutter FontWeight to ui.FontWeight ──────────────
+  static ui.FontWeight _toUiFontWeight(FontWeight weight) {
+    if (weight == FontWeight.w100) return ui.FontWeight.w100;
+    if (weight == FontWeight.w200) return ui.FontWeight.w200;
+    if (weight == FontWeight.w300) return ui.FontWeight.w300;
+    if (weight == FontWeight.w400) return ui.FontWeight.w400;
+    if (weight == FontWeight.w500) return ui.FontWeight.w500;
+    if (weight == FontWeight.w600) return ui.FontWeight.w600;
+    if (weight == FontWeight.w700) return ui.FontWeight.w700;
+    if (weight == FontWeight.w800) return ui.FontWeight.w800;
+    if (weight == FontWeight.w900) return ui.FontWeight.w900;
+    return ui.FontWeight.normal;
+  }
 
-  // ── Raster helper: Used for Urdu/RTL text in header AND description field ──
-  static Future<pw.MemoryImage> _img(
+  // ─── Create Urdu text as image ──────────────────────────────────────────────
+  static Future<pw.MemoryImage> _createUrduTextImage(
       String text, {
-        double fs = 10,
+        double fontSize = 12,
         Color color = Colors.black,
         FontWeight weight = FontWeight.normal,
-        bool rtl = false,
-        double maxW = 260,
+        bool rtl = true,
+        double maxWidth = 300,
         int maxLines = 2,
+        Color? backgroundColor,
       }) async {
-    final txt = text.isEmpty ? ' ' : text;
-    const double sc = 3.0; // scale factor
+    final String displayText = text.isEmpty ? ' ' : text;
+    final cacheKey = '$text|$fontSize|${color.value}|$weight|$rtl|$maxWidth|$maxLines';
 
-    final rec = ui.PictureRecorder();
-    final canvas = Canvas(rec, Rect.fromLTWH(0, 0, maxW * sc, (fs * maxLines + 10) * sc));
-    final tp = TextPainter(
-      text: TextSpan(
-        text: txt,
-        style: TextStyle(
-          fontSize: fs * sc,
-          color: color,
-          fontWeight: weight,
-        ),
-      ),
-      textAlign: rtl ? TextAlign.right : TextAlign.left,
-      textDirection: rtl ? ui.TextDirection.rtl : ui.TextDirection.ltr,
-      maxLines: maxLines,
-    )..layout(maxWidth: maxW * sc);
-    tp.paint(canvas, Offset.zero);
-
-    final pic = rec.endRecording();
-    final w = tp.width.clamp(1, maxW * sc).toInt();
-    final h = tp.height.clamp(1, (fs * maxLines + 10) * sc).toInt();
-    final image = await pic.toImage(w, h);
-    final bd = await image.toByteData(format: ui.ImageByteFormat.png);
-    return pw.MemoryImage(bd!.buffer.asUint8List());
-  }
-
-  // Helper to get description text based on transaction type
-  static String _getDescriptionText(Map<String, dynamic> entry) {
-    final type = (entry['reference_type'] as String?) ?? 'manual';
-    final rawDesc = (entry['description'] as String?) ?? '';
-
-    // For purchase receipt, show "PURCHASE" instead of the actual description
-    if (type == 'purchase_receipt') {
-      return 'PURCHASE';
+    if (_textImageCache.containsKey(cacheKey)) {
+      return _textImageCache[cacheKey]!;
     }
 
-    // For other types, return the actual description
-    return rawDesc;
-  }
+    const double scaleFactor = 2.5;
+    final double scaledFontSize = fontSize * scaleFactor;
+    final double scaledMaxWidth = maxWidth * scaleFactor;
 
-  // Helper to get or create description image with caching
-  static Future<pw.MemoryImage> _getDescriptionImage(Map<String, dynamic> entry) async {
-    final descriptionText = _getDescriptionText(entry);
-
-    if (descriptionText.isEmpty) {
-      return await _img(' ', fs: 5.5, maxW: 180, maxLines: 2);
-    }
-
-    // Create cache key
-    final cacheKey = descriptionText.substring(0, math.min(descriptionText.length, 100));
-
-    if (_descriptionCache.containsKey(cacheKey)) {
-      return _descriptionCache[cacheKey]!;
-    }
-
-    final image = await _img(
-      descriptionText,
-      fs: 5.5,
-      color: const Color(0xFF1C1C1E),
-      weight: FontWeight.normal,
-      rtl: false,
-      maxW: 180, // Adjusted for the description column width
-      maxLines: 2,
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(
+      recorder,
+      Rect.fromLTWH(0, 0, scaledMaxWidth, (fontSize * maxLines + 12) * scaleFactor),
     );
 
-    _descriptionCache[cacheKey] = image;
-    return image;
+    final ui.TextStyle textStyle = ui.TextStyle(
+      fontSize: scaledFontSize,
+      fontFamily: 'JameelNoori',
+      color: color,
+      fontWeight: _toUiFontWeight(weight),
+    );
+
+    final ui.TextPainter textPainter = ui.TextPainter(
+      text: ui.TextSpan(text: displayText, style: textStyle),
+      textDirection: rtl ? ui.TextDirection.rtl : ui.TextDirection.ltr,
+      textAlign: rtl ? TextAlign.right : TextAlign.left,
+      maxLines: maxLines,
+    );
+
+    textPainter.layout(maxWidth: scaledMaxWidth);
+
+    final width = textPainter.width + 16;
+    final height = textPainter.height + 12;
+
+    final finalRecorder = ui.PictureRecorder();
+    final finalCanvas = Canvas(
+      finalRecorder,
+      Rect.fromLTWH(0, 0, width, height),
+    );
+
+    if (backgroundColor != null) {
+      finalCanvas.drawRect(
+        Rect.fromLTWH(0, 0, width, height),
+        Paint()..color = backgroundColor,
+      );
+    } else {
+      finalCanvas.drawRect(
+        Rect.fromLTWH(0, 0, width, height),
+        Paint()..color = const Color(0x00FFFFFF),
+      );
+    }
+
+    final offset = rtl
+        ? Offset(width - textPainter.width - 8, 6)
+        : Offset(8, 6);
+    textPainter.paint(finalCanvas, offset);
+
+    final picture = finalRecorder.endRecording();
+    final img = await picture.toImage(width.ceil(), height.ceil());
+    final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+
+    final memoryImage = pw.MemoryImage(byteData!.buffer.asUint8List());
+    _textImageCache[cacheKey] = memoryImage;
+    return memoryImage;
   }
 
-  // Load bank logo from assets with caching
+  // ─── Create description text image ──────────────────────────────────────────
+  static Future<pw.MemoryImage> _createDescriptionTextImage(String text, {bool rtl = false}) async {
+    return await _createUrduTextImage(
+      text,
+      fontSize: 9,
+      color: const Color(0xFF1C1C1E),
+      weight: FontWeight.normal,
+      rtl: rtl,
+      maxWidth: 200,
+      maxLines: 2,
+    );
+  }
+
+  // ─── Create badge text image ──────────────────────────────────────────────
+  static Future<pw.MemoryImage> _createBadgeTextImage(
+      String text, {
+        Color color = const Color(0xFF7C3AED),
+        Color bgColor = const Color(0xFFF5F3FF),
+        bool rtl = true,
+      }) async {
+    return await _createUrduTextImage(
+      text,
+      fontSize: 7,
+      color: color,
+      weight: FontWeight.bold,
+      rtl: rtl,
+      maxWidth: 80,
+      maxLines: 1,
+      backgroundColor: bgColor,
+    );
+  }
+
+  static Future<pw.MemoryImage> _getDescriptionImage(Map<String, dynamic> entry, LanguageProvider lp) async {
+    final type = (entry['reference_type'] as String?) ?? 'manual';
+    String descriptionText = '';
+
+    if (type == 'purchase_receipt') {
+      descriptionText = lp.isEnglish ? 'RECEIPT' : 'رسید';
+    } else {
+      descriptionText = (entry['description'] as String?) ?? '';
+    }
+
+    if (descriptionText.isEmpty) {
+      return await _createUrduTextImage(' ', fontSize: 6, maxWidth: 100, maxLines: 1);
+    }
+
+    return await _createDescriptionTextImage(descriptionText, rtl: !lp.isEnglish);
+  }
+
   static Future<pw.MemoryImage?> _loadBankLogo(String bankName) async {
     if (_bankLogoCache.containsKey(bankName)) return _bankLogoCache[bankName];
     try {
@@ -155,7 +226,7 @@ class SupplierLedgerPdfGenerator {
     }
   }
 
-  // ── Main entry point ───────────────────────────────────────────────────────
+  // ─── Main Entry Point ───────────────────────────────────────────────────────
   static Future<Uint8List> generateLedgerPdf({
     required String supplierName,
     required String supplierPhone,
@@ -165,37 +236,44 @@ class SupplierLedgerPdfGenerator {
     required String filterType,
     DateTimeRange? dateRange,
     Map<int, List<Map<String, dynamic>>>? receiptItemsCache,
+    required LanguageProvider languageProvider,
+    required PdfType pdfType,
+    required LedgerViewType ledgerViewType,
   }) async {
-    // Clear description cache at start of generation
-    _descriptionCache.clear();
+    _textImageCache.clear();
+    _bankLogoCache.clear();
 
-    // Pre-render all description images
-    final Map<int, pw.MemoryImage> descriptionImages = {};
-    for (int i = 0; i < entries.length; i++) {
-      descriptionImages[i] = await _getDescriptionImage(entries[i]);
-    }
-
-    // Raster the Urdu supplier name (RTL) and meta line for the header
-    final nameImg = await _img(
+    // Generate text images
+    final nameImg = await _createUrduTextImage(
       supplierName,
-      fs: 13,
-      weight: FontWeight.bold,
+      fontSize: 14,
       color: const Color(0xFFFFFFFF),
+      weight: FontWeight.bold,
       rtl: true,
-      maxW: 300,
+      maxWidth: 300,
+      maxLines: 1,
     );
 
-    final meta = [supplierPhone, supplierAddress]
+    final metaText = [supplierPhone, supplierAddress]
         .where((s) => s.isNotEmpty)
         .join('  •  ');
-    final metaImg = await _img(
-      meta,
-      fs: 7.5,
+    final metaImg = await _createUrduTextImage(
+      metaText,
+      fontSize: 8,
       color: const Color(0xFFDDD6FE),
-      maxW: 380,
+      weight: FontWeight.normal,
+      rtl: true,
+      maxWidth: 380,
+      maxLines: 2,
     );
 
-    // Pre-load bank logos
+    // Pre-generate all description images
+    final Map<int, pw.MemoryImage> descriptionImages = {};
+    for (int i = 0; i < entries.length; i++) {
+      descriptionImages[i] = await _getDescriptionImage(entries[i], languageProvider);
+    }
+
+    // Load bank logos
     final uniqueBankNames = <String>{};
     for (final e in entries) {
       final b = e['bank_name'] as String?;
@@ -210,18 +288,20 @@ class SupplierLedgerPdfGenerator {
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       header: (ctx) => _pageHeader(
-        nameImg, metaImg, filterType, dateRange, summary, entries.length, ctx,
+        nameImg, metaImg, filterType, dateRange, summary, entries.length, ctx, languageProvider, pdfType,
       ),
-      footer: (ctx) => _pageFooter(ctx),
+      footer: (ctx) => _pageFooter(ctx, languageProvider),
       build: (ctx) => [
         pw.SizedBox(height: 8),
-        _table(entries, summary, receiptItemsCache ?? {}, descriptionImages),
+        ledgerViewType == LedgerViewType.itemized
+            ? _itemizedTable(entries, summary, receiptItemsCache ?? {}, descriptionImages, languageProvider, pdfType)
+            : _consolidatedTable(entries, summary, receiptItemsCache ?? {}, descriptionImages, languageProvider, pdfType),
       ],
     ));
     return pdf.save();
   }
 
-  // ── Page header ────────────────────────────────────────────────────────────
+  // ─── Page Header ────────────────────────────────────────────────────────────
   static pw.Widget _pageHeader(
       pw.MemoryImage nameImg,
       pw.MemoryImage metaImg,
@@ -230,15 +310,20 @@ class SupplierLedgerPdfGenerator {
       Map<String, dynamic> summary,
       int entryCount,
       pw.Context ctx,
+      LanguageProvider lp,
+      PdfType pdfType,
       ) {
-    final totDebit  = _d(summary['total_debit']);
-    final totCredit = _d(summary['total_credit']);
-    final closing   = _d(summary['closing_balance']);
+    double totalDebit = _d(summary['total_debit']);
+    double totalCredit = _d(summary['total_credit']);
+    double closingBalance = _d(summary['closing_balance']);
+
+    final title = pdfType == PdfType.summary
+        ? (lp.isEnglish ? 'LEDGER SUMMARY' : 'لیجر خلاصہ')
+        : (lp.isEnglish ? 'DETAILED LEDGER' : 'تفصیلی لیجر');
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        // ── Purple banner ──
         pw.Container(
           width: double.infinity,
           padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -253,7 +338,7 @@ class SupplierLedgerPdfGenerator {
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text(
-                    'SUPPLIER LEDGER STATEMENT',
+                    title,
                     style: pw.TextStyle(
                       fontSize: 11,
                       fontWeight: pw.FontWeight.bold,
@@ -262,10 +347,9 @@ class SupplierLedgerPdfGenerator {
                     ),
                   ),
                   pw.SizedBox(height: 4),
-                  // Raster image for Urdu name (RTL script requires raster)
-                  pw.Image(nameImg, height: 15),
+                  pw.Image(nameImg, height: 18),
                   pw.SizedBox(height: 2),
-                  pw.Image(metaImg, height: 10),
+                  pw.Image(metaImg, height: 12),
                 ],
               ),
               pw.Spacer(),
@@ -279,7 +363,7 @@ class SupplierLedgerPdfGenerator {
                       borderRadius: pw.BorderRadius.circular(10),
                     ),
                     child: pw.Text(
-                      _filterLabel(filterType),
+                      _filterLabel(filterType, lp),
                       style: pw.TextStyle(
                         fontSize: 6.5,
                         color: _purple,
@@ -299,14 +383,16 @@ class SupplierLedgerPdfGenerator {
                   ],
                   pw.SizedBox(height: 4),
                   pw.Text(
-                    'Generated: ${_dtf.format(DateTime.now())}',
+                    lp.isEnglish
+                        ? 'Generated: ${_dtf.format(DateTime.now())}'
+                        : 'تیار کردہ: ${_dtf.format(DateTime.now())}',
                     style: pw.TextStyle(
                       fontSize: 6,
                       color: PdfColor.fromInt(0xFFDDD6FE),
                     ),
                   ),
                   pw.Text(
-                    'Page ${ctx.pageNumber}',
+                    '${lp.isEnglish ? 'Page' : 'صفحہ'} ${ctx.pageNumber}',
                     style: pw.TextStyle(
                       fontSize: 6,
                       color: PdfColor.fromInt(0xFFDDD6FE),
@@ -319,15 +405,35 @@ class SupplierLedgerPdfGenerator {
         ),
         pw.SizedBox(height: 6),
 
-        // ── Summary cards ──
         pw.Row(children: [
-          _sCard('TOTAL PAYABLE', 'Rs ${_cf.format(totCredit)}', _red,    _redBg),
+          _sCard(
+            lp.isEnglish ? 'TOTAL PAYABLE' : 'کل قابل ادائیگی',
+            'Rs ${_cf.format(totalCredit)}',
+            _red, _redBg,
+            lp,
+          ),
           pw.SizedBox(width: 5),
-          _sCard('TOTAL PAID',    'Rs ${_cf.format(totDebit)}',  _green,  _greenBg),
+          _sCard(
+            lp.isEnglish ? 'TOTAL PAID' : 'کل ادا شدہ',
+            'Rs ${_cf.format(totalDebit)}',
+            _green, _greenBg,
+            lp,
+          ),
           pw.SizedBox(width: 5),
-          _sCard('OUTSTANDING',   'Rs ${_cf.format(closing)}',   _purple, _purpleL, bold: true),
+          _sCard(
+            lp.isEnglish ? 'OUTSTANDING' : 'بقایا',
+            'Rs ${_cf.format(closingBalance)}',
+            _purple, _purpleL,
+            lp,
+            bold: true,
+          ),
           pw.SizedBox(width: 5),
-          _sCard('ENTRIES',       '$entryCount',                 _t2,     _hdrBg),
+          _sCard(
+            lp.isEnglish ? 'ENTRIES' : 'اندراجات',
+            '$entryCount',
+            _t2, _hdrBg,
+            lp,
+          ),
         ]),
         pw.SizedBox(height: 6),
       ],
@@ -338,7 +444,8 @@ class SupplierLedgerPdfGenerator {
       String lbl,
       String val,
       PdfColor col,
-      PdfColor bg, {
+      PdfColor bg,
+      LanguageProvider lp, {
         bool bold = false,
       }) {
     return pw.Expanded(
@@ -385,8 +492,7 @@ class SupplierLedgerPdfGenerator {
     );
   }
 
-  // ── Page footer ────────────────────────────────────────────────────────────
-  static pw.Widget _pageFooter(pw.Context ctx) {
+  static pw.Widget _pageFooter(pw.Context ctx, LanguageProvider lp) {
     return pw.Container(
       margin: const pw.EdgeInsets.only(top: 4),
       padding: const pw.EdgeInsets.only(top: 4),
@@ -397,7 +503,9 @@ class SupplierLedgerPdfGenerator {
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(
-            'Computer-generated - not valid without authorisation.',
+            lp.isEnglish
+                ? 'Computer-generated - not valid without authorisation.'
+                : 'کمپیوٹر سے تیار کردہ - اجازت کے بغیر درست نہیں۔',
             style: pw.TextStyle(
               fontSize: 5.5,
               color: _t3,
@@ -405,7 +513,7 @@ class SupplierLedgerPdfGenerator {
             ),
           ),
           pw.Text(
-            'Page ${ctx.pageNumber} of ${ctx.pagesCount}',
+            '${lp.isEnglish ? 'Page' : 'صفحہ'} ${ctx.pageNumber} ${lp.isEnglish ? 'of' : 'of'} ${ctx.pagesCount}',
             style: pw.TextStyle(fontSize: 5.5, color: _t3),
           ),
         ],
@@ -413,17 +521,19 @@ class SupplierLedgerPdfGenerator {
     );
   }
 
-  // ── Full table ─────────────────────────────────────────────────────────────
-  static pw.Widget _table(
+  // ─── Consolidated Table ──────────────────────────────────────────────────────
+  static pw.Widget _consolidatedTable(
       List<Map<String, dynamic>> entries,
       Map<String, dynamic> summary,
       Map<int, List<Map<String, dynamic>>> cache,
       Map<int, pw.MemoryImage> descriptionImages,
+      LanguageProvider lp,
+      PdfType pdfType,
       ) {
-    double totD = 0, totC = 0;
+    double totDebit = 0, totCredit = 0;
     for (final e in entries) {
-      totD += _d(e['debit']);
-      totC += _d(e['credit']);
+      totDebit += _d(e['debit']);
+      totCredit += _d(e['credit']);
     }
     final closing = entries.isNotEmpty
         ? _d(entries.last['balance'])
@@ -438,33 +548,1196 @@ class SupplierLedgerPdfGenerator {
           borderRadius: pw.BorderRadius.circular(6),
         ),
         child: pw.Column(children: [
-          _tHeader(),
+          _consolidatedHeader(lp, pdfType),
           ...entries.asMap().entries.expand(
-                (en) => _tRow(en.value, en.key, cache, descriptionImages),
+                (en) => _consolidatedRow(en.value, en.key, cache, descriptionImages, lp, pdfType),
           ),
-          _tTotal(totD, totC, closing),
+          _consolidatedTotal(totDebit, totCredit, closing, lp),
         ]),
       ),
     );
   }
 
-  // ── Table header ───────────────────────────────────────────────────────────
-  static pw.Widget _tHeader() => pw.Container(
-    padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-    color: _hdrBg,
-    child: pw.Row(children: [
-      _hc('DATE',        11),
-      _hc('REF #',       10),
-      _hc('TYPE',         9),
-      _hc('METHOD',       8),
-      _hc('BANK',        13),
-      _hc('DESCRIPTION', 23),
-      _hc('DEBIT',       12, r: true),
-      _hc('CREDIT',      12, r: true),
-      _hc('BALANCE',     12, r: true),
-    ]),
-  );
+  static pw.Widget _consolidatedHeader(LanguageProvider lp, PdfType pdfType) {
+    if (pdfType == PdfType.detailed) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        color: _hdrBg,
+        child: pw.Row(children: [
+          _hc(lp.isEnglish ? 'DATE' : 'تاریخ',        8),
+          _hc(lp.isEnglish ? 'REF #' : 'حوالہ نمبر',  8),
+          _hc(lp.isEnglish ? 'ITEM NAME' : 'آئٹم نام', 12),
+          _hc(lp.isEnglish ? 'TYPE' : 'قسم',          6),
+          _hc(lp.isEnglish ? 'QTY' : 'مقدار',         5),
+          _hc(lp.isEnglish ? 'RATE' : 'ریٹ',          6),
+          _hc(lp.isEnglish ? 'METHOD' : 'طریقہ',      6),
+          _hc(lp.isEnglish ? 'BANK' : 'بینک',         8),
+          _hc(lp.isEnglish ? 'DEBIT' : 'ڈیبٹ',        7, r: true),
+          _hc(lp.isEnglish ? 'CREDIT' : 'کریڈٹ',      7, r: true),
+          _hc(lp.isEnglish ? 'BALANCE' : 'بیلنس',     7, r: true),
+        ]),
+      );
+    }
 
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      color: _hdrBg,
+      child: pw.Row(children: [
+        _hc(lp.isEnglish ? 'DATE' : 'تاریخ',        11),
+        _hc(lp.isEnglish ? 'REF #' : 'حوالہ نمبر',  10),
+        _hc(lp.isEnglish ? 'TYPE' : 'قسم',          9),
+        _hc(lp.isEnglish ? 'METHOD' : 'طریقہ',      8),
+        _hc(lp.isEnglish ? 'BANK' : 'بینک',        13),
+        _hc(lp.isEnglish ? 'DESCRIPTION' : 'تفصیل', 23),
+        _hc(lp.isEnglish ? 'DEBIT' : 'ڈیبٹ',       12, r: true),
+        _hc(lp.isEnglish ? 'CREDIT' : 'کریڈٹ',     12, r: true),
+        _hc(lp.isEnglish ? 'BALANCE' : 'بیلنس',    12, r: true),
+      ]),
+    );
+  }
+
+  static List<pw.Widget> _consolidatedRow(
+      Map<String, dynamic> e,
+      int idx,
+      Map<int, List<Map<String, dynamic>>> cache,
+      Map<int, pw.MemoryImage> descriptionImages,
+      LanguageProvider lp,
+      PdfType pdfType,
+      ) {
+    final widgets = <pw.Widget>[];
+
+    final debit   = _d(e['debit']);
+    final credit  = _d(e['credit']);
+    final balance = _d(e['balance']);
+    final type    = (e['reference_type'] as String?) ?? 'manual';
+    final method  = e['payment_method'] as String?;
+    final bank    = e['bank_name'] as String?;
+    final refNum  = e['reference_number'] as String?;
+
+    final ts     = _typeStyle(type, lp);
+    final ms     = _methodStyle(method, lp);
+    final balCol = balance > 0 ? _red : balance < 0 ? _green : _t3;
+    final bg     = idx.isEven ? _white : _rowAlt;
+
+    DateTime? txDate;
+    try {
+      txDate = DateTime.parse(e['transaction_date'] as String);
+    } catch (_) {}
+
+    if (pdfType == PdfType.detailed && type == 'purchase_receipt' && e['reference_id'] != null) {
+      final items = cache[e['reference_id'] as int];
+      if (items != null && items.isNotEmpty) {
+        widgets.add(pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          decoration: pw.BoxDecoration(
+            color: bg,
+            border: const pw.Border(
+              bottom: pw.BorderSide(color: _border, width: 0.4),
+            ),
+          ),
+          child: pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              pw.Expanded(
+                flex: 8,
+                child: pw.Text(
+                  txDate != null ? _df.format(txDate) : '',
+                  style: pw.TextStyle(fontSize: 6.5, color: _t2),
+                ),
+              ),
+              pw.Expanded(
+                flex: 8,
+                child: pw.Text(
+                  refNum ?? '',
+                  style: pw.TextStyle(
+                    fontSize: 6.5,
+                    color: _purple,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: pw.TextOverflow.clip,
+                ),
+              ),
+              pw.Expanded(
+                flex: 12,
+                child: pw.Container(
+                  padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: pw.BoxDecoration(
+                    color: _purpleL,
+                    borderRadius: pw.BorderRadius.circular(4),
+                  ),
+                  child: pw.Row(
+                    children: [
+                      pw.Expanded(
+                        child: pw.Text(
+                          _getReceiptDescription(items, lp),
+                          style: pw.TextStyle(
+                            fontSize: 6.5,
+                            color: _purple,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                          maxLines: 1,
+                          overflow: pw.TextOverflow.clip,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              pw.Expanded(
+                flex: 6,
+                child: _badge(
+                  ts['label'] as String,
+                  ts['color'] as PdfColor,
+                  ts['bg'] as PdfColor,
+                ),
+              ),
+              pw.Expanded(
+                flex: 5,
+                child: pw.Text(
+                  _getTotalQuantity(items).toString(),
+                  textAlign: pw.TextAlign.right,
+                  style: pw.TextStyle(
+                    fontSize: 6.5,
+                    fontWeight: pw.FontWeight.bold,
+                    color: _indigo,
+                  ),
+                ),
+              ),
+              pw.Expanded(
+                flex: 6,
+                child: pw.Text(
+                  'Rs ${_getAverageRate(items).toStringAsFixed(2)}',
+                  textAlign: pw.TextAlign.right,
+                  style: pw.TextStyle(
+                    fontSize: 6.5,
+                    color: _t2,
+                  ),
+                ),
+              ),
+              pw.Expanded(
+                flex: 6,
+                child: method != null
+                    ? _badge(
+                  ms['label'] as String,
+                  ms['color'] as PdfColor,
+                  ms['bg'] as PdfColor,
+                )
+                    : pw.SizedBox(),
+              ),
+              pw.Expanded(
+                flex: 8,
+                child: bank != null && bank.isNotEmpty
+                    ? _buildBankCell(bank)
+                    : pw.SizedBox(),
+              ),
+              pw.Expanded(
+                flex: 7,
+                child: pw.Text(
+                  debit > 0 ? _cf.format(debit) : '',
+                  textAlign: pw.TextAlign.right,
+                  style: pw.TextStyle(
+                    fontSize: 6.5,
+                    fontWeight: debit > 0 ? pw.FontWeight.bold : pw.FontWeight.normal,
+                    color: debit > 0 ? _green : _t3,
+                  ),
+                ),
+              ),
+              pw.Expanded(
+                flex: 7,
+                child: pw.Text(
+                  credit > 0 ? _cf.format(credit) : '',
+                  textAlign: pw.TextAlign.right,
+                  style: pw.TextStyle(
+                    fontSize: 6.5,
+                    fontWeight: credit > 0 ? pw.FontWeight.bold : pw.FontWeight.normal,
+                    color: credit > 0 ? _red : _t3,
+                  ),
+                ),
+              ),
+              pw.Expanded(
+                flex: 7,
+                child: pw.Text(
+                  _cf.format(balance),
+                  textAlign: pw.TextAlign.right,
+                  style: pw.TextStyle(
+                    fontSize: 6.5,
+                    fontWeight: pw.FontWeight.bold,
+                    color: balCol,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ));
+
+        for (var item in items) {
+          widgets.add(_consolidatedItemRow(item, lp, idx));
+        }
+      } else {
+        widgets.add(_consolidatedRegularRow(e, idx, descriptionImages, lp, pdfType, txDate, refNum, ts, ms, method, bank, debit, credit, balance, balCol, bg));
+      }
+    } else {
+      widgets.add(_consolidatedRegularRow(e, idx, descriptionImages, lp, pdfType, txDate, refNum, ts, ms, method, bank, debit, credit, balance, balCol, bg));
+    }
+
+    if (type == 'payment' && method == 'cheque') {
+      final cn = e['cheque_number'] as String?;
+      final cd = e['cheque_date'] as String?;
+      final cl = e['cheque_cleared'] as bool? ?? false;
+      if (cn != null) widgets.add(_chequeSub(cn, cd, cl, lp));
+    }
+
+    return widgets;
+  }
+
+  static pw.Widget _consolidatedRegularRow(
+      Map<String, dynamic> e,
+      int idx,
+      Map<int, pw.MemoryImage> descriptionImages,
+      LanguageProvider lp,
+      PdfType pdfType,
+      DateTime? txDate,
+      String? refNum,
+      Map<String, dynamic> ts,
+      Map<String, dynamic> ms,
+      String? method,
+      String? bank,
+      double debit,
+      double credit,
+      double balance,
+      PdfColor balCol,
+      PdfColor bg,
+      ) {
+    if (pdfType == PdfType.detailed) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: pw.BoxDecoration(
+          color: bg,
+          border: const pw.Border(
+            bottom: pw.BorderSide(color: _border, width: 0.4),
+          ),
+        ),
+        child: pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.center,
+          children: [
+            pw.Expanded(
+              flex: 8,
+              child: pw.Text(
+                txDate != null ? _df.format(txDate) : '',
+                style: pw.TextStyle(fontSize: 6.5, color: _t2),
+              ),
+            ),
+            pw.Expanded(
+              flex: 8,
+              child: pw.Text(
+                refNum ?? '',
+                style: pw.TextStyle(
+                  fontSize: 6.5,
+                  color: _purple,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+                maxLines: 1,
+                overflow: pw.TextOverflow.clip,
+              ),
+            ),
+            pw.Expanded(
+              flex: 12,
+              child: pw.Image(descriptionImages[idx]!, height: 20),
+            ),
+            pw.Expanded(
+              flex: 6,
+              child: _badge(
+                ts['label'] as String,
+                ts['color'] as PdfColor,
+                ts['bg'] as PdfColor,
+              ),
+            ),
+            pw.Expanded(
+              flex: 5,
+              child: pw.SizedBox(),
+            ),
+            pw.Expanded(
+              flex: 6,
+              child: pw.SizedBox(),
+            ),
+            pw.Expanded(
+              flex: 6,
+              child: method != null
+                  ? _badge(
+                ms['label'] as String,
+                ms['color'] as PdfColor,
+                ms['bg'] as PdfColor,
+              )
+                  : pw.SizedBox(),
+            ),
+            pw.Expanded(
+              flex: 8,
+              child: bank != null && bank.isNotEmpty
+                  ? _buildBankCell(bank)
+                  : pw.SizedBox(),
+            ),
+            pw.Expanded(
+              flex: 7,
+              child: pw.Text(
+                debit > 0 ? _cf.format(debit) : '',
+                textAlign: pw.TextAlign.right,
+                style: pw.TextStyle(
+                  fontSize: 6.5,
+                  fontWeight: debit > 0 ? pw.FontWeight.bold : pw.FontWeight.normal,
+                  color: debit > 0 ? _green : _t3,
+                ),
+              ),
+            ),
+            pw.Expanded(
+              flex: 7,
+              child: pw.Text(
+                credit > 0 ? _cf.format(credit) : '',
+                textAlign: pw.TextAlign.right,
+                style: pw.TextStyle(
+                  fontSize: 6.5,
+                  fontWeight: credit > 0 ? pw.FontWeight.bold : pw.FontWeight.normal,
+                  color: credit > 0 ? _red : _t3,
+                ),
+              ),
+            ),
+            pw.Expanded(
+              flex: 7,
+              child: pw.Text(
+                _cf.format(balance),
+                textAlign: pw.TextAlign.right,
+                style: pw.TextStyle(
+                  fontSize: 6.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: balCol,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      return pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: pw.BoxDecoration(
+          color: bg,
+          border: const pw.Border(
+            bottom: pw.BorderSide(color: _border, width: 0.4),
+          ),
+        ),
+        child: pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.center,
+          children: [
+            pw.Expanded(
+              flex: 11,
+              child: pw.Text(
+                txDate != null ? _df.format(txDate) : '',
+                style: pw.TextStyle(fontSize: 6.5, color: _t2),
+              ),
+            ),
+            pw.Expanded(
+              flex: 10,
+              child: pw.Text(
+                refNum ?? '',
+                style: pw.TextStyle(
+                  fontSize: 6.5,
+                  color: _purple,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+                maxLines: 1,
+                overflow: pw.TextOverflow.clip,
+              ),
+            ),
+            pw.Expanded(
+              flex: 9,
+              child: _badge(
+                ts['label'] as String,
+                ts['color'] as PdfColor,
+                ts['bg'] as PdfColor,
+              ),
+            ),
+            pw.Expanded(
+              flex: 8,
+              child: method != null
+                  ? _badge(
+                ms['label'] as String,
+                ms['color'] as PdfColor,
+                ms['bg'] as PdfColor,
+              )
+                  : pw.SizedBox(),
+            ),
+            pw.Expanded(
+              flex: 13,
+              child: bank != null && bank.isNotEmpty
+                  ? _buildBankCell(bank)
+                  : pw.SizedBox(),
+            ),
+            pw.Expanded(
+              flex: 23,
+              child: pw.Image(descriptionImages[idx]!, height: 20),
+            ),
+            pw.Expanded(
+              flex: 12,
+              child: pw.Text(
+                debit > 0 ? _cf.format(debit) : '',
+                textAlign: pw.TextAlign.right,
+                style: pw.TextStyle(
+                  fontSize: 6.5,
+                  fontWeight: debit > 0 ? pw.FontWeight.bold : pw.FontWeight.normal,
+                  color: debit > 0 ? _green : _t3,
+                ),
+              ),
+            ),
+            pw.Expanded(
+              flex: 12,
+              child: pw.Text(
+                credit > 0 ? _cf.format(credit) : '',
+                textAlign: pw.TextAlign.right,
+                style: pw.TextStyle(
+                  fontSize: 6.5,
+                  fontWeight: credit > 0 ? pw.FontWeight.bold : pw.FontWeight.normal,
+                  color: credit > 0 ? _red : _t3,
+                ),
+              ),
+            ),
+            pw.Expanded(
+              flex: 12,
+              child: pw.Text(
+                _cf.format(balance),
+                textAlign: pw.TextAlign.right,
+                style: pw.TextStyle(
+                  fontSize: 6.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: balCol,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  static pw.Widget _consolidatedItemRow(Map<String, dynamic> item, LanguageProvider lp, int parentIdx) {
+    final qty   = (item['quantity'] as num?)?.toInt() ?? 0;
+    final rate  = (item['unit_cost'] as num?)?.toDouble() ?? 0.0;
+    final total = qty * rate;
+
+    final productName = (item['product_name'] as String?) ?? 'Unknown';
+    final barcode = item['barcode'] as String?;
+
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: pw.BoxDecoration(
+        color: _itemBg,
+        border: const pw.Border(
+          bottom: pw.BorderSide(color: _border, width: 0.3),
+        ),
+      ),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: [
+          pw.Expanded(
+            flex: 8,
+            child: pw.SizedBox(),
+          ),
+          pw.Expanded(
+            flex: 8,
+            child: pw.SizedBox(),
+          ),
+          pw.Expanded(
+            flex: 12,
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  productName,
+                  style: pw.TextStyle(
+                    fontSize: 6.5,
+                    fontWeight: pw.FontWeight.bold,
+                    color: _t1,
+                  ),
+                  maxLines: 1,
+                  overflow: pw.TextOverflow.clip,
+                ),
+                if (barcode != null)
+                  pw.Text(
+                    '($barcode)',
+                    style: pw.TextStyle(
+                      fontSize: 5.5,
+                      color: _t3,
+                    ),
+                  ),
+                if (item['batch_number'] != null)
+                  pw.Text(
+                    '${lp.isEnglish ? 'Batch' : 'بیچ'}: ${item['batch_number']}',
+                    style: pw.TextStyle(
+                      fontSize: 5.5,
+                      color: _blue,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          pw.Expanded(
+            flex: 6,
+            child: _badge(
+              lp.isEnglish ? 'ITEM' : 'آئٹم',
+              _blue,
+              _blueBg,
+            ),
+          ),
+          pw.Expanded(
+            flex: 5,
+            child: pw.Text(
+              '$qty',
+              textAlign: pw.TextAlign.right,
+              style: pw.TextStyle(
+                fontSize: 6.5,
+                fontWeight: pw.FontWeight.bold,
+                color: _indigo,
+              ),
+            ),
+          ),
+          pw.Expanded(
+            flex: 6,
+            child: pw.Text(
+              'Rs ${rate.toStringAsFixed(2)}',
+              textAlign: pw.TextAlign.right,
+              style: pw.TextStyle(
+                fontSize: 6.5,
+                color: _t2,
+              ),
+            ),
+          ),
+          pw.Expanded(
+            flex: 6,
+            child: pw.SizedBox(),
+          ),
+          pw.Expanded(
+            flex: 8,
+            child: pw.SizedBox(),
+          ),
+          pw.Expanded(
+            flex: 7,
+            child: pw.SizedBox(),
+          ),
+          pw.Expanded(
+            flex: 7,
+            child: pw.Text(
+              'Rs ${total.toStringAsFixed(2)}',
+              textAlign: pw.TextAlign.right,
+              style: pw.TextStyle(
+                fontSize: 6.5,
+                fontWeight: pw.FontWeight.bold,
+                color: _green,
+              ),
+            ),
+          ),
+          pw.Expanded(
+            flex: 7,
+            child: pw.SizedBox(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _consolidatedTotal(double debit, double credit, double closing, LanguageProvider lp) {
+    final balCol = closing > 0 ? _red : closing < 0 ? _green : _t1;
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      decoration: const pw.BoxDecoration(
+        color: _purpleL,
+        border: pw.Border(
+          top: pw.BorderSide(color: _purple, width: 1.2),
+        ),
+      ),
+      child: pw.Row(children: [
+        pw.Expanded(flex: 8, child: pw.SizedBox()),
+        pw.Expanded(flex: 8, child: pw.SizedBox()),
+        pw.Expanded(flex: 12, child: pw.SizedBox()),
+        pw.Expanded(flex: 6, child: pw.SizedBox()),
+        pw.Expanded(flex: 5, child: pw.SizedBox()),
+        pw.Expanded(flex: 6, child: pw.SizedBox()),
+        pw.Expanded(flex: 6, child: pw.SizedBox()),
+        pw.Expanded(flex: 8, child: pw.SizedBox()),
+        pw.Expanded(
+          flex: 7,
+          child: pw.Text(
+            _cf.format(debit),
+            textAlign: pw.TextAlign.right,
+            style: pw.TextStyle(
+              fontSize: 7.5,
+              fontWeight: pw.FontWeight.bold,
+              color: _green,
+            ),
+          ),
+        ),
+        pw.Expanded(
+          flex: 7,
+          child: pw.Text(
+            _cf.format(credit),
+            textAlign: pw.TextAlign.right,
+            style: pw.TextStyle(
+              fontSize: 7.5,
+              fontWeight: pw.FontWeight.bold,
+              color: _red,
+            ),
+          ),
+        ),
+        pw.Expanded(
+          flex: 7,
+          child: pw.Text(
+            _cf.format(closing),
+            textAlign: pw.TextAlign.right,
+            style: pw.TextStyle(
+              fontSize: 7.5,
+              fontWeight: pw.FontWeight.bold,
+              color: balCol,
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  // ─── Itemized Table ──────────────────────────────────────────────────────────
+  static pw.Widget _itemizedTable(
+      List<Map<String, dynamic>> entries,
+      Map<String, dynamic> summary,
+      Map<int, List<Map<String, dynamic>>> cache,
+      Map<int, pw.MemoryImage> descriptionImages,
+      LanguageProvider lp,
+      PdfType pdfType,
+      ) {
+    double totDebit = 0, totCredit = 0;
+    for (final e in entries) {
+      totDebit += _d(e['debit']);
+      totCredit += _d(e['credit']);
+    }
+    final closing = entries.isNotEmpty
+        ? _d(entries.last['balance'])
+        : _d(summary['closing_balance']);
+
+    return pw.ClipRRect(
+      horizontalRadius: 6,
+      verticalRadius: 6,
+      child: pw.Container(
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: _border, width: 0.8),
+          borderRadius: pw.BorderRadius.circular(6),
+        ),
+        child: pw.Column(children: [
+          _itemizedHeader(lp),
+          ...entries.asMap().entries.expand(
+                (en) => _itemizedRows(en.value, en.key, cache, descriptionImages, lp),
+          ),
+          _itemizedTotal(totDebit, totCredit, closing, lp),
+        ]),
+      ),
+    );
+  }
+
+  static pw.Widget _itemizedHeader(LanguageProvider lp) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      color: _hdrBg,
+      child: pw.Row(children: [
+        _hc(lp.isEnglish ? 'DATE' : 'تاریخ', 8),
+        _hc(lp.isEnglish ? 'REF #' : 'حوالہ', 7),
+        _hc(lp.isEnglish ? 'PRODUCT' : 'پروڈکٹ', 12),
+        _hc(lp.isEnglish ? 'TYPE' : 'قسم', 6),
+        _hc(lp.isEnglish ? 'QTY' : 'مقدار', 5),
+        _hc(lp.isEnglish ? 'RATE' : 'ریٹ', 7, r: true),
+        _hc(lp.isEnglish ? 'TOTAL' : 'کل', 8, r: true),
+        _hc(lp.isEnglish ? 'METHOD' : 'طریقہ', 7),
+        _hc(lp.isEnglish ? 'DEBIT' : 'ڈیبٹ', 8, r: true),
+        _hc(lp.isEnglish ? 'CREDIT' : 'کریڈٹ', 8, r: true),
+        _hc(lp.isEnglish ? 'BALANCE' : 'بیلنس', 8, r: true),
+      ]),
+    );
+  }
+
+  static Iterable<pw.Widget> _itemizedRows(
+      Map<String, dynamic> entry,
+      int idx,
+      Map<int, List<Map<String, dynamic>>> cache,
+      Map<int, pw.MemoryImage> descriptionImages,
+      LanguageProvider lp,
+      ) sync* {
+    final type = (entry['reference_type'] as String?) ?? 'manual';
+    final isReceipt = type == 'purchase_receipt';
+    final referenceId = entry['reference_id'] as int?;
+    final items = referenceId != null ? cache[referenceId] : null;
+
+    if (isReceipt && items != null && items.isNotEmpty) {
+      yield _itemizedReceiptHeader(entry, items, idx, lp);
+      for (var item in items) {
+        yield _itemizedItemRow(item, lp);
+      }
+    } else {
+      yield _itemizedRegularRow(entry, idx, descriptionImages, lp);
+    }
+  }
+
+  static pw.Widget _itemizedReceiptHeader(
+      Map<String, dynamic> entry,
+      List<Map<String, dynamic>> items,
+      int idx,
+      LanguageProvider lp,
+      ) {
+    final debit   = _d(entry['debit']);
+    final credit  = _d(entry['credit']);
+    final balance = _d(entry['balance']);
+    final method  = entry['payment_method'] as String?;
+    final refNum  = entry['reference_number'] as String?;
+    final ts = _typeStyle('purchase_receipt', lp);
+    final ms = _methodStyle(method, lp);
+    final balCol = balance > 0 ? _red : balance < 0 ? _green : _t3;
+    final bg = idx.isEven ? _white : _rowAlt;
+
+    DateTime? txDate;
+    try {
+      txDate = DateTime.parse(entry['transaction_date'] as String);
+    } catch (_) {}
+
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: pw.BoxDecoration(
+        color: bg,
+        border: const pw.Border(
+          bottom: pw.BorderSide(color: _border, width: 0.4),
+        ),
+      ),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: [
+          pw.Expanded(
+            flex: 8,
+            child: pw.Text(
+              txDate != null ? _df.format(txDate) : '',
+              style: pw.TextStyle(fontSize: 6.5, color: _t2),
+            ),
+          ),
+          pw.Expanded(
+            flex: 7,
+            child: pw.Text(
+              refNum ?? '',
+              style: pw.TextStyle(
+                fontSize: 6.5,
+                color: _purple,
+                fontWeight: pw.FontWeight.bold,
+              ),
+              maxLines: 1,
+              overflow: pw.TextOverflow.clip,
+            ),
+          ),
+          pw.Expanded(
+            flex: 12,
+            child: pw.Container(
+              padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              decoration: pw.BoxDecoration(
+                color: _purpleL,
+                borderRadius: pw.BorderRadius.circular(4),
+              ),
+              child: pw.Row(
+                children: [
+                  pw.Expanded(
+                    child: pw.Text(
+                      '${lp.isEnglish ? 'Receipt' : 'رسید'} (${items.length} ${lp.isEnglish ? 'items' : 'اشیاء'})',
+                      style: pw.TextStyle(
+                        fontSize: 6.5,
+                        color: _purple,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: pw.TextOverflow.clip,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          pw.Expanded(
+            flex: 6,
+            child: _badge(
+              ts['label'] as String,
+              ts['color'] as PdfColor,
+              ts['bg'] as PdfColor,
+            ),
+          ),
+          pw.Expanded(
+            flex: 5,
+            child: pw.SizedBox(),
+          ),
+          pw.Expanded(
+            flex: 7,
+            child: pw.SizedBox(),
+          ),
+          pw.Expanded(
+            flex: 8,
+            child: pw.SizedBox(),
+          ),
+          pw.Expanded(
+            flex: 7,
+            child: method != null
+                ? _badge(
+              ms['label'] as String,
+              ms['color'] as PdfColor,
+              ms['bg'] as PdfColor,
+            )
+                : pw.SizedBox(),
+          ),
+          pw.Expanded(
+            flex: 8,
+            child: pw.Text(
+              debit > 0 ? _cf.format(debit) : '',
+              textAlign: pw.TextAlign.right,
+              style: pw.TextStyle(
+                fontSize: 6.5,
+                fontWeight: debit > 0 ? pw.FontWeight.bold : pw.FontWeight.normal,
+                color: debit > 0 ? _green : _t3,
+              ),
+            ),
+          ),
+          pw.Expanded(
+            flex: 8,
+            child: pw.Text(
+              credit > 0 ? _cf.format(credit) : '',
+              textAlign: pw.TextAlign.right,
+              style: pw.TextStyle(
+                fontSize: 6.5,
+                fontWeight: credit > 0 ? pw.FontWeight.bold : pw.FontWeight.normal,
+                color: credit > 0 ? _red : _t3,
+              ),
+            ),
+          ),
+          pw.Expanded(
+            flex: 8,
+            child: pw.Text(
+              _cf.format(balance),
+              textAlign: pw.TextAlign.right,
+              style: pw.TextStyle(
+                fontSize: 6.5,
+                fontWeight: pw.FontWeight.bold,
+                color: balCol,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _itemizedItemRow(Map<String, dynamic> item, LanguageProvider lp) {
+    final productName = (item['product_name'] as String?) ?? 'Unknown';
+    final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
+    final rate = (item['unit_cost'] as num?)?.toDouble() ?? 0.0;
+    final total = quantity * rate;
+
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: pw.BoxDecoration(
+        color: _itemBg,
+        border: const pw.Border(
+          bottom: pw.BorderSide(color: _border, width: 0.3),
+        ),
+      ),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: [
+          pw.Expanded(
+            flex: 8,
+            child: pw.SizedBox(),
+          ),
+          pw.Expanded(
+            flex: 7,
+            child: pw.SizedBox(),
+          ),
+          pw.Expanded(
+            flex: 12,
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  productName,
+                  style: pw.TextStyle(
+                    fontSize: 6.5,
+                    fontWeight: pw.FontWeight.bold,
+                    color: _t1,
+                  ),
+                  maxLines: 1,
+                  overflow: pw.TextOverflow.clip,
+                ),
+                if (item['batch_number'] != null)
+                  pw.Text(
+                    '${lp.isEnglish ? 'Batch' : 'بیچ'}: ${item['batch_number']}',
+                    style: pw.TextStyle(
+                      fontSize: 5.5,
+                      color: _blue,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          pw.Expanded(
+            flex: 6,
+            child: _badge(
+              lp.isEnglish ? 'ITEM' : 'آئٹم',
+              _blue,
+              _blueBg,
+            ),
+          ),
+          pw.Expanded(
+            flex: 5,
+            child: pw.Text(
+              '$quantity',
+              textAlign: pw.TextAlign.right,
+              style: pw.TextStyle(
+                fontSize: 6.5,
+                fontWeight: pw.FontWeight.bold,
+                color: _indigo,
+              ),
+            ),
+          ),
+          pw.Expanded(
+            flex: 7,
+            child: pw.Text(
+              'Rs ${rate.toStringAsFixed(2)}',
+              textAlign: pw.TextAlign.right,
+              style: pw.TextStyle(
+                fontSize: 6.5,
+                color: _t2,
+              ),
+            ),
+          ),
+          pw.Expanded(
+            flex: 8,
+            child: pw.Text(
+              'Rs ${total.toStringAsFixed(2)}',
+              textAlign: pw.TextAlign.right,
+              style: pw.TextStyle(
+                fontSize: 6.5,
+                fontWeight: pw.FontWeight.bold,
+                color: _green,
+              ),
+            ),
+          ),
+          pw.Expanded(
+            flex: 7,
+            child: pw.SizedBox(),
+          ),
+          pw.Expanded(
+            flex: 8,
+            child: pw.SizedBox(),
+          ),
+          pw.Expanded(
+            flex: 8,
+            child: pw.SizedBox(),
+          ),
+          pw.Expanded(
+            flex: 8,
+            child: pw.SizedBox(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _itemizedRegularRow(
+      Map<String, dynamic> entry,
+      int idx,
+      Map<int, pw.MemoryImage> descriptionImages,
+      LanguageProvider lp,
+      ) {
+    final debit   = _d(entry['debit']);
+    final credit  = _d(entry['credit']);
+    final balance = _d(entry['balance']);
+    final type    = (entry['reference_type'] as String?) ?? 'manual';
+    final method  = entry['payment_method'] as String?;
+    final refNum  = entry['reference_number'] as String?;
+
+    final ts = _typeStyle(type, lp);
+    final ms = _methodStyle(method, lp);
+    final balCol = balance > 0 ? _red : balance < 0 ? _green : _t3;
+    final bg = idx.isEven ? _white : _rowAlt;
+
+    DateTime? txDate;
+    try {
+      txDate = DateTime.parse(entry['transaction_date'] as String);
+    } catch (_) {}
+
+    final displayText = type == 'purchase_receipt'
+        ? (lp.isEnglish ? 'Receipt' : 'رسید')
+        : (entry['description'] as String? ?? '—');
+
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: pw.BoxDecoration(
+        color: bg,
+        border: const pw.Border(
+          bottom: pw.BorderSide(color: _border, width: 0.4),
+        ),
+      ),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: [
+          pw.Expanded(
+            flex: 8,
+            child: pw.Text(
+              txDate != null ? _df.format(txDate) : '',
+              style: pw.TextStyle(fontSize: 6.5, color: _t2),
+            ),
+          ),
+          pw.Expanded(
+            flex: 7,
+            child: pw.Text(
+              refNum ?? '',
+              style: pw.TextStyle(
+                fontSize: 6.5,
+                color: _purple,
+                fontWeight: pw.FontWeight.bold,
+              ),
+              maxLines: 1,
+              overflow: pw.TextOverflow.clip,
+            ),
+          ),
+          pw.Expanded(
+            flex: 12,
+            child: pw.Image(descriptionImages[idx]!, height: 20),
+          ),
+          pw.Expanded(
+            flex: 6,
+            child: _badge(
+              ts['label'] as String,
+              ts['color'] as PdfColor,
+              ts['bg'] as PdfColor,
+            ),
+          ),
+          pw.Expanded(
+            flex: 5,
+            child: pw.SizedBox(),
+          ),
+          pw.Expanded(
+            flex: 7,
+            child: pw.SizedBox(),
+          ),
+          pw.Expanded(
+            flex: 8,
+            child: pw.SizedBox(),
+          ),
+          pw.Expanded(
+            flex: 7,
+            child: method != null
+                ? _badge(
+              ms['label'] as String,
+              ms['color'] as PdfColor,
+              ms['bg'] as PdfColor,
+            )
+                : pw.SizedBox(),
+          ),
+          pw.Expanded(
+            flex: 8,
+            child: pw.Text(
+              debit > 0 ? _cf.format(debit) : '',
+              textAlign: pw.TextAlign.right,
+              style: pw.TextStyle(
+                fontSize: 6.5,
+                fontWeight: debit > 0 ? pw.FontWeight.bold : pw.FontWeight.normal,
+                color: debit > 0 ? _green : _t3,
+              ),
+            ),
+          ),
+          pw.Expanded(
+            flex: 8,
+            child: pw.Text(
+              credit > 0 ? _cf.format(credit) : '',
+              textAlign: pw.TextAlign.right,
+              style: pw.TextStyle(
+                fontSize: 6.5,
+                fontWeight: credit > 0 ? pw.FontWeight.bold : pw.FontWeight.normal,
+                color: credit > 0 ? _red : _t3,
+              ),
+            ),
+          ),
+          pw.Expanded(
+            flex: 8,
+            child: pw.Text(
+              _cf.format(balance),
+              textAlign: pw.TextAlign.right,
+              style: pw.TextStyle(
+                fontSize: 6.5,
+                fontWeight: pw.FontWeight.bold,
+                color: balCol,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _itemizedTotal(double debit, double credit, double closing, LanguageProvider lp) {
+    final balCol = closing > 0 ? _red : closing < 0 ? _green : _t1;
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      decoration: const pw.BoxDecoration(
+        color: _purpleL,
+        border: pw.Border(
+          top: pw.BorderSide(color: _purple, width: 1.2),
+        ),
+      ),
+      child: pw.Row(children: [
+        pw.Expanded(flex: 8, child: pw.SizedBox()),
+        pw.Expanded(flex: 7, child: pw.SizedBox()),
+        pw.Expanded(flex: 12, child: pw.SizedBox()),
+        pw.Expanded(flex: 6, child: pw.SizedBox()),
+        pw.Expanded(flex: 5, child: pw.SizedBox()),
+        pw.Expanded(flex: 7, child: pw.SizedBox()),
+        pw.Expanded(flex: 8, child: pw.SizedBox()),
+        pw.Expanded(flex: 7, child: pw.SizedBox()),
+        pw.Expanded(
+          flex: 8,
+          child: pw.Text(
+            _cf.format(debit),
+            textAlign: pw.TextAlign.right,
+            style: pw.TextStyle(
+              fontSize: 7.5,
+              fontWeight: pw.FontWeight.bold,
+              color: _green,
+            ),
+          ),
+        ),
+        pw.Expanded(
+          flex: 8,
+          child: pw.Text(
+            _cf.format(credit),
+            textAlign: pw.TextAlign.right,
+            style: pw.TextStyle(
+              fontSize: 7.5,
+              fontWeight: pw.FontWeight.bold,
+              color: _red,
+            ),
+          ),
+        ),
+        pw.Expanded(
+          flex: 8,
+          child: pw.Text(
+            _cf.format(closing),
+            textAlign: pw.TextAlign.right,
+            style: pw.TextStyle(
+              fontSize: 7.5,
+              fontWeight: pw.FontWeight.bold,
+              color: balCol,
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  // ─── Helper Widgets ──────────────────────────────────────────────────────────
   static pw.Widget _hc(String t, int flex, {bool r = false}) => pw.Expanded(
     flex: flex,
     child: pw.Text(
@@ -479,159 +1752,24 @@ class SupplierLedgerPdfGenerator {
     ),
   );
 
-  // ── Table row (returns 1–3 widgets: main row + optional sub-rows) ──────────
-  static List<pw.Widget> _tRow(
-      Map<String, dynamic> e,
-      int idx,
-      Map<int, List<Map<String, dynamic>>> cache,
-      Map<int, pw.MemoryImage> descriptionImages,
-      ) {
-    final widgets = <pw.Widget>[];
-
-    final debit   = _d(e['debit']);
-    final credit  = _d(e['credit']);
-    final balance = _d(e['balance']);
-    final type    = (e['reference_type'] as String?) ?? 'manual';
-    final method  = e['payment_method'] as String?;
-    final bank    = e['bank_name'] as String?;
-    final refNum  = e['reference_number'] as String?;
-
-    final ts     = _typeStyle(type);
-    final ms     = _methodStyle(method);
-    final balCol = balance > 0 ? _red : balance < 0 ? _green : _t3;
-    final bg     = idx.isEven ? _white : _rowAlt;
-
-    DateTime? txDate;
-    try {
-      txDate = DateTime.parse(e['transaction_date'] as String);
-    } catch (_) {}
-
-    widgets.add(pw.Container(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: pw.BoxDecoration(
-        color: bg,
-        border: const pw.Border(
-          bottom: pw.BorderSide(color: _border, width: 0.4),
+  static pw.Widget _badge(String label, PdfColor col, PdfColor bg) =>
+      pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        decoration: pw.BoxDecoration(
+          color: bg,
+          borderRadius: pw.BorderRadius.circular(4),
         ),
-      ),
-      child: pw.Row(
-        crossAxisAlignment: pw.CrossAxisAlignment.center,
-        children: [
-          // DATE
-          pw.Expanded(
-            flex: 11,
-            child: pw.Text(
-              txDate != null ? _df.format(txDate) : '',
-              style: pw.TextStyle(fontSize: 6.5, color: _t2),
-            ),
+        child: pw.Text(
+          label,
+          textAlign: pw.TextAlign.center,
+          style: pw.TextStyle(
+            fontSize: 5.5,
+            fontWeight: pw.FontWeight.bold,
+            color: col,
           ),
-          // REF #
-          pw.Expanded(
-            flex: 10,
-            child: pw.Text(
-              refNum ?? '',
-              style: pw.TextStyle(
-                fontSize: 6.5,
-                color: _purple,
-                fontWeight: pw.FontWeight.bold,
-              ),
-              maxLines: 1,
-              overflow: pw.TextOverflow.clip,
-            ),
-          ),
-          // TYPE badge
-          pw.Expanded(
-            flex: 9,
-            child: _badge(
-              ts['label'] as String,
-              ts['color'] as PdfColor,
-              ts['bg'] as PdfColor,
-            ),
-          ),
-          // METHOD badge
-          pw.Expanded(
-            flex: 8,
-            child: method != null
-                ? _badge(
-              ms['label'] as String,
-              ms['color'] as PdfColor,
-              ms['bg'] as PdfColor,
-            )
-                : pw.SizedBox(),
-          ),
-          // BANK with logo
-          pw.Expanded(
-            flex: 13,
-            child: bank != null && bank.isNotEmpty
-                ? _buildBankCell(bank)
-                : pw.SizedBox(),
-          ),
-          // DESCRIPTION — Using pre-rendered raster image
-          pw.Expanded(
-            flex: 23,
-            child: pw.Image(descriptionImages[idx]!, height: 20),
-          ),
-          // DEBIT
-          pw.Expanded(
-            flex: 12,
-            child: pw.Text(
-              debit > 0 ? _cf.format(debit) : '',
-              textAlign: pw.TextAlign.right,
-              style: pw.TextStyle(
-                fontSize: 6.5,
-                fontWeight: debit > 0 ? pw.FontWeight.bold : pw.FontWeight.normal,
-                color: debit > 0 ? _green : _t3,
-              ),
-            ),
-          ),
-          // CREDIT
-          pw.Expanded(
-            flex: 12,
-            child: pw.Text(
-              credit > 0 ? _cf.format(credit) : '',
-              textAlign: pw.TextAlign.right,
-              style: pw.TextStyle(
-                fontSize: 6.5,
-                fontWeight: credit > 0 ? pw.FontWeight.bold : pw.FontWeight.normal,
-                color: credit > 0 ? _red : _t3,
-              ),
-            ),
-          ),
-          // BALANCE
-          pw.Expanded(
-            flex: 12,
-            child: pw.Text(
-              _cf.format(balance),
-              textAlign: pw.TextAlign.right,
-              style: pw.TextStyle(
-                fontSize: 6.5,
-                fontWeight: pw.FontWeight.bold,
-                color: balCol,
-              ),
-            ),
-          ),
-        ],
-      ),
-    ));
+        ),
+      );
 
-    // Receipt items sub-row
-    if (type == 'purchase_receipt' && e['reference_id'] != null) {
-      final items = cache[e['reference_id'] as int];
-      if (items != null && items.isNotEmpty) widgets.add(_receiptSub(items));
-    }
-
-    // Cheque sub-row
-    if (type == 'payment' && method == 'cheque') {
-      final cn = e['cheque_number'] as String?;
-      final cd = e['cheque_date'] as String?;
-      final cl = e['cheque_cleared'] as bool? ?? false;
-      if (cn != null) widgets.add(_chequeSub(cn, cd, cl));
-    }
-
-    return widgets;
-  }
-
-  // ── Bank cell with logo ────────────────────────────────────────────────────
   static pw.Widget _buildBankCell(String bankName) {
     final logo = _bankLogoCache[bankName];
     if (logo != null) {
@@ -667,193 +1805,7 @@ class SupplierLedgerPdfGenerator {
     );
   }
 
-  // ── Badge widget ───────────────────────────────────────────────────────────
-  static pw.Widget _badge(String label, PdfColor col, PdfColor bg) =>
-      pw.Container(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        decoration: pw.BoxDecoration(
-          color: bg,
-          borderRadius: pw.BorderRadius.circular(4),
-        ),
-        child: pw.Text(
-          label,
-          textAlign: pw.TextAlign.center,
-          style: pw.TextStyle(
-            fontSize: 5.5,
-            fontWeight: pw.FontWeight.bold,
-            color: col,
-          ),
-        ),
-      );
-
-  // ── Receipt sub-row ────────────────────────────────────────────────────────
-  static pw.Widget _receiptSub(List<Map<String, dynamic>> items) =>
-      pw.Container(
-        margin: const pw.EdgeInsets.only(left: 18, right: 6, bottom: 4),
-        padding: const pw.EdgeInsets.all(5),
-        decoration: pw.BoxDecoration(
-          color: _purpleL,
-          borderRadius: pw.BorderRadius.circular(4),
-          border: pw.Border.all(color: _purpleS, width: 0.6),
-        ),
-        child: pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Text(
-              'Items Received',
-              style: pw.TextStyle(
-                fontSize: 6,
-                fontWeight: pw.FontWeight.bold,
-                color: _purple,
-              ),
-            ),
-            pw.SizedBox(height: 3),
-            // Sub-table header
-            pw.Container(
-              padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              color: _purpleS,
-              child: pw.Row(children: [
-                pw.Expanded(
-                  flex: 5,
-                  child: pw.Text(
-                    'PRODUCT',
-                    style: pw.TextStyle(
-                      fontSize: 5,
-                      fontWeight: pw.FontWeight.bold,
-                      color: _purple,
-                    ),
-                  ),
-                ),
-                pw.Expanded(
-                  flex: 2,
-                  child: pw.Text(
-                    'QTY',
-                    textAlign: pw.TextAlign.center,
-                    style: pw.TextStyle(
-                      fontSize: 5,
-                      fontWeight: pw.FontWeight.bold,
-                      color: _purple,
-                    ),
-                  ),
-                ),
-                pw.Expanded(
-                  flex: 2,
-                  child: pw.Text(
-                    'RATE',
-                    textAlign: pw.TextAlign.right,
-                    style: pw.TextStyle(
-                      fontSize: 5,
-                      fontWeight: pw.FontWeight.bold,
-                      color: _purple,
-                    ),
-                  ),
-                ),
-                pw.Expanded(
-                  flex: 2,
-                  child: pw.Text(
-                    'AMOUNT',
-                    textAlign: pw.TextAlign.right,
-                    style: pw.TextStyle(
-                      fontSize: 5,
-                      fontWeight: pw.FontWeight.bold,
-                      color: _purple,
-                    ),
-                  ),
-                ),
-              ]),
-            ),
-            // Sub-table rows
-            ...items.asMap().entries.map((en) {
-              final qty  = (en.value['quantity'] as num?)?.toInt() ?? 0;
-              final rate = (en.value['unit_cost'] as num?)?.toDouble() ?? 0.0;
-              return pw.Container(
-                padding:
-                const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                color: en.key.isEven ? _white : _rowAlt,
-                child: pw.Row(children: [
-                  pw.Expanded(
-                    flex: 5,
-                    child: pw.Text(
-                      en.value['product_name'] as String? ?? '',
-                      style: pw.TextStyle(fontSize: 5.5, color: _t1),
-                      maxLines: 1,
-                      overflow: pw.TextOverflow.clip,
-                    ),
-                  ),
-                  pw.Expanded(
-                    flex: 2,
-                    child: pw.Text(
-                      '$qty',
-                      textAlign: pw.TextAlign.center,
-                      style: pw.TextStyle(
-                        fontSize: 5.5,
-                        fontWeight: pw.FontWeight.bold,
-                        color: _indigo,
-                      ),
-                    ),
-                  ),
-                  pw.Expanded(
-                    flex: 2,
-                    child: pw.Text(
-                      _cf.format(rate),
-                      textAlign: pw.TextAlign.right,
-                      style: pw.TextStyle(fontSize: 5.5, color: _t2),
-                    ),
-                  ),
-                  pw.Expanded(
-                    flex: 2,
-                    child: pw.Text(
-                      _cf.format(qty * rate),
-                      textAlign: pw.TextAlign.right,
-                      style: pw.TextStyle(
-                        fontSize: 5.5,
-                        fontWeight: pw.FontWeight.bold,
-                        color: _t1,
-                      ),
-                    ),
-                  ),
-                ]),
-              );
-            }),
-            // Sub-table total row
-            pw.Container(
-              margin: const pw.EdgeInsets.only(top: 2),
-              padding:
-              const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
-              color: _purpleS,
-              child: pw.Row(children: [
-                pw.Expanded(
-                  child: pw.Text(
-                    'Total',
-                    style: pw.TextStyle(
-                      fontSize: 6,
-                      fontWeight: pw.FontWeight.bold,
-                      color: _t1,
-                    ),
-                  ),
-                ),
-                pw.Text(
-                  _cf.format(items.fold<double>(
-                    0,
-                        (s, i) =>
-                    s +
-                        ((i['quantity'] as num?)?.toInt() ?? 0) *
-                            ((i['unit_cost'] as num?)?.toDouble() ?? 0.0),
-                  )),
-                  style: pw.TextStyle(
-                    fontSize: 6,
-                    fontWeight: pw.FontWeight.bold,
-                    color: _purple,
-                  ),
-                ),
-              ]),
-            ),
-          ],
-        ),
-      );
-
-  // ── Cheque sub-row ─────────────────────────────────────────────────────────
-  static pw.Widget _chequeSub(String num, String? date, bool cleared) {
+  static pw.Widget _chequeSub(String num, String? date, bool cleared, LanguageProvider lp) {
     final col = cleared ? _green : _amber;
     final bg  = cleared ? _greenBg : _amberBg;
     return pw.Container(
@@ -866,7 +1818,7 @@ class SupplierLedgerPdfGenerator {
       ),
       child: pw.Row(children: [
         pw.Text(
-          'Cheque #$num',
+          '${lp.isEnglish ? 'Cheque #' : 'چیک نمبر'}$num',
           style: pw.TextStyle(
             fontSize: 6.5,
             fontWeight: pw.FontWeight.bold,
@@ -876,7 +1828,7 @@ class SupplierLedgerPdfGenerator {
         if (date != null) ...[
           pw.SizedBox(width: 10),
           pw.Text(
-            'Date: $date',
+            '${lp.isEnglish ? 'Date' : 'تاریخ'}: $date',
             style: pw.TextStyle(fontSize: 6.5, color: col),
           ),
         ],
@@ -888,7 +1840,9 @@ class SupplierLedgerPdfGenerator {
             borderRadius: pw.BorderRadius.circular(3),
           ),
           child: pw.Text(
-            cleared ? 'CLEARED' : 'PENDING',
+            cleared
+                ? (lp.isEnglish ? 'CLEARED' : 'کلیئر شدہ')
+                : (lp.isEnglish ? 'PENDING' : 'زیر التواء'),
             style: pw.TextStyle(
               fontSize: 5.5,
               fontWeight: pw.FontWeight.bold,
@@ -900,108 +1854,71 @@ class SupplierLedgerPdfGenerator {
     );
   }
 
-  // ── Totals footer row ──────────────────────────────────────────────────────
-  static pw.Widget _tTotal(double debit, double credit, double closing) {
-    final balCol = closing > 0 ? _red : closing < 0 ? _green : _t1;
-    return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-      decoration: const pw.BoxDecoration(
-        color: _purpleL,
-        border: pw.Border(
-          top: pw.BorderSide(color: _purple, width: 1.2),
-        ),
-      ),
-      child: pw.Row(children: [
-        pw.Expanded(flex: 11, child: pw.SizedBox()),
-        pw.Expanded(flex: 10, child: pw.SizedBox()),
-        pw.Expanded(flex: 9,  child: pw.SizedBox()),
-        pw.Expanded(flex: 8,  child: pw.SizedBox()),
-        pw.Expanded(flex: 13, child: pw.SizedBox()),
-        pw.Expanded(
-          flex: 23,
-          child: pw.Text(
-            'TOTAL',
-            style: pw.TextStyle(
-              fontSize: 7.5,
-              fontWeight: pw.FontWeight.bold,
-              color: _purple,
-              letterSpacing: 0.5,
-            ),
-          ),
-        ),
-        pw.Expanded(
-          flex: 12,
-          child: pw.Text(
-            _cf.format(debit),
-            textAlign: pw.TextAlign.right,
-            style: pw.TextStyle(
-              fontSize: 7.5,
-              fontWeight: pw.FontWeight.bold,
-              color: _green,
-            ),
-          ),
-        ),
-        pw.Expanded(
-          flex: 12,
-          child: pw.Text(
-            _cf.format(credit),
-            textAlign: pw.TextAlign.right,
-            style: pw.TextStyle(
-              fontSize: 7.5,
-              fontWeight: pw.FontWeight.bold,
-              color: _red,
-            ),
-          ),
-        ),
-        pw.Expanded(
-          flex: 12,
-          child: pw.Text(
-            _cf.format(closing),
-            textAlign: pw.TextAlign.right,
-            style: pw.TextStyle(
-              fontSize: 7.5,
-              fontWeight: pw.FontWeight.bold,
-              color: balCol,
-            ),
-          ),
-        ),
-      ]),
-    );
+  static String _getReceiptDescription(List<Map<String, dynamic>> items, LanguageProvider lp) {
+    if (items.isEmpty) return '';
+    final firstName = items.first['product_name'] as String? ?? 'Item';
+    if (items.length == 1) return firstName;
+    return '$firstName + ${items.length - 1} more';
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  static double _d(dynamic v) =>
-      double.tryParse(v?.toString() ?? '0') ?? 0.0;
+  static int _getTotalQuantity(List<Map<String, dynamic>> items) {
+    int total = 0;
+    for (var item in items) {
+      total += (item['quantity'] as num?)?.toInt() ?? 0;
+    }
+    return total;
+  }
 
-  static Map<String, dynamic> _typeStyle(String type) {
+  static double _getAverageRate(List<Map<String, dynamic>> items) {
+    if (items.isEmpty) return 0.0;
+    double total = 0.0;
+    int count = 0;
+    for (var item in items) {
+      final rate = (item['unit_cost'] ?? 0.0).toDouble();
+      if (rate > 0) {
+        total += rate;
+        count++;
+      }
+    }
+    return count > 0 ? total / count : 0.0;
+  }
+
+  static Map<String, dynamic> _typeStyle(String type, LanguageProvider lp) {
     switch (type) {
       case 'purchase_receipt':
-        return {'label': 'RECEIPT',  'color': _red,    'bg': _redBg};
+        return {'label': lp.isEnglish ? 'RECEIPT' : 'رسید', 'color': _red,    'bg': _redBg};
       case 'payment':
-        return {'label': 'PAYMENT',  'color': _green,  'bg': _greenBg};
+        return {'label': lp.isEnglish ? 'PAYMENT' : 'ادائیگی', 'color': _green,  'bg': _greenBg};
       case 'reversal':
-        return {'label': 'REVERSAL', 'color': _amber,  'bg': _amberBg};
+        return {'label': lp.isEnglish ? 'REVERSAL' : 'واپسی', 'color': _amber,  'bg': _amberBg};
       default:
-        return {'label': 'MANUAL',   'color': _indigo, 'bg': _indigoBg};
+        return {'label': lp.isEnglish ? 'MANUAL' : 'دستی', 'color': _indigo, 'bg': _indigoBg};
     }
   }
 
-  static Map<String, dynamic> _methodStyle(String? method) {
+  static Map<String, dynamic> _methodStyle(String? method, LanguageProvider lp) {
     switch (method) {
-      case 'cash':   return {'label': 'CASH',   'color': _green,  'bg': _greenBg};
-      case 'bank':   return {'label': 'BANK',   'color': _blue,   'bg': _blueBg};
-      case 'cheque': return {'label': 'CHEQUE', 'color': _amber,  'bg': _amberBg};
-      case 'slip':   return {'label': 'SLIP',   'color': _purple, 'bg': _purpleL};
-      default:       return {'label': '',        'color': _t3,     'bg': _hdrBg};
+      case 'cash':   return {'label': lp.isEnglish ? 'CASH' : 'نقد',   'color': _green,  'bg': _greenBg};
+      case 'bank':   return {'label': lp.isEnglish ? 'BANK' : 'بینک',   'color': _blue,   'bg': _blueBg};
+      case 'cheque': return {'label': lp.isEnglish ? 'CHEQUE' : 'چیک', 'color': _amber,  'bg': _amberBg};
+      case 'slip':   return {'label': lp.isEnglish ? 'SLIP' : 'سلیپ',   'color': _purple, 'bg': _purpleL};
+      default:       return {'label': '',       'color': _t3,     'bg': _hdrBg};
     }
   }
 
-  static String _filterLabel(String f) {
+  static String _filterLabel(String f, LanguageProvider lp) {
     switch (f) {
-      case 'purchase_receipt': return 'RECEIPTS ONLY';
-      case 'payment':          return 'PAYMENTS ONLY';
-      case 'manual':           return 'MANUAL ENTRIES';
-      default:                 return 'ALL TRANSACTIONS';
+      case 'purchase_receipt':
+        return lp.isEnglish ? 'RECEIPTS ONLY' : 'صرف رسیدیں';
+      case 'payment':
+        return lp.isEnglish ? 'PAYMENTS ONLY' : 'صرف ادائیگیاں';
+      case 'manual':
+        return lp.isEnglish ? 'MANUAL ENTRIES' : 'دستی اندراجات';
+      default:
+        return lp.isEnglish ? 'ALL TRANSACTIONS' : 'تمام لین دین';
     }
   }
+
+  static double _d(dynamic v) =>
+      double.tryParse(v?.toString() ?? '0') ?? 0.0;
 }

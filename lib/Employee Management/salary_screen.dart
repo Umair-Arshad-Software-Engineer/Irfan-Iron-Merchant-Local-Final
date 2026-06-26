@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/employee.dart';
 import '../models/attendance.dart';
 import '../providers/employee_provider.dart';
+import '../providers/lanprovider.dart';
 
 class SalaryScreen extends StatefulWidget {
   final Employee employee;
@@ -100,6 +101,7 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
 
   // ── Save payment ─────────────────────────────────────────────────────────
   Future<void> _savePayment(SalaryCalculation calc) async {
+    final lang = Provider.of<LanguageProvider>(context, listen: false);
     final netAfterDeductions = calc.calculatedSalary - _totalSelectedDeductions;
     final paidCtrl  = TextEditingController(
         text: netAfterDeductions.clamp(0, double.infinity).toStringAsFixed(0));
@@ -115,27 +117,31 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Confirm Payment',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
+              Text(
+                lang.isEnglish ? 'Confirm Payment' : 'ادائیگی کی تصدیق کریں',
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+              ),
               const SizedBox(height: 16),
-              _calcRow('Period',      '${_fmtDate(_fromDate)} – ${_fmtDate(_toDate)}'),
-              _calcRow('Present',     '${calc.presentDays} days'),
-              _calcRow('Calculated',  'Rs. ${calc.calculatedSalary.toStringAsFixed(0)}'),
+              _calcRow(lang.isEnglish ? 'Period' : 'مدت', '${_fmtDate(_fromDate)} – ${_fmtDate(_toDate)}'),
+              _calcRow(lang.isEnglish ? 'Present' : 'حاضر', '${calc.presentDays} ${lang.isEnglish ? 'days' : 'دن'}'),
+              _calcRow(lang.isEnglish ? 'Calculated' : 'حساب شدہ', 'Rs. ${calc.calculatedSalary.toStringAsFixed(0)}'),
               if (_totalSelectedAdvance > 0)
-                _calcRow('Advance Deduction', '- Rs. ${_totalSelectedAdvance.toStringAsFixed(0)}',
+                _calcRow(lang.isEnglish ? 'Advance Deduction' : 'ادوانس کٹوتی', '- Rs. ${_totalSelectedAdvance.toStringAsFixed(0)}',
                     const Color(0xFFEF4444)),
               if (_totalSelectedExpense > 0)
-                _calcRow('Expense Deduction', '- Rs. ${_totalSelectedExpense.toStringAsFixed(0)}',
+                _calcRow(lang.isEnglish ? 'Expense Deduction' : 'خرچ کٹوتی', '- Rs. ${_totalSelectedExpense.toStringAsFixed(0)}',
                     const Color(0xFFEF4444)),
               if (_totalSelectedDeductions > 0) ...[
                 const Divider(height: 16),
-                _calcRow('Net Payable',
+                _calcRow(lang.isEnglish ? 'Net Payable' : 'قابل ادائیگی',
                     'Rs. ${netAfterDeductions.clamp(0, double.infinity).toStringAsFixed(0)}',
                     const Color(0xFF10B981)),
               ],
               const Divider(height: 24),
-              const Text('Paid Amount',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF6B7280))),
+              Text(
+                lang.isEnglish ? 'Paid Amount' : 'ادا شدہ رقم',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF6B7280)),
+              ),
               const SizedBox(height: 6),
               TextFormField(
                 controller: paidCtrl,
@@ -148,14 +154,16 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
                 ),
               ),
               const SizedBox(height: 12),
-              const Text('Notes (optional)',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF6B7280))),
+              Text(
+                lang.isEnglish ? 'Notes (optional)' : 'نوٹس (اختیاری)',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF6B7280)),
+              ),
               const SizedBox(height: 6),
               TextFormField(
                 controller: notesCtrl,
                 maxLines: 2,
                 decoration: InputDecoration(
-                  hintText: 'e.g. June salary',
+                  hintText: lang.isEnglish ? 'e.g. June salary' : 'مثال: جون کی تنخواہ',
                   filled: true, fillColor: const Color(0xFFF5F6FA),
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
@@ -165,7 +173,7 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
               Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                 TextButton(
                     onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('Cancel')),
+                    child: Text(lang.isEnglish ? 'Cancel' : 'منسوخ کریں')),
                 const SizedBox(width: 12),
                 ElevatedButton(
                   onPressed: () => Navigator.pop(ctx, true),
@@ -175,7 +183,7 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: const Text('Save Payment'),
+                  child: Text(lang.isEnglish ? 'Save Payment' : 'ادائیگی محفوظ کریں'),
                 ),
               ]),
             ],
@@ -215,7 +223,9 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(res['success'] ? 'Payment saved!' : (res['message'] ?? 'Error')),
+          content: Text(res['success']
+              ? (lang.isEnglish ? 'Payment saved!' : 'ادائیگی محفوظ ہو گئی!')
+              : (res['message'] ?? (lang.isEnglish ? 'Error' : 'خرابی'))),
           backgroundColor: res['success'] ? const Color(0xFF10B981) : Colors.red,
         ));
         if (res['success']) {
@@ -236,6 +246,7 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
     required double fullAmount,
     required bool isAdvance,
   }) async {
+    final lang = Provider.of<LanguageProvider>(context, listen: false);
     final ctrl = TextEditingController(
         text: (isAdvance
             ? (_selectedAdvances[id] ?? fullAmount)
@@ -246,17 +257,25 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Deduct ${isAdvance ? 'Advance' : 'Expense'}'),
+        title: Text(
+            lang.isEnglish
+                ? 'Deduct ${isAdvance ? 'Advance' : 'Expense'}'
+                : '${isAdvance ? 'ادوانس' : 'خرچ'} کاٹیں'
+        ),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Full amount: Rs. ${fullAmount.toStringAsFixed(0)}',
-              style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+          Text(
+            lang.isEnglish
+                ? 'Full amount: Rs. ${fullAmount.toStringAsFixed(0)}'
+                : 'مکمل رقم: روپے ${fullAmount.toStringAsFixed(0)}',
+            style: TextStyle(color: Colors.grey[600], fontSize: 13),
+          ),
           const SizedBox(height: 12),
           TextFormField(
             controller: ctrl,
             keyboardType: TextInputType.number,
             autofocus: true,
             decoration: InputDecoration(
-              labelText: 'Amount to deduct',
+              labelText: lang.isEnglish ? 'Amount to deduct' : 'کٹوتی کی رقم',
               prefixText: 'Rs. ',
               filled: true, fillColor: const Color(0xFFF5F6FA),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -266,7 +285,7 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
+              child: Text(lang.isEnglish ? 'Cancel' : 'منسوخ کریں')),
           ElevatedButton(
             onPressed: () {
               final val = double.tryParse(ctrl.text) ?? fullAmount;
@@ -285,7 +304,7 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF7C3AED), foregroundColor: Colors.white,
             ),
-            child: const Text('Apply'),
+            child: Text(lang.isEnglish ? 'Apply' : 'لاگو کریں'),
           ),
         ],
       ),
@@ -297,6 +316,13 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
   // ────────────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final lang = Provider.of<LanguageProvider>(context);
+    final salaryTypeLabel = lang.isEnglish
+        ? widget.employee.salaryType.name
+        : (widget.employee.salaryType == SalaryType.Daily ? 'روزانہ'
+        : widget.employee.salaryType == SalaryType.Monthly ? 'ماہانہ'
+        : 'معاہدہ');
+
     return Consumer<EmployeeProvider>(
       builder: (context, provider, _) {
         final calc = provider.salaryCalculation;
@@ -314,22 +340,27 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
               Text(widget.employee.name,
                   style: const TextStyle(
                       fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
-              Text('Salary • ${widget.employee.salaryType.name}',
-                  style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+              Text(
+                '${lang.isEnglish ? 'Salary' : 'تنخواہ'} • $salaryTypeLabel',
+                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+              ),
             ]),
             bottom: TabBar(
               controller: _tabs,
               labelColor: const Color(0xFF7C3AED),
               unselectedLabelColor: Colors.grey,
               indicatorColor: const Color(0xFF7C3AED),
-              tabs: const [Tab(text: 'Calculate'), Tab(text: 'History')],
+              tabs: [
+                Tab(text: lang.isEnglish ? 'Calculate' : 'حساب کریں'),
+                Tab(text: lang.isEnglish ? 'History' : 'تاریخ'),
+              ],
             ),
           ),
           body: TabBarView(
             controller: _tabs,
             children: [
-              _buildCalculateTab(provider, calc),
-              _buildHistoryTab(provider),
+              _buildCalculateTab(provider, calc, lang),
+              _buildHistoryTab(provider, lang),
             ],
           ),
         );
@@ -338,7 +369,7 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
   }
 
   // ── Tab 1: Calculate ──────────────────────────────────────────────────────
-  Widget _buildCalculateTab(EmployeeProvider provider, SalaryCalculation? calc) {
+  Widget _buildCalculateTab(EmployeeProvider provider, SalaryCalculation? calc, LanguageProvider lang) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(children: [
@@ -368,7 +399,13 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
                     style: const TextStyle(
                         color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                 Text(
-                    'Base: Rs. ${widget.employee.salary.toStringAsFixed(0)} / ${widget.employee.salaryType.name}',
+                    '${lang.isEnglish ? 'Base' : 'بنیادی'}: Rs. ${widget.employee.salary.toStringAsFixed(0)} / ${
+                        lang.isEnglish
+                            ? widget.employee.salaryType.name
+                            : (widget.employee.salaryType == SalaryType.Daily ? 'روزانہ'
+                            : widget.employee.salaryType == SalaryType.Monthly ? 'ماہانہ'
+                            : 'معاہدہ')
+                    }',
                     style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 13)),
               ]),
             ),
@@ -382,23 +419,33 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
           decoration: BoxDecoration(
               color: Colors.white, borderRadius: BorderRadius.circular(16)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Quick Select',
-                style: TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
+            Text(
+              lang.isEnglish ? 'Quick Select' : 'فوری انتخاب',
+              style: const TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+            ),
             const SizedBox(height: 12),
             Row(children: [
               Expanded(
-                child: _presetBtn('This Month', Icons.calendar_month, () {
-                  _setFullMonth();
-                  _calculate();
-                }),
+                child: _presetBtn(
+                  lang.isEnglish ? 'This Month' : 'اس ماہ',
+                  Icons.calendar_month,
+                      () {
+                    _setFullMonth();
+                    _calculate();
+                  },
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: _presetBtn('Last Month', Icons.calendar_today, () {
-                  _setLastMonth();
-                  _calculate();
-                }),
+                child: _presetBtn(
+                  lang.isEnglish ? 'Last Month' : 'پچھلا ماہ',
+                  Icons.calendar_today,
+                      () {
+                    _setLastMonth();
+                    _calculate();
+                  },
+                ),
               ),
             ]),
           ]),
@@ -411,16 +458,28 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
           decoration: BoxDecoration(
               color: Colors.white, borderRadius: BorderRadius.circular(16)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Custom Range',
-                style: TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
+            Text(
+              lang.isEnglish ? 'Custom Range' : 'اپنی مرضی کی حد',
+              style: const TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+            ),
             const SizedBox(height: 12),
             Row(children: [
-              Expanded(child: _dateBtn('From', _fmtDate(_fromDate), () => _pickDate(true))),
+              Expanded(child: _dateBtn(
+                  lang.isEnglish ? 'From' : 'سے',
+                  _fmtDate(_fromDate),
+                      () => _pickDate(true),
+                  lang
+              )),
               const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 8),
                   child: Icon(Icons.arrow_forward, color: Colors.grey)),
-              Expanded(child: _dateBtn('To', _fmtDate(_toDate), () => _pickDate(false))),
+              Expanded(child: _dateBtn(
+                  lang.isEnglish ? 'To' : 'تک',
+                  _fmtDate(_toDate),
+                      () => _pickDate(false),
+                  lang
+              )),
             ]),
             const SizedBox(height: 12),
             SizedBox(
@@ -432,7 +491,10 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
                     width: 16, height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.calculate),
-                label: Text(provider.salaryLoading ? 'Calculating...' : 'Calculate Salary'),
+                label: Text(provider.salaryLoading
+                    ? (lang.isEnglish ? 'Calculating...' : 'حساب ہو رہا ہے...')
+                    : (lang.isEnglish ? 'Calculate Salary' : 'تنخواہ کا حساب لگائیں')
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF7C3AED),
                   foregroundColor: Colors.white,
@@ -449,18 +511,19 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
           const SizedBox(height: 16),
 
           // Attendance breakdown
-          _buildBreakdownCard(calc),
+          _buildBreakdownCard(calc, lang),
           const SizedBox(height: 16),
 
           // Advances section
           if (calc.pendingAdvances.isNotEmpty) ...[
             _buildDeductionSection(
-              title: 'Pending Advances',
+              title: lang.isEnglish ? 'Pending Advances' : 'زیر التواء ادوانسز',
               icon: Icons.account_balance_wallet_outlined,
               color: const Color(0xFF6366F1),
               items: calc.pendingAdvances,
               selected: _selectedAdvances,
               isAdvance: true,
+              lang: lang,
             ),
             const SizedBox(height: 16),
           ],
@@ -468,25 +531,26 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
           // Expenses section
           if (calc.pendingExpenses.isNotEmpty) ...[
             _buildDeductionSection(
-              title: 'Pending Expenses',
+              title: lang.isEnglish ? 'Pending Expenses' : 'زیر التواء اخراجات',
               icon: Icons.receipt_long_outlined,
               color: const Color(0xFFEF4444),
               items: calc.pendingExpenses,
               selected: _selectedExpenses,
               isAdvance: false,
+              lang: lang,
             ),
             const SizedBox(height: 16),
           ],
 
           // Final summary + save
-          _buildFinalSummary(calc),
+          _buildFinalSummary(calc, lang),
         ],
       ]),
     );
   }
 
   // ── Attendance breakdown card ─────────────────────────────────────────────
-  Widget _buildBreakdownCard(SalaryCalculation calc) {
+  Widget _buildBreakdownCard(SalaryCalculation calc, LanguageProvider lang) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -496,21 +560,23 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          const Text('Salary Breakdown',
-              style: TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
-          _badge('Preview', const Color(0xFF10B981)),
+          Text(
+            lang.isEnglish ? 'Salary Breakdown' : 'تنخواہ کی تفصیل',
+            style: const TextStyle(
+                fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+          ),
+          _badge(lang.isEnglish ? 'Preview' : 'پیش نظارہ', const Color(0xFF10B981)),
         ]),
         const SizedBox(height: 16),
-        _resultRow('Period', '${calc.fromDate} → ${calc.toDate}'),
-        _resultRow('Total Days', '${calc.totalDays}'),
+        _resultRow(lang.isEnglish ? 'Period' : 'مدت', '${calc.fromDate} → ${calc.toDate}'),
+        _resultRow(lang.isEnglish ? 'Total Days' : 'کل دن', '${calc.totalDays}'),
         const Divider(height: 20),
-        _resultRow('✅ Present',  '${calc.presentDays} days', const Color(0xFF10B981)),
-        _resultRow('❌ Absent',   '${calc.absentDays} days',  const Color(0xFFEF4444)),
-        _resultRow('⏱ Half Day', '${calc.halfDays} days',    const Color(0xFFF59E0B)),
-        _resultRow('🏖 Leave',   '${calc.leaveDays} days',   const Color(0xFF8B5CF6)),
+        _resultRow('✅ ${lang.isEnglish ? 'Present' : 'حاضر'}',  '${calc.presentDays} ${lang.isEnglish ? 'days' : 'دن'}', const Color(0xFF10B981)),
+        _resultRow('❌ ${lang.isEnglish ? 'Absent' : 'غائب'}',   '${calc.absentDays} ${lang.isEnglish ? 'days' : 'دن'}',  const Color(0xFFEF4444)),
+        _resultRow('⏱ ${lang.isEnglish ? 'Half Day' : 'نصف دن'}', '${calc.halfDays} ${lang.isEnglish ? 'days' : 'دن'}',    const Color(0xFFF59E0B)),
+        _resultRow('🏖 ${lang.isEnglish ? 'Leave' : 'چھٹی'}',   '${calc.leaveDays} ${lang.isEnglish ? 'days' : 'دن'}',   const Color(0xFF8B5CF6)),
         const Divider(height: 20),
-        _resultRow('Base Salary', 'Rs. ${calc.baseSalary.toStringAsFixed(0)}'),
+        _resultRow(lang.isEnglish ? 'Base Salary' : 'بنیادی تنخواہ', 'Rs. ${calc.baseSalary.toStringAsFixed(0)}'),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.all(14),
@@ -519,8 +585,10 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            const Text('Calculated Salary',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            Text(
+              lang.isEnglish ? 'Calculated Salary' : 'حساب شدہ تنخواہ',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+            ),
             Text('Rs. ${calc.calculatedSalary.toStringAsFixed(0)}',
                 style: const TextStyle(
                     fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF10B981))),
@@ -547,6 +615,7 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
     required List<Map<String, dynamic>> items,
     required Map<String, double> selected,
     required bool isAdvance,
+    required LanguageProvider lang,
   }) {
     final totalSelected = selected.values.fold(0.0, (s, v) => s + v);
 
@@ -601,7 +670,9 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
               });
             },
             child: Text(
-              selected.length == items.length ? 'Deselect All' : 'Select All',
+              selected.length == items.length
+                  ? (lang.isEnglish ? 'Deselect All' : 'سب ہٹائیں')
+                  : (lang.isEnglish ? 'Select All' : 'سب منتخب کریں'),
               style: TextStyle(
                   fontSize: 12,
                   color: color,
@@ -622,6 +693,20 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
           final isChecked  = selected.containsKey(id);
           final deductAmt  = selected[id] ?? fullAmount;
           final isPartial  = isChecked && deductAmt < fullAmount;
+
+          // Translate category if needed
+          String? displayCategory = category;
+          if (category != null && !lang.isEnglish) {
+            final catMap = {
+              'Travel': 'سفر',
+              'Food': 'کھانا',
+              'Medical': 'طبی',
+              'Uniform': 'یونیفارم',
+              'Fine': 'جرمانہ',
+              'Other': 'دیگر',
+            };
+            displayCategory = catMap[category] ?? category;
+          }
 
           return Container(
             margin: const EdgeInsets.only(bottom: 8),
@@ -661,8 +746,8 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
-                    if (category != null) ...[
-                      _badge(category, color),
+                    if (displayCategory != null) ...[
+                      _badge(displayCategory, color),
                       const SizedBox(width: 6),
                     ],
                     Text(date,
@@ -697,7 +782,7 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
                         Text(
                           isPartial
                               ? 'Rs. ${deductAmt.toStringAsFixed(0)}'
-                              : 'Full',
+                              : (lang.isEnglish ? 'Full' : 'مکمل'),
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
@@ -711,8 +796,12 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
                       ]),
                     ),
                     if (isPartial)
-                      Text('of ${fullAmount.toStringAsFixed(0)}',
-                          style: TextStyle(fontSize: 10, color: Colors.grey[400])),
+                      Text(
+                        lang.isEnglish
+                            ? 'of ${fullAmount.toStringAsFixed(0)}'
+                            : 'از ${fullAmount.toStringAsFixed(0)}',
+                        style: TextStyle(fontSize: 10, color: Colors.grey[400]),
+                      ),
                   ]),
                 ),
               ],
@@ -724,7 +813,7 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
   }
 
   // ── Final summary card ────────────────────────────────────────────────────
-  Widget _buildFinalSummary(SalaryCalculation calc) {
+  Widget _buildFinalSummary(SalaryCalculation calc, LanguageProvider lang) {
     final net = (calc.calculatedSalary - _totalSelectedDeductions).clamp(0.0, double.infinity);
 
     return Container(
@@ -735,20 +824,22 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
         border: Border.all(color: const Color(0xFF7C3AED).withOpacity(0.25)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Payment Summary',
-            style: TextStyle(
-                fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
+        Text(
+          lang.isEnglish ? 'Payment Summary' : 'ادائیگی کا خلاصہ',
+          style: const TextStyle(
+              fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+        ),
         const SizedBox(height: 16),
 
-        _resultRow('Calculated Salary', 'Rs. ${calc.calculatedSalary.toStringAsFixed(0)}'),
+        _resultRow(lang.isEnglish ? 'Calculated Salary' : 'حساب شدہ تنخواہ', 'Rs. ${calc.calculatedSalary.toStringAsFixed(0)}'),
 
         if (_totalSelectedAdvance > 0)
-          _resultRow('Advance Deduction',
+          _resultRow(lang.isEnglish ? 'Advance Deduction' : 'ادوانس کٹوتی',
               '- Rs. ${_totalSelectedAdvance.toStringAsFixed(0)}',
               const Color(0xFF6366F1)),
 
         if (_totalSelectedExpense > 0)
-          _resultRow('Expense Deduction',
+          _resultRow(lang.isEnglish ? 'Expense Deduction' : 'خرچ کٹوتی',
               '- Rs. ${_totalSelectedExpense.toStringAsFixed(0)}',
               const Color(0xFFEF4444)),
 
@@ -761,9 +852,11 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            const Text('Net Payable',
-                style: TextStyle(
-                    color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+            Text(
+              lang.isEnglish ? 'Net Payable' : 'قابل ادائیگی',
+              style: const TextStyle(
+                  color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+            ),
             Text('Rs. ${net.toStringAsFixed(0)}',
                 style: const TextStyle(
                     color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
@@ -776,7 +869,7 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
           child: ElevatedButton.icon(
             onPressed: () => _savePayment(calc),
             icon: const Icon(Icons.save_outlined),
-            label: const Text('Save Payment'),
+            label: Text(lang.isEnglish ? 'Save Payment' : 'ادائیگی محفوظ کریں'),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF10B981),
               foregroundColor: Colors.white,
@@ -789,14 +882,17 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
     );
   }
 
-// ── Tab 2: History ────────────────────────────────────────────────────────
-  Widget _buildHistoryTab(EmployeeProvider provider) {
+  // ── Tab 2: History ────────────────────────────────────────────────────────
+  Widget _buildHistoryTab(EmployeeProvider provider, LanguageProvider lang) {
     if (provider.salaryHistory.isEmpty) {
       return Center(
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(Icons.history, size: 80, color: Colors.grey[300]),
           const SizedBox(height: 16),
-          Text('No payments yet', style: TextStyle(fontSize: 18, color: Colors.grey[500])),
+          Text(
+            lang.isEnglish ? 'No payments yet' : 'ابھی تک کوئی ادائیگی نہیں',
+            style: TextStyle(fontSize: 18, color: Colors.grey[500]),
+          ),
         ]),
       );
     }
@@ -807,7 +903,6 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
       itemBuilder: (ctx, i) {
         final p = provider.salaryHistory[i];
 
-        // Option 1: Swipe to delete (recommended)
         return Dismissible(
           key: Key(p.id.toString()),
           direction: DismissDirection.endToStart,
@@ -826,15 +921,17 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
               context: context,
               builder: (ctx) => AlertDialog(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                title: const Text('Delete Payment'),
+                title: Text(lang.isEnglish ? 'Delete Payment' : 'ادائیگی حذف کریں'),
                 content: Text(
-                  'Delete salary for period ${p.fromDate} → ${p.toDate}?\n\nThis will also revert any advances/expenses marked as recovered.',
+                  lang.isEnglish
+                      ? 'Delete salary for period ${p.fromDate} → ${p.toDate}?\n\nThis will also revert any advances/expenses marked as recovered.'
+                      : 'مدت ${p.fromDate} → ${p.toDate} کی تنخواہ حذف کریں؟\n\nاس سے واپس شدہ کے طور پر نشان زد کردہ کسی بھی ادوانس/اخراجات کو بھی بحال کر دیا جائے گا۔',
                   style: const TextStyle(fontSize: 14),
                 ),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('Cancel'),
+                    child: Text(lang.isEnglish ? 'Cancel' : 'منسوخ کریں'),
                   ),
                   ElevatedButton(
                     onPressed: () => Navigator.pop(ctx, true),
@@ -842,7 +939,7 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
                       backgroundColor: Colors.red,
                       foregroundColor: Colors.white,
                     ),
-                    child: const Text('Delete'),
+                    child: Text(lang.isEnglish ? 'Delete' : 'حذف کریں'),
                   ),
                 ],
               ),
@@ -855,12 +952,13 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(result['success'] ? 'Payment deleted!' : (result['message'] ?? 'Failed to delete')),
+                  content: Text(result['success']
+                      ? (lang.isEnglish ? 'Payment deleted!' : 'ادائیگی حذف ہو گئی!')
+                      : (result['message'] ?? (lang.isEnglish ? 'Failed to delete' : 'حذف کرنے میں ناکام'))),
                   backgroundColor: result['success'] ? const Color(0xFF10B981) : Colors.red,
                 ),
               );
               if (!result['success']) {
-                // Refresh to restore the item if deletion failed
                 await provider.loadSalaryHistory(widget.employee.id);
               }
             }
@@ -886,13 +984,12 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
                             fontSize: 16,
                             color: Color(0xFF10B981))),
                     const SizedBox(width: 12),
-                    // Delete button (optional, as alternative to swipe)
                     GestureDetector(
                       onTap: () => _deletePayment({
                         'id': p.id,
                         'from_date': p.fromDate,
                         'to_date': p.toDate,
-                      }),
+                      }, lang),
                       child: Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
@@ -912,19 +1009,18 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
                 _historyChip('${p.halfDays}H',    const Color(0xFFF59E0B)),
                 if (p.leaveDays > 0)
                   _historyChip('${p.leaveDays}L', const Color(0xFF8B5CF6)),
-                _historyChip('${p.totalDays} days', Colors.grey),
+                _historyChip('${p.totalDays} ${lang.isEnglish ? 'days' : 'دن'}', Colors.grey),
               ]),
-              // Show deductions if any
               if ((p.advanceDeduction ?? 0) > 0 || (p.expenseDeduction ?? 0) > 0) ...[
                 const SizedBox(height: 8),
                 Wrap(spacing: 8, children: [
                   if ((p.advanceDeduction ?? 0) > 0)
                     _historyChip(
-                        'Adv: -Rs. ${p.advanceDeduction!.toStringAsFixed(0)}',
+                        '${lang.isEnglish ? 'Adv' : 'ادوانس'}: -Rs. ${p.advanceDeduction!.toStringAsFixed(0)}',
                         const Color(0xFF6366F1)),
                   if ((p.expenseDeduction ?? 0) > 0)
                     _historyChip(
-                        'Exp: -Rs. ${p.expenseDeduction!.toStringAsFixed(0)}',
+                        '${lang.isEnglish ? 'Exp' : 'خرچ'}: -Rs. ${p.expenseDeduction!.toStringAsFixed(0)}',
                         const Color(0xFFEF4444)),
                 ]),
               ],
@@ -936,9 +1032,6 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
             ]),
           ),
         );
-
-        // Option 2: Just the delete button without swipe (simpler)
-        // Remove the Dismissible wrapper and just use the delete button inside the Row
       },
     );
   }
@@ -1004,24 +1097,24 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
     ),
   );
 
-  // In salary_screen.dart, update the _deletePayment method:
-
-  Future<void> _deletePayment(Map<String, dynamic> payment) async {
+  Future<void> _deletePayment(Map<String, dynamic> payment, LanguageProvider lang) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Delete Payment'),
+        title: Text(lang.isEnglish ? 'Delete Payment' : 'ادائیگی حذف کریں'),
         content: Text(
-          'Are you sure you want to delete salary payment for period\n'
+          lang.isEnglish
+              ? 'Are you sure you want to delete salary payment for period\n'
               '${payment['from_date']} → ${payment['to_date']}?\n\n'
-              'This will also revert any advances/expenses marked as recovered.',
+              'This will also revert any advances/expenses marked as recovered.'
+              : 'کیا آپ واقعی مدت ${payment['from_date']} → ${payment['to_date']} کی تنخواہ کی ادائیگی حذف کرنا چاہتے ہیں؟\n\nاس سے واپس شدہ کے طور پر نشان زد کردہ کسی بھی ادوانس/اخراجات کو بھی بحال کر دیا جائے گا۔',
           style: const TextStyle(fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(lang.isEnglish ? 'Cancel' : 'منسوخ کریں'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -1029,7 +1122,7 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
             ),
-            child: const Text('Delete'),
+            child: Text(lang.isEnglish ? 'Delete' : 'حذف کریں'),
           ),
         ],
       ),
@@ -1045,7 +1138,9 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result['success'] ? 'Payment deleted successfully!' : (result['message'] ?? 'Failed to delete payment')),
+            content: Text(result['success']
+                ? (lang.isEnglish ? 'Payment deleted successfully!' : 'ادائیگی کامیابی سے حذف ہو گئی!')
+                : (result['message'] ?? (lang.isEnglish ? 'Failed to delete payment' : 'ادائیگی حذف کرنے میں ناکام'))),
             backgroundColor: result['success'] ? const Color(0xFF10B981) : Colors.red,
           ),
         );
@@ -1053,7 +1148,7 @@ class _SalaryScreenState extends State<SalaryScreen> with SingleTickerProviderSt
     }
   }
 
-  Widget _dateBtn(String label, String value, VoidCallback onTap) => InkWell(
+  Widget _dateBtn(String label, String value, VoidCallback onTap, LanguageProvider lang) => InkWell(
     onTap: onTap,
     borderRadius: BorderRadius.circular(12),
     child: Container(

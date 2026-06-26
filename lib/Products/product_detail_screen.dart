@@ -104,12 +104,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
               final product = provider.selectedProduct!;
 
-              return Column(
-                children: [
-                  _buildHeader(product, languageProvider),
-                  _buildTabBar(languageProvider),
-                  Expanded(child: _buildTabContent(product, languageProvider)),
-                ],
+              // Use SingleChildScrollView to make the entire page scrollable
+              return SingleChildScrollView(
+                padding: const EdgeInsets.only(bottom: 24),
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeader(product, languageProvider),
+                    _buildTabBar(languageProvider),
+                    // Instead of Expanded, use a SizedBox with dynamic height
+                    // We'll let the content determine its own height
+                    _buildTabContent(product, languageProvider),
+                  ],
+                ),
               );
             },
           ),
@@ -718,17 +726,21 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ),
           ),
         ),
-        Expanded(
-          child: Consumer<ProductImageProvider>(
-            builder: (context, provider, child) {
-              if (provider.isLoading) {
-                return const Center(child: CircularProgressIndicator());
-              }
+        Consumer<ProductImageProvider>(
+          builder: (context, provider, child) {
+            if (provider.isLoading) {
+              return const SizedBox(
+                height: 200,
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
 
-              final images = provider.getImagesForProduct(product.id);
+            final images = provider.getImagesForProduct(product.id);
 
-              if (images.isEmpty) {
-                return Center(
+            if (images.isEmpty) {
+              return SizedBox(
+                height: 300,
+                child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -746,11 +758,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                               fontSize: 14, color: Colors.grey[500])),
                     ],
                   ),
-                );
-              }
+                ),
+              );
+            }
 
-              return GridView.builder(
+            return SizedBox(
+              height: 300, // Fixed height for the grid
+              child: GridView.builder(
                 padding: const EdgeInsets.all(16),
+                physics: const NeverScrollableScrollPhysics(), // Prevent internal scrolling
                 gridDelegate:
                 const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 5,
@@ -789,9 +805,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     ),
                   );
                 },
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
       ],
     );
@@ -914,9 +930,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     return Consumer<CustomerPriceProvider>(
       builder: (context, priceProvider, _) {
         if (priceProvider.isLoading) {
-          return const Center(
-              child: CircularProgressIndicator(
-                  color: Color(0xFF7C3AED)));
+          return const SizedBox(
+            height: 400,
+            child: Center(
+              child: CircularProgressIndicator(color: Color(0xFF7C3AED)),
+            ),
+          );
         }
 
         final prices = priceProvider.pricesForProduct(product.id);
@@ -1002,7 +1021,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 ),
               ),
             if (prices.isEmpty)
-              Expanded(
+              SizedBox(
+                height: 300,
                 child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -1044,31 +1064,36 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 ),
               )
             else
-              Expanded(
-                child: ListView(
-                  padding:
-                  const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                  children: [
-                    ...prices.take(5).map(
-                            (price) =>
-                            _buildCompactPriceRow(price, product, languageProvider)),
-                    if (prices.length > 5) ...[
-                      const SizedBox(height: 8),
-                      Center(
-                        child: TextButton(
-                          onPressed: () =>
-                              _navigateToCustomerPrices(product.id),
-                          child: Text(
-                              languageProvider.isEnglish
-                                  ? 'View all ${prices.length} prices →'
-                                  : 'تمام ${prices.length} قیمتیں دیکھیں →',
-                              style: const TextStyle(
-                                  color: Color(0xFF7C3AED))),
+              Column(
+                children: [
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+                    itemCount: prices.length > 5 ? 5 : prices.length,
+                    itemBuilder: (context, index) {
+                      final price = prices[index];
+                      return _buildCompactPriceRow(price, product, languageProvider);
+                    },
+                  ),
+                  if (prices.length > 5) ...[
+                    const SizedBox(height: 8),
+                    Center(
+                      child: TextButton(
+                        onPressed: () =>
+                            _navigateToCustomerPrices(product.id),
+                        child: Text(
+                          languageProvider.isEnglish
+                              ? 'View all ${prices.length} prices →'
+                              : 'تمام ${prices.length} قیمتیں دیکھیں →',
+                          style: const TextStyle(
+                              color: Color(0xFF7C3AED)),
                         ),
                       ),
-                    ],
+                    ),
+                    const SizedBox(height: 16),
                   ],
-                ),
+                ],
               ),
           ],
         );
@@ -1815,33 +1840,37 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
     final languageProvider = Provider.of<LanguageProvider>(context);
 
     if (_isLoading) {
-      return const Center(
-          child:
-          CircularProgressIndicator(color: Color(0xFF7C3AED)));
+      return const SizedBox(
+        height: 400,
+        child: Center(child: CircularProgressIndicator(color: Color(0xFF7C3AED))),
+      );
     }
 
     if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline,
-                size: 48, color: Color(0xFFFF6B6B)),
-            const SizedBox(height: 12),
-            Text(_error!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFF6B7280))),
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: _loadHistory,
-              icon: const Icon(Icons.refresh),
-              label: Text(languageProvider.isEnglish ? 'Retry' : 'دوبارہ کوشش کریں'),
-              style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF7C3AED),
-                  side:
-                  const BorderSide(color: Color(0xFF7C3AED))),
-            ),
-          ],
+      return SizedBox(
+        height: 400,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline,
+                  size: 48, color: Color(0xFFFF6B6B)),
+              const SizedBox(height: 12),
+              Text(_error!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Color(0xFF6B7280))),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: _loadHistory,
+                icon: const Icon(Icons.refresh),
+                label: Text(languageProvider.isEnglish ? 'Retry' : 'دوبارہ کوشش کریں'),
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF7C3AED),
+                    side:
+                    const BorderSide(color: Color(0xFF7C3AED))),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -1934,7 +1963,9 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
             ],
           ),
         ),
-        Expanded(
+        // Replace Expanded with a size-constrained container
+        SizedBox(
+          height: 400, // Fixed height for the tab content
           child: TabBarView(
             controller: _tabController,
             children: [
@@ -1954,14 +1985,28 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
           languageProvider.isEnglish ? 'Sales of this product will appear here' : 'اس پروڈکٹ کی فروخت یہاں ظاہر ہوگی',
           languageProvider);
     }
-    return RefreshIndicator(
-      onRefresh: _loadHistory,
-      color: const Color(0xFF7C3AED),
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        itemCount: _sales.length,
-        itemBuilder: (ctx, i) => _buildSaleCard(_sales[i], languageProvider),
-      ),
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _sales.length,
+      itemBuilder: (ctx, i) => _buildSaleCard(_sales[i], languageProvider),
+    );
+  }
+
+  Widget _buildPurchasesTab(LanguageProvider languageProvider) {
+    if (_purchases.isEmpty) {
+      return _buildEmpty(Icons.inventory_2_outlined,
+          languageProvider.isEnglish ? 'No purchase receipts yet' : 'ابھی تک کوئی خریداری رسید نہیں',
+          languageProvider.isEnglish ? 'Stock received for this product will appear here' : 'اس پروڈکٹ کے لیے موصول ہونے والا اسٹاک یہاں ظاہر ہوگا',
+          languageProvider);
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _purchases.length,
+      itemBuilder: (ctx, i) => _buildPurchaseCard(_purchases[i], languageProvider),
     );
   }
 
@@ -2116,24 +2161,6 @@ class _ProductHistoryTabState extends State<ProductHistoryTab>
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildPurchasesTab(LanguageProvider languageProvider) {
-    if (_purchases.isEmpty) {
-      return _buildEmpty(Icons.inventory_2_outlined,
-          languageProvider.isEnglish ? 'No purchase receipts yet' : 'ابھی تک کوئی خریداری رسید نہیں',
-          languageProvider.isEnglish ? 'Stock received for this product will appear here' : 'اس پروڈکٹ کے لیے موصول ہونے والا اسٹاک یہاں ظاہر ہوگا',
-          languageProvider);
-    }
-    return RefreshIndicator(
-      onRefresh: _loadHistory,
-      color: const Color(0xFF7C3AED),
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        itemCount: _purchases.length,
-        itemBuilder: (ctx, i) => _buildPurchaseCard(_purchases[i], languageProvider),
       ),
     );
   }

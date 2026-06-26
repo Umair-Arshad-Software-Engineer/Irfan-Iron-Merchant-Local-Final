@@ -1,7 +1,8 @@
 // lib/screens/purchases/add_edit_purchase_order_screen.dart
 import 'dart:typed_data';
-
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -49,15 +50,33 @@ class _AddEditPurchaseOrderScreenState
   double _totalAmount = 0;
 
   bool _isLoading = false;
+  bool _isSaving = false;
 
   final NumberFormat _currency = NumberFormat.currency(symbol: 'Rs ');
 
   DateTime _orderDate = DateTime.now();
 
+  // Web-specific controllers for responsive layout
+  final ScrollController _scrollController = ScrollController();
+  final FocusNode _barcodeFocusNode = FocusNode();
+  final FocusNode _shortcutFocusNode = FocusNode();
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadInitialData());
+
+    // Web-specific keyboard shortcuts
+    if (kIsWeb) {
+      _setupWebShortcuts();
+    }
+  }
+
+  void _setupWebShortcuts() {
+    // Use RawKeyboardListener correctly
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // We'll use Focus widget with onKey instead
+    });
   }
 
   @override
@@ -69,6 +88,9 @@ class _AddEditPurchaseOrderScreenState
     _discountController.dispose();
     _shippingController.dispose();
     _barcodeSearchController.dispose();
+    _barcodeFocusNode.dispose();
+    _scrollController.dispose();
+    _shortcutFocusNode.dispose();
     for (final row in _items) {
       row.dispose();
     }
@@ -78,6 +100,7 @@ class _AddEditPurchaseOrderScreenState
   void _showPrintOptions(Uint8List pdfData, String filename, LanguageProvider lp) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -100,47 +123,41 @@ class _AddEditPurchaseOrderScreenState
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
-            Row(
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
               children: [
-                Expanded(
-                  child: _buildPrintOption(
-                    icon: Icons.print,
-                    label: lp.isEnglish ? 'Print' : 'پرنٹ کریں',
-                    color: const Color(0xFF7C3AED),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      PurchasePdfGenerator.printPdf(pdfData);
-                    },
-                    lp: lp,
-                  ),
+                _buildPrintOption(
+                  icon: Icons.print,
+                  label: lp.isEnglish ? 'Print' : 'پرنٹ کریں',
+                  color: const Color(0xFF7C3AED),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    PurchasePdfGenerator.printPdf(pdfData);
+                  },
+                  lp: lp,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildPrintOption(
-                    icon: Icons.share,
-                    label: lp.isEnglish ? 'Share' : 'شیئر کریں',
-                    color: const Color(0xFF10B981),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      PurchasePdfGenerator.sharePdf(pdfData, filename);
-                    },
-                    lp: lp,
-                  ),
+                _buildPrintOption(
+                  icon: Icons.share,
+                  label: lp.isEnglish ? 'Share' : 'شیئر کریں',
+                  color: const Color(0xFF10B981),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    PurchasePdfGenerator.sharePdf(pdfData, filename);
+                  },
+                  lp: lp,
+                ),
+                _buildPrintOption(
+                  icon: Icons.visibility,
+                  label: lp.isEnglish ? 'Preview' : 'پیش نظارہ',
+                  color: const Color(0xFF3B82F6),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showPdfPreview(pdfData);
+                  },
+                  lp: lp,
                 ),
               ],
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: _buildPrintOption(
-                icon: Icons.visibility,
-                label: lp.isEnglish ? 'Preview' : 'پیش نظارہ',
-                color: const Color(0xFF3B82F6),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _showPdfPreview(pdfData);
-                },
-                lp: lp,
-              ),
             ),
             const SizedBox(height: 16),
             TextButton(
@@ -160,29 +177,33 @@ class _AddEditPurchaseOrderScreenState
     required VoidCallback onTap,
     required LanguageProvider lp,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.3)),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-                fontFamily: lp.fontFamily,
+    return SizedBox(
+      width: 100,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: color, size: 28),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  fontFamily: lp.fontFamily,
+                ),
+                textAlign: TextAlign.center,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -382,6 +403,16 @@ class _AddEditPurchaseOrderScreenState
   void _addEmptyRow() {
     setState(() {
       _items.add(PurchaseOrderItemRow.empty());
+      // Scroll to bottom on web
+      if (kIsWeb) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        });
+      }
     });
   }
 
@@ -462,17 +493,39 @@ class _AddEditPurchaseOrderScreenState
     });
   }
 
+  KeyEventResult _handleKeyEvent(KeyEvent event) {
+    if (event is KeyDownEvent) {
+      // Check for Ctrl (Windows/Linux) or Cmd (Mac)
+      final bool isCtrl = HardwareKeyboard.instance.isControlPressed ||
+          HardwareKeyboard.instance.isMetaPressed;
+
+      if (isCtrl && event.logicalKey == LogicalKeyboardKey.keyS) {
+        _saveOrder();
+        return KeyEventResult.handled;
+      }
+      if (isCtrl && event.logicalKey == LogicalKeyboardKey.keyP) {
+        _printPreview();
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.ignored;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<LanguageProvider>(
       builder: (context, languageProvider, _) {
         final isEditing = widget.orderId != null;
+        final screenSize = MediaQuery.of(context).size;
+        final isMobile = screenSize.width < 600;
+        final isTablet = screenSize.width >= 600 && screenSize.width < 1200;
+        final isDesktop = screenSize.width >= 1200;
 
         return Scaffold(
           backgroundColor: const Color(0xFFFAFAFC),
           appBar: AppBar(
             backgroundColor: Colors.white,
-            elevation: 0,
+            elevation: kIsWeb ? 1 : 0,
             leading: IconButton(
               icon: const Icon(Icons.close, color: Color(0xFF2D3142)),
               onPressed: () => Navigator.pop(context),
@@ -491,40 +544,254 @@ class _AddEditPurchaseOrderScreenState
                   onPressed: _printPreview,
                   tooltip: languageProvider.isEnglish ? 'Print Preview' : 'پرنٹ پیش نظارہ',
                 ),
-              TextButton(
-                onPressed: _isLoading ? null : _saveOrder,
-                child: Text(
-                  languageProvider.isEnglish ? 'Save' : 'محفوظ کریں',
-                  style: TextStyle(
-                    color: _isLoading ? Colors.grey : const Color(0xFF7C3AED),
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
+              if (isDesktop)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: ElevatedButton.icon(
+                    onPressed: _isLoading || _isSaving ? null : _saveOrder,
+                    icon: _isSaving
+                        ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                        : const Icon(Icons.save),
+                    label: Text(
+                      languageProvider.isEnglish ? 'Save' : 'محفوظ کریں',
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF7C3AED),
+                      foregroundColor: Colors.white,
+                    ),
                   ),
                 ),
-              ),
+              if (isMobile || isTablet)
+                TextButton(
+                  onPressed: _isLoading || _isSaving ? null : _saveOrder,
+                  child: Text(
+                    languageProvider.isEnglish ? 'Save' : 'محفوظ کریں',
+                    style: TextStyle(
+                      color: _isLoading || _isSaving ? Colors.grey : const Color(0xFF7C3AED),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              const SizedBox(width: 8),
             ],
-          ),
-          body: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildBasicInfoSection(languageProvider),
-                  const SizedBox(height: 20),
-                  _buildBarcodeSearchSection(languageProvider),
-                  const SizedBox(height: 20),
-                  _buildItemsTableSection(languageProvider),
-                  const SizedBox(height: 20),
-                  _buildTotalsSection(languageProvider),
-                  const SizedBox(height: 20),
-                  _buildAdditionalInfoSection(languageProvider),
-                  const SizedBox(height: 32),
-                ],
+            bottom: kIsWeb && isDesktop
+                ? PreferredSize(
+              preferredSize: const Size.fromHeight(1),
+              child: Container(
+                height: 1,
+                color: const Color(0xFFF0F0F5),
               ),
+            )
+                : null,
+          ),
+          body: KeyboardListener(
+            focusNode: _shortcutFocusNode,
+            onKeyEvent: _handleKeyEvent,
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : Row(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: _scrollController,
+                    padding: EdgeInsets.all(
+                      isMobile ? 16 : isTablet ? 24 : 32,
+                    ),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Two-column layout for desktop
+                          if (isDesktop) ...[
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: Column(
+                                    children: [
+                                      _buildBasicInfoSection(languageProvider),
+                                      const SizedBox(height: 20),
+                                      _buildAdditionalInfoSection(languageProvider),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 20),
+                                Expanded(
+                                  flex: 2,
+                                  child: Column(
+                                    children: [
+                                      _buildBarcodeSearchSection(languageProvider),
+                                      const SizedBox(height: 20),
+                                      _buildTotalsSection(languageProvider),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            _buildItemsTableSection(languageProvider),
+                          ] else ...[
+                            _buildBasicInfoSection(languageProvider),
+                            const SizedBox(height: 20),
+                            _buildBarcodeSearchSection(languageProvider),
+                            const SizedBox(height: 20),
+                            _buildItemsTableSection(languageProvider),
+                            const SizedBox(height: 20),
+                            _buildTotalsSection(languageProvider),
+                            const SizedBox(height: 20),
+                            _buildAdditionalInfoSection(languageProvider),
+                          ],
+                          const SizedBox(height: 32),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                // Sidebar for desktop - quick actions
+                if (isDesktop) ...[
+                  Container(
+                    width: 280,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border(
+                        left: BorderSide(
+                          color: const Color(0xFFF0F0F5),
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          languageProvider.isEnglish ? 'Quick Actions' : 'فوری کارروائیاں',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF2D3142),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildQuickActionButton(
+                          icon: Icons.add_shopping_cart,
+                          label: languageProvider.isEnglish ? 'Add Item' : 'آئٹم شامل کریں',
+                          color: const Color(0xFF7C3AED),
+                          onTap: _addEmptyRow,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildQuickActionButton(
+                          icon: Icons.qr_code_scanner,
+                          label: languageProvider.isEnglish ? 'Scan Barcode' : 'بارکوڈ اسکین کریں',
+                          color: const Color(0xFF3B82F6),
+                          onTap: () {
+                            _barcodeFocusNode.requestFocus();
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        _buildQuickActionButton(
+                          icon: Icons.print,
+                          label: languageProvider.isEnglish ? 'Print Preview' : 'پرنٹ پیش نظارہ',
+                          color: const Color(0xFF10B981),
+                          onTap: _selectedSupplierId != null && _items.isNotEmpty
+                              ? _printPreview
+                              : null,
+                        ),
+                        const SizedBox(height: 20),
+                        const Divider(),
+                        const SizedBox(height: 20),
+                        Text(
+                          languageProvider.isEnglish ? 'Summary' : 'خلاصہ',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF2D3142),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildSummaryLine(
+                          languageProvider.isEnglish ? 'Items' : 'اشیاء',
+                          _items.where((r) => r.selectedProductId != null).length.toString(),
+                        ),
+                        _buildSummaryLine(
+                          languageProvider.isEnglish ? 'Total' : 'کل',
+                          _currency.format(_totalAmount),
+                          isBold: true,
+                        ),
+                        const SizedBox(height: 20),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _isLoading || _isSaving ? null : _saveOrder,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF7C3AED),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            child: _isSaving
+                                ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                                : Text(
+                              languageProvider.isEnglish ? 'Save Order' : 'آرڈر محفوظ کریں',
+                            ),
+                          ),
+                        ),
+                        if (kIsWeb) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[50],
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '⌨️ ${languageProvider.isEnglish ? 'Keyboard Shortcuts' : 'کی بورڈ شارٹ کٹس'}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Ctrl+S ${languageProvider.isEnglish ? 'Save' : 'محفوظ کریں'}',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.grey[500],
+                                  ),
+                                ),
+                                Text(
+                                  'Ctrl+P ${languageProvider.isEnglish ? 'Print Preview' : 'پرنٹ پیش نظارہ'}',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.grey[500],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         );
@@ -532,152 +799,253 @@ class _AddEditPurchaseOrderScreenState
     );
   }
 
+  Widget _buildQuickActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    VoidCallback? onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withOpacity(0.2)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryLine(String label, String value, {bool isBold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                color: isBold ? const Color(0xFF2D3142) : const Color(0xFF6B7280),
+                fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 14,
+                color: isBold ? const Color(0xFF7C3AED) : const Color(0xFF2D3142),
+                fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ]
+      ),
+    );
+  }
+
   Widget _buildBasicInfoSection(LanguageProvider lp) {
+    final screenSize = MediaQuery.of(context).size;
+    final isMobile = screenSize.width < 600;
+
     return _buildCard(
       lp.isEnglish ? 'Basic Information' : 'بنیادی معلومات',
       lp,
-      child: Column(
+      child: isMobile
+          ? Column(
         children: [
-          Consumer<SupplierProvider>(
-            builder: (context, provider, _) {
-              return DropdownButtonFormField<int?>(
-                value: _selectedSupplierId,
-                decoration: InputDecoration(
-                  labelText: lp.isEnglish ? 'Supplier *' : 'سپلائر *',
-                  border: const OutlineInputBorder(),
-                  prefixIcon: const Icon(Icons.business),
-                ),
-                items: [
-                  DropdownMenuItem<int?>(
-                    value: null,
-                    child: Text(
-                      lp.isEnglish ? 'Select Supplier' : 'سپلائر منتخب کریں',
-                      style: const TextStyle(color: Colors.black),
-                    ),
-                  ),
-                  ...provider.suppliers.map(
-                        (s) => DropdownMenuItem<int?>(
-                      value: s.id,
-                      child: Text(
-                        s.name,
-                        style: const TextStyle(color: Colors.black),
-                      ),
-                    ),
-                  ),
-                ],
-                onChanged: (v) => setState(() {
-                  _selectedSupplierId = v;
-                  if (v != null) {
-                    final supplierProvider =
-                    Provider.of<SupplierProvider>(context, listen: false);
-                    final supplier =
-                    supplierProvider.suppliers.firstWhere((s) => s.id == v);
-                    for (final row in _items) {
-                      row.discountController.text =
-                          supplier.discountPercent.toStringAsFixed(2);
-                    }
-                    _recalculate();
-                  }
-                }),
-                validator: (v) => v == null
-                    ? (lp.isEnglish
-                    ? 'Supplier required'
-                    : 'سپلائر ضروری ہے')
-                    : null,
-                style: TextStyle(
-                  fontFamily: lp.fontFamily,
-                  color: Colors.black,
-                ),
-                dropdownColor: Colors.white,
-                iconEnabledColor: Colors.black,
-              );
-            },
-          ),
+          _buildSupplierDropdown(lp),
           const SizedBox(height: 16),
-          InkWell(
-            onTap: () async {
-              final date = await showDatePicker(
-                context: context,
-                initialDate: _orderDate,
-                firstDate: DateTime(2020),
-                lastDate: DateTime.now().add(const Duration(days: 1)),
-                builder: (ctx, child) => Theme(
-                  data: Theme.of(ctx).copyWith(
-                    colorScheme: const ColorScheme.light(primary: Color(0xFF7C3AED)),
-                  ),
-                  child: child!,
-                ),
-              );
-              if (date != null) setState(() => _orderDate = date);
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-              decoration: BoxDecoration(
-                border: Border.all(color: const Color(0xFFD1D5DB)),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      '${lp.isEnglish ? 'Order Date' : 'آرڈر کی تاریخ'}: ${DateFormat('MMM dd, yyyy').format(_orderDate)}',
-                      style: const TextStyle(color: Colors.black87),
-                    ),
-                  ),
-                  const Icon(Icons.arrow_drop_down, color: Colors.grey),
-                ],
-              ),
-            ),
-          ),
+          _buildOrderDatePicker(lp),
           const SizedBox(height: 16),
-          InkWell(
-            onTap: () async {
-              final date = await showDatePicker(
-                context: context,
-                initialDate: _expectedDeliveryDate ??
-                    DateTime.now().add(const Duration(days: 7)),
-                firstDate: DateTime.now(),
-                lastDate: DateTime.now().add(const Duration(days: 365)),
-                builder: (ctx, child) => Theme(
-                  data: Theme.of(ctx).copyWith(
-                      colorScheme:
-                      const ColorScheme.light(primary: Color(0xFF7C3AED))),
-                  child: child!,
-                ),
-              );
-              if (date != null) setState(() => _expectedDeliveryDate = date);
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-              decoration: BoxDecoration(
-                border: Border.all(color: const Color(0xFFD1D5DB)),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      _expectedDeliveryDate == null
-                          ? (lp.isEnglish ? 'Expected Delivery Date (Optional)' : 'متوقع ترسیل کی تاریخ (اختیاری)')
-                          : '${lp.isEnglish ? 'Expected' : 'متوقع'}: ${DateFormat('MMM dd, yyyy').format(_expectedDeliveryDate!)}',
-                      style: TextStyle(
-                        color: _expectedDeliveryDate == null
-                            ? Colors.grey[600]
-                            : Colors.black87,
-                        fontFamily: lp.fontFamily,
-                      ),
-                    ),
-                  ),
-                  const Icon(Icons.arrow_drop_down, color: Colors.grey),
-                ],
-              ),
-            ),
+          _buildDeliveryDatePicker(lp),
+        ],
+      )
+          : Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 2,
+            child: _buildSupplierDropdown(lp),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: _buildOrderDatePicker(lp),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: _buildDeliveryDatePicker(lp),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSupplierDropdown(LanguageProvider lp) {
+    return Consumer<SupplierProvider>(
+      builder: (context, provider, _) {
+        return DropdownButtonFormField<int?>(
+          value: _selectedSupplierId,
+          decoration: InputDecoration(
+            labelText: lp.isEnglish ? 'Supplier *' : 'سپلائر *',
+            border: const OutlineInputBorder(),
+            prefixIcon: const Icon(Icons.business),
+            filled: true,
+            fillColor: const Color(0xFFF9FAFB),
+          ),
+          items: [
+            DropdownMenuItem<int?>(
+              value: null,
+              child: Text(
+                lp.isEnglish ? 'Select Supplier' : 'سپلائر منتخب کریں',
+                style: const TextStyle(color: Colors.black),
+              ),
+            ),
+            ...provider.suppliers.map(
+                  (s) => DropdownMenuItem<int?>(
+                value: s.id,
+                child: Text(
+                  s.name,
+                  style: const TextStyle(color: Colors.black),
+                ),
+              ),
+            ),
+          ],
+          onChanged: (v) => setState(() {
+            _selectedSupplierId = v;
+            if (v != null) {
+              final supplierProvider =
+              Provider.of<SupplierProvider>(context, listen: false);
+              final supplier =
+              supplierProvider.suppliers.firstWhere((s) => s.id == v);
+              for (final row in _items) {
+                row.discountController.text =
+                    supplier.discountPercent.toStringAsFixed(2);
+              }
+              _recalculate();
+            }
+          }),
+          validator: (v) => v == null
+              ? (lp.isEnglish
+              ? 'Supplier required'
+              : 'سپلائر ضروری ہے')
+              : null,
+          style: TextStyle(
+            fontFamily: lp.fontFamily,
+            color: Colors.black,
+          ),
+          dropdownColor: Colors.white,
+          iconEnabledColor: Colors.black,
+        );
+      },
+    );
+  }
+
+  Widget _buildOrderDatePicker(LanguageProvider lp) {
+    return InkWell(
+      onTap: () async {
+        final date = await showDatePicker(
+          context: context,
+          initialDate: _orderDate,
+          firstDate: DateTime(2020),
+          lastDate: DateTime.now().add(const Duration(days: 1)),
+          builder: (ctx, child) => Theme(
+            data: Theme.of(ctx).copyWith(
+              colorScheme: const ColorScheme.light(primary: Color(0xFF7C3AED)),
+            ),
+            child: child!,
+          ),
+        );
+        if (date != null) setState(() => _orderDate = date);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFFD1D5DB)),
+          borderRadius: BorderRadius.circular(8),
+          color: const Color(0xFFF9FAFB),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '${lp.isEnglish ? 'Order Date' : 'آرڈر کی تاریخ'}: ${DateFormat('MMM dd, yyyy').format(_orderDate)}',
+                style: const TextStyle(color: Colors.black87),
+              ),
+            ),
+            const Icon(Icons.arrow_drop_down, color: Colors.grey),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDeliveryDatePicker(LanguageProvider lp) {
+    return InkWell(
+      onTap: () async {
+        final date = await showDatePicker(
+          context: context,
+          initialDate: _expectedDeliveryDate ??
+              DateTime.now().add(const Duration(days: 7)),
+          firstDate: DateTime.now(),
+          lastDate: DateTime.now().add(const Duration(days: 365)),
+          builder: (ctx, child) => Theme(
+            data: Theme.of(ctx).copyWith(
+              colorScheme: const ColorScheme.light(primary: Color(0xFF7C3AED)),
+            ),
+            child: child!,
+          ),
+        );
+        if (date != null) setState(() => _expectedDeliveryDate = date);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFFD1D5DB)),
+          borderRadius: BorderRadius.circular(8),
+          color: const Color(0xFFF9FAFB),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _expectedDeliveryDate == null
+                    ? (lp.isEnglish ? 'Expected Delivery Date (Optional)' : 'متوقع ترسیل کی تاریخ (اختیاری)')
+                    : '${lp.isEnglish ? 'Expected' : 'متوقع'}: ${DateFormat('MMM dd, yyyy').format(_expectedDeliveryDate!)}',
+                style: TextStyle(
+                  color: _expectedDeliveryDate == null
+                      ? Colors.grey[600]
+                      : Colors.black87,
+                  fontFamily: lp.fontFamily,
+                ),
+              ),
+            ),
+            const Icon(Icons.arrow_drop_down, color: Colors.grey),
+          ],
+        ),
       ),
     );
   }
@@ -699,6 +1067,7 @@ class _AddEditPurchaseOrderScreenState
                 Expanded(
                   child: TextField(
                     controller: _barcodeSearchController,
+                    focusNode: _barcodeFocusNode,
                     style: TextStyle(fontFamily: lp.fontFamily),
                     decoration: InputDecoration(
                       hintText: lp.isEnglish ? 'Scan or enter barcode...' : 'بارکوڈ اسکین کریں یا درج کریں...',
@@ -727,8 +1096,21 @@ class _AddEditPurchaseOrderScreenState
                           horizontal: 16, vertical: 12),
                     ),
                     onChanged: _searchByBarcode,
+                    onSubmitted: (value) {
+                      if (value.isNotEmpty && _barcodeSearchResults.isNotEmpty) {
+                        _addItemFromBarcode(_barcodeSearchResults.first);
+                      }
+                    },
                   ),
                 ),
+                if (kIsWeb)
+                  Tooltip(
+                    message: lp.isEnglish ? 'Press Enter to add first result' : 'پہلا نتیجہ شامل کرنے کے لیے Enter دبائیں',
+                    child: const Padding(
+                      padding: EdgeInsets.only(right: 8),
+                      child: Icon(Icons.info_outline, size: 16, color: Colors.grey),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -814,32 +1196,40 @@ class _AddEditPurchaseOrderScreenState
   }
 
   Widget _buildItemsTableSection(LanguageProvider lp) {
+    final screenSize = MediaQuery.of(context).size;
+    final isMobile = screenSize.width < 600;
+    final isTablet = screenSize.width >= 600 && screenSize.width < 900;
+
     return _buildCard(
       lp.isEnglish ? 'Order Items' : 'آرڈر کی اشیاء',
       lp,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFFF3F4F6),
-              borderRadius: BorderRadius.circular(8),
+          // Table header - responsive
+          if (!isMobile)
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF3F4F6),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  const SizedBox(width: 32),
+                  _headerCell(lp.isEnglish ? 'Product' : 'پروڈکٹ', flex: isTablet ? 3 : 4, lp: lp),
+                  _headerCell(lp.isEnglish ? 'Qty' : 'مقدار', flex: isTablet ? 1 : 2, lp: lp),
+                  if (!isTablet) _headerCell(lp.isEnglish ? 'Unit' : 'یونٹ', flex: 2, lp: lp),
+                  _headerCell(lp.isEnglish ? 'Unit Cost' : 'فی یونٹ لاگت', flex: isTablet ? 2 : 3, lp: lp),
+                  if (!isTablet) ...[
+                    _headerCell(lp.isEnglish ? 'Disc %' : 'چھوٹ %', flex: 2, lp: lp),
+                    _headerCell(lp.isEnglish ? 'Tax %' : 'ٹیکس %', flex: 2, lp: lp),
+                  ],
+                  _headerCell(lp.isEnglish ? 'Line Total' : 'لائن کل', flex: isTablet ? 2 : 3, lp: lp),
+                  const SizedBox(width: 36),
+                ],
+              ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                const SizedBox(width: 32),
-                _headerCell(lp.isEnglish ? 'Product' : 'پروڈکٹ', flex: 4, lp: lp),
-                _headerCell(lp.isEnglish ? 'Qty' : 'مقدار', flex: 2, lp: lp),
-                _headerCell(lp.isEnglish ? 'Unit' : 'یونٹ', flex: 2, lp: lp),
-                _headerCell(lp.isEnglish ? 'Unit Cost' : 'فی یونٹ لاگت', flex: 3, lp: lp),
-                _headerCell(lp.isEnglish ? 'Disc %' : 'چھوٹ %', flex: 2, lp: lp),
-                _headerCell(lp.isEnglish ? 'Tax %' : 'ٹیکس %', flex: 2, lp: lp),
-                _headerCell(lp.isEnglish ? 'Line Total' : 'لائن کل', flex: 3, lp: lp),
-                const SizedBox(width: 36),
-              ],
-            ),
-          ),
           const SizedBox(height: 4),
 
           if (_items.isEmpty)
@@ -863,7 +1253,7 @@ class _AddEditPurchaseOrderScreenState
                 return Column(
                   children: _items.asMap().entries.map((entry) {
                     return _buildTableRow(
-                        entry.key, entry.value, productProvider, lp);
+                        entry.key, entry.value, productProvider, lp, isMobile, isTablet);
                   }).toList(),
                 );
               },
@@ -938,7 +1328,13 @@ class _AddEditPurchaseOrderScreenState
   }
 
   Widget _buildTableRow(
-      int index, PurchaseOrderItemRow row, ProductProvider productProvider, LanguageProvider lp) {
+      int index,
+      PurchaseOrderItemRow row,
+      ProductProvider productProvider,
+      LanguageProvider lp,
+      bool isMobile,
+      bool isTablet,
+      ) {
     final qty = double.tryParse(row.quantityController.text) ?? 0;
     final cost = double.tryParse(row.unitCostController.text) ?? 0;
     final discountPercent = double.tryParse(row.discountController.text) ?? 0;
@@ -947,6 +1343,10 @@ class _AddEditPurchaseOrderScreenState
     final subtotal = qty * cost;
     final afterDiscount = subtotal * (1 - discountPercent / 100);
     final lineTotal = afterDiscount * (1 + taxPercent / 100);
+
+    if (isMobile) {
+      return _buildMobileTableRow(index, row, productProvider, lp, lineTotal);
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
@@ -971,13 +1371,13 @@ class _AddEditPurchaseOrderScreenState
           ),
 
           Expanded(
-            flex: 4,
+            flex: isTablet ? 3 : 4,
             child: _buildProductDropdown(row, productProvider, lp),
           ),
           const SizedBox(width: 6),
 
           Expanded(
-            flex: 2,
+            flex: isTablet ? 1 : 2,
             child: _buildCompactField(
               controller: row.quantityController,
               hint: '0',
@@ -986,32 +1386,33 @@ class _AddEditPurchaseOrderScreenState
               lp: lp,
             ),
           ),
-          const SizedBox(width: 6),
-
-          Expanded(
-            flex: 2,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF0F4FF),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                row.unitSymbol.isNotEmpty ? row.unitSymbol : '—',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF4B5563),
+          if (!isTablet) ...[
+            const SizedBox(width: 6),
+            Expanded(
+              flex: 2,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F4FF),
+                  borderRadius: BorderRadius.circular(6),
                 ),
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
+                child: Text(
+                  row.unitSymbol.isNotEmpty ? row.unitSymbol : '—',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF4B5563),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
               ),
             ),
-          ),
+          ],
           const SizedBox(width: 6),
 
           Expanded(
-            flex: 3,
+            flex: isTablet ? 2 : 3,
             child: _buildCompactField(
               controller: row.unitCostController,
               hint: '0.00',
@@ -1021,36 +1422,36 @@ class _AddEditPurchaseOrderScreenState
               lp: lp,
             ),
           ),
-          const SizedBox(width: 6),
-
-          Expanded(
-            flex: 2,
-            child: _buildCompactField(
-              controller: row.discountController,
-              hint: '0',
-              suffix: '%',
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              onChanged: (_) => _recalculate(),
-              lp: lp,
+          if (!isTablet) ...[
+            const SizedBox(width: 6),
+            Expanded(
+              flex: 2,
+              child: _buildCompactField(
+                controller: row.discountController,
+                hint: '0',
+                suffix: '%',
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => _recalculate(),
+                lp: lp,
+              ),
             ),
-          ),
-          const SizedBox(width: 6),
-
-          Expanded(
-            flex: 2,
-            child: _buildCompactField(
-              controller: row.taxController,
-              hint: '0',
-              suffix: '%',
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              onChanged: (_) => _recalculate(),
-              lp: lp,
+            const SizedBox(width: 6),
+            Expanded(
+              flex: 2,
+              child: _buildCompactField(
+                controller: row.taxController,
+                hint: '0',
+                suffix: '%',
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => _recalculate(),
+                lp: lp,
+              ),
             ),
-          ),
+          ],
           const SizedBox(width: 6),
 
           Expanded(
-            flex: 3,
+            flex: isTablet ? 2 : 3,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
               decoration: BoxDecoration(
@@ -1086,6 +1487,168 @@ class _AddEditPurchaseOrderScreenState
     );
   }
 
+  Widget _buildMobileTableRow(
+      int index,
+      PurchaseOrderItemRow row,
+      ProductProvider productProvider,
+      LanguageProvider lp,
+      double lineTotal,
+      ) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFF0F0F5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                '${index + 1}.',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[600],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildProductDropdown(row, productProvider, lp),
+              ),
+              IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                icon: const Icon(Icons.remove_circle_outline,
+                    size: 20, color: Color(0xFFEF4444)),
+                onPressed: () => _removeRow(index),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildMobileField(
+                label: lp.isEnglish ? 'Qty' : 'مقدار',
+                controller: row.quantityController,
+                width: 60,
+                onChanged: (_) => _recalculate(),
+                lp: lp,
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F4FF),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  row.unitSymbol.isNotEmpty ? row.unitSymbol : '—',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF4B5563),
+                  ),
+                ),
+              ),
+              _buildMobileField(
+                label: lp.isEnglish ? 'Unit Cost' : 'فی یونٹ لاگت',
+                controller: row.unitCostController,
+                width: 80,
+                prefix: 'Rs ',
+                onChanged: (_) => _recalculate(),
+                lp: lp,
+              ),
+              _buildMobileField(
+                label: 'Disc %',
+                controller: row.discountController,
+                width: 60,
+                onChanged: (_) => _recalculate(),
+                lp: lp,
+              ),
+              _buildMobileField(
+                label: 'Tax %',
+                controller: row.taxController,
+                width: 60,
+                onChanged: (_) => _recalculate(),
+                lp: lp,
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  '${lp.isEnglish ? 'Total' : 'کل'}: ${_currency.format(lineTotal)}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF059669),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileField({
+    required String label,
+    required TextEditingController controller,
+    required double width,
+    String? prefix,
+    void Function(String)? onChanged,
+    required LanguageProvider lp,
+  }) {
+    return SizedBox(
+      width: width,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: Colors.grey[600],
+              fontFamily: lp.fontFamily,
+            ),
+          ),
+          TextField(
+            controller: controller,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: TextStyle(fontSize: 12, fontFamily: lp.fontFamily),
+            onChanged: onChanged,
+            decoration: InputDecoration(
+              prefixText: prefix,
+              prefixStyle: const TextStyle(fontSize: 10, color: Colors.grey),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              isDense: true,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(4),
+                borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(4),
+                borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(4),
+                borderSide: const BorderSide(color: Color(0xFF7C3AED), width: 1.5),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildProductDropdown(
       PurchaseOrderItemRow row, ProductProvider productProvider, LanguageProvider lp) {
     return Container(
@@ -1103,6 +1666,7 @@ class _AddEditPurchaseOrderScreenState
               style: const TextStyle(fontSize: 12, color: Colors.grey)),
           style: const TextStyle(fontSize: 12, color: Color(0xFF2D3142)),
           icon: const Icon(Icons.keyboard_arrow_down, size: 16),
+          dropdownColor: Colors.white,
           items: [
             DropdownMenuItem<int?>(
                 value: null,
@@ -1188,41 +1752,70 @@ class _AddEditPurchaseOrderScreenState
   }
 
   Widget _buildTotalsSection(LanguageProvider lp) {
+    final screenSize = MediaQuery.of(context).size;
+    final isMobile = screenSize.width < 600;
+
     return _buildCard(
       lp.isEnglish ? 'Order Totals' : 'آرڈر کے کل',
       lp,
       child: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: _buildLabeledField(
+          if (!isMobile)
+            Row(
+              children: [
+                Expanded(
+                  child: _buildLabeledField(
+                    label: lp.isEnglish ? 'Tax Amount' : 'ٹیکس کی رقم',
+                    controller: _taxController,
+                    onChanged: (_) => _recalculate(),
+                    lp: lp,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildLabeledField(
+                    label: lp.isEnglish ? 'Discount' : 'چھوٹ',
+                    controller: _discountController,
+                    onChanged: (_) => _recalculate(),
+                    lp: lp,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildLabeledField(
+                    label: lp.isEnglish ? 'Shipping' : 'شپنگ',
+                    controller: _shippingController,
+                    onChanged: (_) => _recalculate(),
+                    lp: lp,
+                  ),
+                ),
+              ],
+            )
+          else
+            Column(
+              children: [
+                _buildLabeledField(
                   label: lp.isEnglish ? 'Tax Amount' : 'ٹیکس کی رقم',
                   controller: _taxController,
                   onChanged: (_) => _recalculate(),
                   lp: lp,
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildLabeledField(
+                const SizedBox(height: 12),
+                _buildLabeledField(
                   label: lp.isEnglish ? 'Discount' : 'چھوٹ',
                   controller: _discountController,
                   onChanged: (_) => _recalculate(),
                   lp: lp,
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildLabeledField(
+                const SizedBox(height: 12),
+                _buildLabeledField(
                   label: lp.isEnglish ? 'Shipping' : 'شپنگ',
                   controller: _shippingController,
                   onChanged: (_) => _recalculate(),
                   lp: lp,
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(16),
@@ -1333,10 +1926,14 @@ class _AddEditPurchaseOrderScreenState
   }
 
   Widget _buildAdditionalInfoSection(LanguageProvider lp) {
+    final screenSize = MediaQuery.of(context).size;
+    final isMobile = screenSize.width < 600;
+
     return _buildCard(
       lp.isEnglish ? 'Additional Information' : 'اضافی معلومات',
       lp,
-      child: Column(
+      child: isMobile
+          ? Column(
         children: [
           TextFormField(
             controller: _notesController,
@@ -1370,6 +1967,52 @@ class _AddEditPurchaseOrderScreenState
               alignLabelWithHint: true,
             ),
             maxLines: 2,
+          ),
+        ],
+      )
+          : Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: TextFormField(
+              controller: _notesController,
+              style: TextStyle(fontFamily: lp.fontFamily),
+              decoration: InputDecoration(
+                labelText: lp.isEnglish ? 'Notes' : 'نوٹس',
+                hintText: lp.isEnglish ? 'Any additional notes...' : 'کوئی اضافی نوٹس...',
+                border: const OutlineInputBorder(),
+                alignLabelWithHint: true,
+              ),
+              maxLines: 3,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              children: [
+                TextFormField(
+                  controller: _paymentTermsController,
+                  style: TextStyle(fontFamily: lp.fontFamily),
+                  decoration: InputDecoration(
+                    labelText: lp.isEnglish ? 'Payment Terms' : 'ادائیگی کی شرائط',
+                    hintText: lp.isEnglish ? 'e.g., Net 30' : 'مثال: نیٹ 30',
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _termsController,
+                  style: TextStyle(fontFamily: lp.fontFamily),
+                  decoration: InputDecoration(
+                    labelText: lp.isEnglish ? 'Terms & Conditions' : 'شرائط و ضوابط',
+                    hintText: lp.isEnglish ? 'Any terms and conditions...' : 'کوئی شرائط و ضوابط...',
+                    border: const OutlineInputBorder(),
+                    alignLabelWithHint: true,
+                  ),
+                  maxLines: 2,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1423,7 +2066,7 @@ class _AddEditPurchaseOrderScreenState
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() => _isSaving = true);
 
     final orderData = {
       'supplier_id': _selectedSupplierId,
@@ -1464,6 +2107,7 @@ class _AddEditPurchaseOrderScreenState
               ? (lp.isEnglish ? 'Order updated successfully' : 'آرڈر کامیابی سے اپ ڈیٹ ہوگیا')
               : (lp.isEnglish ? 'Order created successfully' : 'آرڈر کامیابی سے بن گیا')),
           backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
         ));
         Navigator.pop(context, true);
       } else {
@@ -1471,7 +2115,7 @@ class _AddEditPurchaseOrderScreenState
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() => _isSaving = false);
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('${lp.isEnglish ? 'Error' : 'خرابی'}: $e'), backgroundColor: Colors.red));
       }

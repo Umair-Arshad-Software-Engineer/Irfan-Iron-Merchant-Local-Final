@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/employee.dart';
 import '../models/attendance.dart';
 import '../providers/employee_provider.dart';
+import '../providers/lanprovider.dart';
 
 class AttendanceScreen extends StatefulWidget {
   final Employee employee;
@@ -18,6 +19,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   late int _currentYear;
 
   static const _months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  static const _monthsUrdu = ['جنوری','فروری','مارچ','اپریل','مئی','جون','جولائی','اگست','ستمبر','اکتوبر','نومبر','دسمبر'];
+  static const _days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  static const _daysUrdu = ['پیر','منگل','بدھ','جمعرات','جمعہ','ہفتہ','اتوار'];
 
   @override
   void initState() {
@@ -72,6 +76,24 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
+  String _statusFullLabel(AttendanceStatus s, LanguageProvider lang) {
+    switch (s) {
+      case AttendanceStatus.Present:  return lang.isEnglish ? 'Present' : 'حاضر';
+      case AttendanceStatus.Absent:   return lang.isEnglish ? 'Absent' : 'غائب';
+      case AttendanceStatus.Half_Day: return lang.isEnglish ? 'Half Day' : 'نصف دن';
+      case AttendanceStatus.Leave:    return lang.isEnglish ? 'Leave' : 'چھٹی';
+    }
+  }
+
+  IconData _statusIcon(AttendanceStatus s) {
+    switch (s) {
+      case AttendanceStatus.Present:  return Icons.check_circle_outline;
+      case AttendanceStatus.Absent:   return Icons.cancel_outlined;
+      case AttendanceStatus.Half_Day: return Icons.timelapse_outlined;
+      case AttendanceStatus.Leave:    return Icons.beach_access_outlined;
+    }
+  }
+
   // ── Mark/cycle attendance ───────────────────────────────────────────────
   Future<void> _toggleAttendance(DateTime date, AttendanceStatus? current) async {
     // Cycle: null -> Present -> Absent -> Half_Day -> Leave -> Present
@@ -91,6 +113,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   // ── Quick-set bottom sheet for a specific day ───────────────────────────
   void _showStatusPicker(DateTime date, AttendanceStatus? current) {
+    final lang = Provider.of<LanguageProvider>(context, listen: false);
+    final monthLabel = lang.isEnglish ? _months[date.month - 1] : _monthsUrdu[date.month - 1];
+    final dayLabel = lang.isEnglish ? _days[date.weekday - 1] : _daysUrdu[date.weekday - 1];
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -101,7 +127,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Mark ${_dayName(date)}, ${date.day} ${_months[date.month - 1]} $_currentYear',
+              lang.isEnglish
+                  ? 'Mark $dayLabel, ${date.day} $monthLabel $_currentYear'
+                  : '$dayLabel, ${date.day} $monthLabel $_currentYear کو نشان زد کریں',
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
             ),
             const SizedBox(height: 20),
@@ -127,7 +155,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       Icon(_statusIcon(s), color: isSelected ? Colors.white : color, size: 18),
                       const SizedBox(width: 8),
-                      Text(_statusFullLabel(s), style: TextStyle(
+                      Text(_statusFullLabel(s, lang), style: TextStyle(
                         fontWeight: FontWeight.w600,
                         color: isSelected ? Colors.white : color,
                       )),
@@ -141,29 +169,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         ),
       ),
     );
-  }
-
-  String _dayName(DateTime d) {
-    const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-    return days[d.weekday - 1];
-  }
-
-  IconData _statusIcon(AttendanceStatus s) {
-    switch (s) {
-      case AttendanceStatus.Present:  return Icons.check_circle_outline;
-      case AttendanceStatus.Absent:   return Icons.cancel_outlined;
-      case AttendanceStatus.Half_Day: return Icons.timelapse_outlined;
-      case AttendanceStatus.Leave:    return Icons.beach_access_outlined;
-    }
-  }
-
-  String _statusFullLabel(AttendanceStatus s) {
-    switch (s) {
-      case AttendanceStatus.Present:  return 'Present';
-      case AttendanceStatus.Absent:   return 'Absent';
-      case AttendanceStatus.Half_Day: return 'Half Day';
-      case AttendanceStatus.Leave:    return 'Leave';
-    }
   }
 
   // ── Compute summary from attendanceMap ──────────────────────────────────
@@ -185,6 +190,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final lang = Provider.of<LanguageProvider>(context);
+
     return Consumer<EmployeeProvider>(
       builder: (context, provider, _) {
         final map = provider.attendanceMap;
@@ -192,6 +199,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         final firstWeekday = DateTime(_currentYear, _currentMonth, 1).weekday; // 1=Mon
         final summary = _computeSummary(map, daysInMonth);
         final now = DateTime.now();
+        final monthLabel = lang.isEnglish ? _months[_currentMonth - 1] : _monthsUrdu[_currentMonth - 1];
 
         return Scaffold(
           backgroundColor: const Color(0xFFFAFAFC),
@@ -204,7 +212,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             ),
             title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(widget.employee.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
-              Text('Attendance', style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+              Text(
+                  lang.isEnglish ? 'Attendance' : 'حاضری',
+                  style: TextStyle(fontSize: 13, color: Colors.grey[600])
+              ),
             ]),
           ),
           body: provider.attendanceLoading
@@ -225,7 +236,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                       icon: const Icon(Icons.chevron_left, color: Color(0xFF7C3AED)),
                     ),
                     Text(
-                      '${_months[_currentMonth - 1]} $_currentYear',
+                      '$monthLabel $_currentYear',
                       style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
                     ),
                     IconButton(
@@ -242,13 +253,33 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
               // ── Summary cards ────────────────────────────────────
               Row(children: [
-                _summaryCard('Present',  summary['present']!.toString(), const Color(0xFF10B981), Icons.check_circle),
+                _summaryCard(
+                    lang.isEnglish ? 'Present' : 'حاضر',
+                    summary['present']!.toString(),
+                    const Color(0xFF10B981),
+                    Icons.check_circle
+                ),
                 const SizedBox(width: 8),
-                _summaryCard('Absent',   summary['absent']!.toString(),  const Color(0xFFEF4444), Icons.cancel),
+                _summaryCard(
+                    lang.isEnglish ? 'Absent' : 'غائب',
+                    summary['absent']!.toString(),
+                    const Color(0xFFEF4444),
+                    Icons.cancel
+                ),
                 const SizedBox(width: 8),
-                _summaryCard('Half Day', summary['halfDay']!.toString(), const Color(0xFFF59E0B), Icons.timelapse),
+                _summaryCard(
+                    lang.isEnglish ? 'Half Day' : 'نصف دن',
+                    summary['halfDay']!.toString(),
+                    const Color(0xFFF59E0B),
+                    Icons.timelapse
+                ),
                 const SizedBox(width: 8),
-                _summaryCard('Leave',    summary['leave']!.toString(),   const Color(0xFF8B5CF6), Icons.beach_access),
+                _summaryCard(
+                    lang.isEnglish ? 'Leave' : 'چھٹی',
+                    summary['leave']!.toString(),
+                    const Color(0xFF8B5CF6),
+                    Icons.beach_access
+                ),
               ]),
               const SizedBox(height: 16),
 
@@ -258,11 +289,21 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
                 child: Column(children: [
                   // Weekday headers
-                  Row(children: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
-                      .map((d) => Expanded(
-                    child: Center(child: Text(d, style: TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[500]))),
-                  )).toList()),
+                  Row(
+                      children: (lang.isEnglish ? _days : _daysUrdu)
+                          .map((d) => Expanded(
+                        child: Center(
+                          child: Text(
+                            d,
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[500]
+                            ),
+                          ),
+                        ),
+                      )).toList()
+                  ),
                   const SizedBox(height: 8),
 
                   // Day cells
@@ -305,7 +346,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                                 Text(_statusLabel(status), style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold)),
                               ],
                               if (!isFuture && status == null)
-                                const Text('A', style: TextStyle(fontSize: 9, color: Color(0xFFEF4444), fontWeight: FontWeight.bold)),
+                                Text(
+                                    lang.isEnglish ? 'A' : 'غ',
+                                    style: const TextStyle(fontSize: 9, color: Color(0xFFEF4444), fontWeight: FontWeight.bold)
+                                ),
                             ],
                           ),
                         ),
@@ -323,16 +367,37 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _legendItem(const Color(0xFF10B981), 'P', 'Present'),
-                    _legendItem(const Color(0xFFEF4444), 'A', 'Absent'),
-                    _legendItem(const Color(0xFFF59E0B), '½', 'Half Day'),
-                    _legendItem(const Color(0xFF8B5CF6), 'L', 'Leave'),
+                    _legendItem(
+                        const Color(0xFF10B981),
+                        'P',
+                        lang.isEnglish ? 'Present' : 'حاضر'
+                    ),
+                    _legendItem(
+                        const Color(0xFFEF4444),
+                        'A',
+                        lang.isEnglish ? 'Absent' : 'غائب'
+                    ),
+                    _legendItem(
+                        const Color(0xFFF59E0B),
+                        '½',
+                        lang.isEnglish ? 'Half Day' : 'نصف دن'
+                    ),
+                    _legendItem(
+                        const Color(0xFF8B5CF6),
+                        'L',
+                        lang.isEnglish ? 'Leave' : 'چھٹی'
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 12),
-              Text('Tap a day to mark attendance. Tap again to cycle status.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[400]), textAlign: TextAlign.center),
+              Text(
+                lang.isEnglish
+                    ? 'Tap a day to mark attendance. Tap again to cycle status.'
+                    : 'حاضری لگانے کے لیے دن پر ٹیپ کریں۔ حیثیت تبدیل کرنے کے لیے دوبارہ ٹیپ کریں۔',
+                style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+                textAlign: TextAlign.center,
+              ),
             ]),
           ),
         );

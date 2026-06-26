@@ -175,6 +175,7 @@ class CustomerInfo {
   final String? address;
   final String? email;
   final String customerType;
+  final double discountPercent;  // ✅ ADD
 
   CustomerInfo({
     required this.id,
@@ -183,9 +184,18 @@ class CustomerInfo {
     this.address,
     this.email,
     required this.customerType,
+    this.discountPercent = 0.0,  // ✅ ADD
   });
 
   factory CustomerInfo.fromJson(Map<String, dynamic> json) {
+    double toDoubleSafe(dynamic v) {
+      if (v == null) return 0.0;
+      if (v is double) return v;
+      if (v is int) return v.toDouble();
+      if (v is String) return double.tryParse(v) ?? 0.0;
+      return 0.0;
+    }
+
     return CustomerInfo(
       id: json['id'] ?? 0,
       name: json['name'] ?? '',
@@ -193,22 +203,22 @@ class CustomerInfo {
       address: json['address'],
       email: json['email'],
       customerType: json['customer_type'] ?? 'regular',
+      discountPercent: toDoubleSafe(json['discount_percent']),  // ✅ ADD
     );
   }
 }
 
-// In sale_model.dart — add to SaleItemModel class
 class SaleItemModel {
   final int id;
   final int? productId;
   final String productName;
+  final String? description;
   final String? barcode;
   final double unitPrice;
   final int quantity;
   final double totalPrice;
   final ProductInfo? product;
-
-  // ── New length fields ──
+  final bool usedCustomerPrice;  // ✅ ADD
   final List<String>? selectedLengths;
   final Map<String, dynamic>? lengthQuantities;
   final String? selectedLengthsDisplay;
@@ -219,11 +229,13 @@ class SaleItemModel {
     required this.id,
     this.productId,
     required this.productName,
+    this.description,
     this.barcode,
     required this.unitPrice,
     required this.quantity,
     required this.totalPrice,
     this.product,
+    this.usedCustomerPrice = false,  // ✅ ADD
     this.selectedLengths,
     this.lengthQuantities,
     this.selectedLengthsDisplay,
@@ -245,7 +257,6 @@ class SaleItemModel {
       return 0.0;
     }
 
-    // Parse selected_lengths (can be JSON string or List)
     List<String>? parsedLengths;
     final rawLengths = json['selected_lengths'];
     if (rawLengths is List) {
@@ -257,7 +268,6 @@ class SaleItemModel {
       } catch (_) {}
     }
 
-    // Parse length_quantities (can be JSON string or Map)
     Map<String, dynamic>? parsedQtys;
     final rawQtys = json['length_quantities'];
     if (rawQtys is Map) {
@@ -273,11 +283,13 @@ class SaleItemModel {
       id: json['id'] ?? 0,
       productId: json['product_id'],
       productName: json['product_name'] ?? '',
+      description: json['description'],
       barcode: json['barcode'],
       unitPrice: toDoubleSafe(json['unit_price']),
       quantity: json['quantity'] ?? 0,
       totalPrice: toDoubleSafe(json['total_price']),
       product: json['product'] != null ? ProductInfo.fromJson(json['product']) : null,
+      usedCustomerPrice: json['used_customer_price'] == true,  // ✅ ADD
       selectedLengths: parsedLengths,
       lengthQuantities: parsedQtys,
       selectedLengthsDisplay: json['selected_lengths_display'],

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/employee.dart';
 import '../models/advance_expense.dart';
 import '../providers/employee_provider.dart';
+import '../providers/lanprovider.dart';
 
 class AdvanceLedgerScreen extends StatefulWidget {
   final Employee employee;
@@ -30,6 +31,7 @@ class _AdvanceLedgerScreenState extends State<AdvanceLedgerScreen> {
 
   // ── Add / Edit dialog ────────────────────────────────────────────────────
   void _showDialog({AdvancePayment? existing}) {
+    final lang = Provider.of<LanguageProvider>(context, listen: false);
     final amtCtrl  = TextEditingController(text: existing?.amount.toStringAsFixed(0) ?? '');
     final descCtrl = TextEditingController(text: existing?.description ?? '');
     DateTime selectedDate = existing?.date ?? DateTime.now();
@@ -59,13 +61,17 @@ class _AdvanceLedgerScreenState extends State<AdvanceLedgerScreen> {
                       child: const Icon(Icons.payments_outlined, color: Colors.white),
                     ),
                     const SizedBox(width: 12),
-                    Text(existing == null ? 'Add Advance' : 'Edit Advance',
-                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
+                    Text(
+                      existing == null
+                          ? (lang.isEnglish ? 'Add Advance' : 'ادوانس شامل کریں')
+                          : (lang.isEnglish ? 'Edit Advance' : 'ادوانس میں ترمیم کریں'),
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+                    ),
                   ]),
                   const SizedBox(height: 20),
 
                   // Date picker
-                  _label('Date'),
+                  _label(lang.isEnglish ? 'Date' : 'تاریخ'),
                   InkWell(
                     onTap: () async {
                       final d = await showDatePicker(
@@ -96,21 +102,23 @@ class _AdvanceLedgerScreenState extends State<AdvanceLedgerScreen> {
                   const SizedBox(height: 12),
 
                   // Amount
-                  _label('Amount (Rs.)'),
+                  _label(lang.isEnglish ? 'Amount (Rs.)' : 'رقم (روپے)'),
                   TextFormField(
                     controller: amtCtrl,
                     keyboardType: TextInputType.number,
                     decoration: _inputDec(Icons.currency_rupee),
                     validator: (v) {
-                      if (v == null || v.isEmpty) return 'Required';
-                      if (double.tryParse(v) == null || double.parse(v) <= 0) return 'Enter valid amount';
+                      if (v == null || v.isEmpty) return lang.isEnglish ? 'Required' : 'ضروری';
+                      if (double.tryParse(v) == null || double.parse(v) <= 0) {
+                        return lang.isEnglish ? 'Enter valid amount' : 'درست رقم درج کریں';
+                      }
                       return null;
                     },
                   ),
                   const SizedBox(height: 12),
 
                   // Description
-                  _label('Description (optional)'),
+                  _label(lang.isEnglish ? 'Description (optional)' : 'تفصیل (اختیاری)'),
                   TextFormField(
                     controller: descCtrl,
                     maxLines: 2,
@@ -121,7 +129,10 @@ class _AdvanceLedgerScreenState extends State<AdvanceLedgerScreen> {
                   Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                     TextButton(
                       onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Cancel', style: TextStyle(color: Color(0xFF6B7280))),
+                      child: Text(
+                        lang.isEnglish ? 'Cancel' : 'منسوخ کریں',
+                        style: const TextStyle(color: Color(0xFF6B7280)),
+                      ),
                     ),
                     const SizedBox(width: 12),
                     ElevatedButton(
@@ -181,7 +192,7 @@ class _AdvanceLedgerScreenState extends State<AdvanceLedgerScreen> {
 
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text(res['message'] ?? 'Error'),
+                              content: Text(res['message'] ?? (lang.isEnglish ? 'Error' : 'خرابی')),
                               backgroundColor: Colors.red,
                             ),
                           );
@@ -199,7 +210,11 @@ class _AdvanceLedgerScreenState extends State<AdvanceLedgerScreen> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: Text(existing == null ? 'Add' : 'Update'),
+                      child: Text(
+                        existing == null
+                            ? (lang.isEnglish ? 'Add' : 'شامل کریں')
+                            : (lang.isEnglish ? 'Update' : 'اپ ڈیٹ کریں'),
+                      ),
                     )
                   ]),
                 ],
@@ -212,24 +227,44 @@ class _AdvanceLedgerScreenState extends State<AdvanceLedgerScreen> {
   }
 
   Future<void> _delete(AdvancePayment adv) async {
+    final lang = Provider.of<LanguageProvider>(context, listen: false);
+
     if (adv.status == AdvanceStatus.recovered) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cannot delete a recovered advance'), backgroundColor: Colors.orange),
+        SnackBar(
+          content: Text(
+              lang.isEnglish
+                  ? 'Cannot delete a recovered advance'
+                  : 'واپس شدہ ادوانس کو حذف نہیں کیا جا سکتا'
+          ),
+          backgroundColor: Colors.orange,
+        ),
       );
       return;
     }
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Delete Advance'),
-        content: Text('Delete advance of Rs. ${adv.amount.toStringAsFixed(0)}?'),
+        title: Text(lang.isEnglish ? 'Delete Advance' : 'ادوانس حذف کریں'),
+        content: Text(
+          lang.isEnglish
+              ? 'Delete advance of Rs. ${adv.amount.toStringAsFixed(0)}?'
+              : 'روپے ${adv.amount.toStringAsFixed(0)} کا ادوانس حذف کریں؟',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(lang.isEnglish ? 'Cancel' : 'منسوخ کریں'),
+          ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-            child: const Text('Delete'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(lang.isEnglish ? 'Delete' : 'حذف کریں'),
           ),
         ],
       ),
@@ -244,6 +279,8 @@ class _AdvanceLedgerScreenState extends State<AdvanceLedgerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final lang = Provider.of<LanguageProvider>(context);
+
     return Consumer<EmployeeProvider>(
       builder: (context, provider, _) {
         final advances = provider.advances;
@@ -261,13 +298,16 @@ class _AdvanceLedgerScreenState extends State<AdvanceLedgerScreen> {
             title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(widget.employee.name,
                   style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
-              const Text('Advance Payments', style: TextStyle(fontSize: 13, color: Color(0xFF6366F1))),
+              Text(
+                lang.isEnglish ? 'Advance Payments' : 'ادوانس ادائیگیاں',
+                style: const TextStyle(fontSize: 13, color: Color(0xFF6366F1)),
+              ),
             ]),
             actions: [
               IconButton(
                 icon: const Icon(Icons.add_circle, color: Color(0xFF6366F1), size: 28),
                 onPressed: () => _showDialog(),
-                tooltip: 'Add Advance',
+                tooltip: lang.isEnglish ? 'Add Advance' : 'ادوانس شامل کریں',
               ),
               const SizedBox(width: 8),
             ],
@@ -276,28 +316,28 @@ class _AdvanceLedgerScreenState extends State<AdvanceLedgerScreen> {
               ? const Center(child: CircularProgressIndicator())
               : Column(children: [
             // ── Summary banner ──────────────────────────────────────
-            if (summary != null) _buildSummaryBanner(summary),
+            if (summary != null) _buildSummaryBanner(summary, lang),
 
             // ── Filter chips ────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               child: Row(children: [
-                _filterChip('All',       'all'),
+                _filterChip(lang.isEnglish ? 'All' : 'تمام', 'all'),
                 const SizedBox(width: 8),
-                _filterChip('Pending',   'pending'),
+                _filterChip(lang.isEnglish ? 'Pending' : 'زیر التواء', 'pending'),
                 const SizedBox(width: 8),
-                _filterChip('Recovered', 'recovered'),
+                _filterChip(lang.isEnglish ? 'Recovered' : 'واپس شدہ', 'recovered'),
               ]),
             ),
 
             // ── Ledger list ─────────────────────────────────────────
             Expanded(
               child: advances.isEmpty
-                  ? _empty('No advance records found')
+                  ? _empty(lang)
                   : ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: advances.length,
-                itemBuilder: (_, i) => _buildRow(advances[i], i, advances.length),
+                itemBuilder: (_, i) => _buildRow(advances[i], i, advances.length, lang),
               ),
             ),
           ]),
@@ -307,7 +347,7 @@ class _AdvanceLedgerScreenState extends State<AdvanceLedgerScreen> {
   }
 
   // ── Summary banner ──────────────────────────────────────────────────────────
-  Widget _buildSummaryBanner(LedgerSummary s) => Container(
+  Widget _buildSummaryBanner(LedgerSummary s, LanguageProvider lang) => Container(
     margin: const EdgeInsets.all(16),
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
@@ -317,11 +357,11 @@ class _AdvanceLedgerScreenState extends State<AdvanceLedgerScreen> {
     child: Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        _bannerStat('Total Given',  s.totalAmount,    Colors.white),
+        _bannerStat(lang.isEnglish ? 'Total Given' : 'کل دیا گیا', s.totalAmount, Colors.white),
         _vDivider(),
-        _bannerStat('Recovered',    s.totalRecovered, const Color(0xFFA5F3FC)),
+        _bannerStat(lang.isEnglish ? 'Recovered' : 'واپس شدہ', s.totalRecovered, const Color(0xFFA5F3FC)),
         _vDivider(),
-        _bannerStat('Pending',      s.pendingBalance, const Color(0xFFFDE68A)),
+        _bannerStat(lang.isEnglish ? 'Pending' : 'زیر التواء', s.pendingBalance, const Color(0xFFFDE68A)),
       ],
     ),
   );
@@ -336,11 +376,15 @@ class _AdvanceLedgerScreenState extends State<AdvanceLedgerScreen> {
   Widget _vDivider() => Container(width: 1, height: 36, color: Colors.white.withOpacity(0.3));
 
   // ── Ledger row ──────────────────────────────────────────────────────────────
-  Widget _buildRow(AdvancePayment adv, int index, int total) {
+  Widget _buildRow(AdvancePayment adv, int index, int total, LanguageProvider lang) {
     final isPending   = adv.status == AdvanceStatus.pending;
     final statusColor = isPending ? const Color(0xFFF59E0B) : const Color(0xFF10B981);
     final isFirst     = index == 0;
     final isLast      = index == total - 1;
+
+    final statusLabel = isPending
+        ? (lang.isEnglish ? 'Pending' : 'زیر التواء')
+        : (lang.isEnglish ? 'Recovered' : 'واپس شدہ');
 
     return Container(
       margin: EdgeInsets.only(bottom: isLast ? 20 : 0),
@@ -390,7 +434,7 @@ class _AdvanceLedgerScreenState extends State<AdvanceLedgerScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
                             color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                        child: Text(isPending ? 'Pending' : 'Recovered',
+                        child: Text(statusLabel,
                             style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: statusColor)),
                       ),
                     ],
@@ -405,9 +449,9 @@ class _AdvanceLedgerScreenState extends State<AdvanceLedgerScreen> {
                   if (isPending) ...[
                     const SizedBox(height: 10),
                     Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                      _iconBtn(Icons.edit_outlined, const Color(0xFF6366F1), () => _showDialog(existing: adv)),
+                      _iconBtn(Icons.edit_outlined, const Color(0xFF6366F1), () => _showDialog(existing: adv), lang),
                       const SizedBox(width: 8),
-                      _iconBtn(Icons.delete_outline, const Color(0xFFEF4444), () => _delete(adv)),
+                      _iconBtn(Icons.delete_outline, const Color(0xFFEF4444), () => _delete(adv), lang),
                     ]),
                   ],
                 ]),
@@ -441,7 +485,7 @@ class _AdvanceLedgerScreenState extends State<AdvanceLedgerScreen> {
     );
   }
 
-  Widget _iconBtn(IconData icon, Color color, VoidCallback onTap) => InkWell(
+  Widget _iconBtn(IconData icon, Color color, VoidCallback onTap, LanguageProvider lang) => InkWell(
     onTap: onTap,
     borderRadius: BorderRadius.circular(8),
     child: Container(
@@ -451,16 +495,19 @@ class _AdvanceLedgerScreenState extends State<AdvanceLedgerScreen> {
     ),
   );
 
-  Widget _empty(String msg) => Center(
+  Widget _empty(LanguageProvider lang) => Center(
     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Icon(Icons.payments_outlined, size: 64, color: Colors.grey[300]),
       const SizedBox(height: 12),
-      Text(msg, style: TextStyle(color: Colors.grey[500], fontSize: 15)),
+      Text(
+        lang.isEnglish ? 'No advance records found' : 'کوئی ادوانس ریکارڈ نہیں ملا',
+        style: TextStyle(color: Colors.grey[500], fontSize: 15),
+      ),
       const SizedBox(height: 8),
       ElevatedButton.icon(
         onPressed: () => _showDialog(),
         icon: const Icon(Icons.add),
-        label: const Text('Add Advance'),
+        label: Text(lang.isEnglish ? 'Add Advance' : 'ادوانس شامل کریں'),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF6366F1), foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

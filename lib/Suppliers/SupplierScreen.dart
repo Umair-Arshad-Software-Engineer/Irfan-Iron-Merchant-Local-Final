@@ -25,6 +25,10 @@ class _C {
   static const red        = Color(0xFFEF4444);
   static const orange     = Color(0xFFF59E0B);
   static const blue       = Color(0xFF3B82F6);
+
+  // Breakpoints
+  static const double mobileBreakpoint = 600;
+  static const double tabletBreakpoint = 1024;
 }
 
 class SupplierScreen extends StatefulWidget {
@@ -41,6 +45,10 @@ class _SupplierScreenState extends State<SupplierScreen> {
   String _currentSearch = '';
   bool _hasInitialized = false;
 
+  // Responsive state
+  bool _isMobile = true;
+  bool _isTablet = false;
+
   // Sorting
   String _sortColumn = 'name';
   bool _sortAscending = true;
@@ -51,6 +59,7 @@ class _SupplierScreenState extends State<SupplierScreen> {
     _scrollController.addListener(_scrollListener);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _initializeData();
+      _updateResponsiveState();
     });
   }
 
@@ -59,6 +68,20 @@ class _SupplierScreenState extends State<SupplierScreen> {
     _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _updateResponsiveState() {
+    final width = MediaQuery.of(context).size.width;
+    setState(() {
+      _isMobile = width < _C.mobileBreakpoint;
+      _isTablet = width >= _C.mobileBreakpoint && width < _C.tabletBreakpoint;
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _updateResponsiveState();
   }
 
   Future<void> _initializeData() async {
@@ -169,36 +192,60 @@ class _SupplierScreenState extends State<SupplierScreen> {
 
                 return Scaffold(
                   backgroundColor: _C.bg,
-                  body: Column(
-                    children: [
-                      _Header(provider: provider, languageProvider: languageProvider),
-                      _SearchBar(
-                        controller: _searchController,
-                        currentSearch: _currentSearch,
-                        showActiveOnly: _showActiveOnly,
-                        onSearch: _handleSearch,
-                        onToggleActive: _toggleActiveFilter,
-                        onSort: _toggleSort,
-                        languageProvider: languageProvider,
-                      ),
-                      _TableHeader(
-                        sortColumn: _sortColumn,
-                        sortAscending: _sortAscending,
-                        onSort: _toggleSort,
-                        languageProvider: languageProvider,
-                      ),
-                      Expanded(
-                        child: RefreshIndicator(
-                          color: _C.brand,
-                          onRefresh: _refresh,
-                          child: _buildBody(provider, sorted, languageProvider),
+                  body: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final isWeb = constraints.maxWidth >= _C.tabletBreakpoint;
+                      return RefreshIndicator(
+                        color: _C.brand,
+                        onRefresh: _refresh,
+                        child: CustomScrollView(
+                          slivers: [
+                            SliverToBoxAdapter(
+                              child: Column(
+                                children: [
+                                  _Header(
+                                    provider: provider,
+                                    languageProvider: languageProvider,
+                                    isMobile: _isMobile,
+                                    isWeb: isWeb,
+                                  ),
+                                  _SearchBar(
+                                    controller: _searchController,
+                                    currentSearch: _currentSearch,
+                                    showActiveOnly: _showActiveOnly,
+                                    onSearch: _handleSearch,
+                                    onToggleActive: _toggleActiveFilter,
+                                    onSort: _toggleSort,
+                                    languageProvider: languageProvider,
+                                    isMobile: _isMobile,
+                                    isWeb: isWeb,
+                                  ),
+                                  if (!_isMobile)
+                                    _TableHeader(
+                                      sortColumn: _sortColumn,
+                                      sortAscending: _sortAscending,
+                                      onSort: _toggleSort,
+                                      languageProvider: languageProvider,
+                                      isWeb: isWeb,
+                                    ),
+                                ],
+                              ),
+                            ),
+                            SliverToBoxAdapter(
+                              child: _buildBodyWithSliver(provider, sorted, languageProvider, isWeb),
+                            ),
+                            SliverToBoxAdapter(
+                              child: SizedBox(height: _isMobile ? 80.0 : 32.0),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                   floatingActionButton: _AddFAB(
                     onPressed: () => _showAddSupplierDialog(languageProvider),
                     languageProvider: languageProvider,
+                    isMobile: _isMobile,
                   ),
                 );
               },
@@ -209,28 +256,55 @@ class _SupplierScreenState extends State<SupplierScreen> {
     );
   }
 
-  Widget _buildBody(SupplierProvider provider, List<Supplier> suppliers, LanguageProvider languageProvider) {
+  Widget _buildBodyWithSliver(SupplierProvider provider, List<Supplier> suppliers, LanguageProvider languageProvider, bool isWeb) {
     if (provider.isLoading && suppliers.isEmpty) {
-      return const Center(child: CircularProgressIndicator(color: _C.brand));
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(40.0),
+          child: Column(
+            children: [
+              const CircularProgressIndicator(color: _C.brand),
+              const SizedBox(height: 16),
+              Text(
+                languageProvider.isEnglish ? 'Loading suppliers...' : 'سپلائرز لوڈ ہو رہے ہیں...',
+                style: TextStyle(
+                  color: _C.text3,
+                  fontFamily: languageProvider.fontFamily,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
     if (suppliers.isEmpty) {
       return _EmptyState(
         hasSearch: _currentSearch.isNotEmpty,
         onAdd: () => _showAddSupplierDialog(languageProvider),
         languageProvider: languageProvider,
+        isWeb: isWeb,
       );
     }
+
+    final padding = isWeb
+        ? EdgeInsets.symmetric(horizontal: _getWebPadding(), vertical: 8.0)
+        : const EdgeInsets.fromLTRB(16, 8, 16, 16);
+
     return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       controller: _scrollController,
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 120),
+      padding: padding,
       itemCount: suppliers.length + 1,
       itemBuilder: (context, i) {
         if (i < suppliers.length) {
           return _SupplierRow(
             supplier: suppliers[i],
             index: i,
-            onTap:    () => _showSupplierDetails(suppliers[i], languageProvider),
-            onEdit:   () => _showEditSupplierDialog(suppliers[i], languageProvider),
+            isMobile: _isMobile,
+            isWeb: isWeb,
+            onTap: () => _showSupplierDetails(suppliers[i], languageProvider),
+            onEdit: () => _showEditSupplierDialog(suppliers[i], languageProvider),
             onToggle: () => _toggleSupplierStatus(suppliers[i]),
             onDelete: () => _deleteSupplier(suppliers[i], languageProvider),
             languageProvider: languageProvider,
@@ -244,6 +318,13 @@ class _SupplierScreenState extends State<SupplierScreen> {
             : const SizedBox(height: 16);
       },
     );
+  }
+
+  double _getWebPadding() {
+    final width = MediaQuery.of(context).size.width;
+    if (width > 1400) return 48;
+    if (width > 1200) return 32;
+    return 24;
   }
 
   Future<void> _showAddSupplierDialog(LanguageProvider languageProvider) async {
@@ -269,41 +350,87 @@ class _SupplierScreenState extends State<SupplierScreen> {
   }
 
   void _showSupplierDetails(Supplier supplier, LanguageProvider languageProvider) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => SupplierDetailsSheet(
-        supplier: supplier,
-        onEdit: () { Navigator.pop(context); _showEditSupplierDialog(supplier, languageProvider); },
-        onToggleStatus: () { Navigator.pop(context); _toggleSupplierStatus(supplier); },
-        onViewLedger: () {
-          Navigator.pop(context);
-          Navigator.push(context, MaterialPageRoute(
-            builder: (_) => SupplierLedgerScreen(supplier: supplier, languageProvider: languageProvider),
-          ));
-        },
-        onViewPayments: () {
-          Navigator.pop(context);
-          Navigator.push(context, MaterialPageRoute(
-            builder: (_) => SupplierPaymentsScreen(supplier: supplier, languageProvider: languageProvider),
-          ));
-        },
-        onPaySupplier: () async {
-          Navigator.pop(context);
-          final ok = await showDialog<bool>(
-            context: context,
-            builder: (_) => SupplierPaymentDialog(supplier: supplier, languageProvider: languageProvider),
-          );
-          if (ok == true) _showSnack(
-            languageProvider.isEnglish ? 'Payment recorded successfully' : 'ادائیگی کامیابی سے ریکارڈ ہوگئی',
-            _C.green,
-            languageProvider,
-          );
-        },
-        languageProvider: languageProvider,
-      ),
-    );
+    final isWeb = MediaQuery.of(context).size.width >= _C.tabletBreakpoint;
+
+    if (isWeb) {
+      showDialog(
+        context: context,
+        builder: (_) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 600, maxHeight: 700),
+            child: SupplierDetailsSheet(
+              supplier: supplier,
+              isWeb: true,
+              onEdit: () { Navigator.pop(context); _showEditSupplierDialog(supplier, languageProvider); },
+              onToggleStatus: () { Navigator.pop(context); _toggleSupplierStatus(supplier); },
+              onViewLedger: () {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => SupplierLedgerScreen(supplier: supplier, languageProvider: languageProvider),
+                ));
+              },
+              onViewPayments: () {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => SupplierPaymentsScreen(supplier: supplier, languageProvider: languageProvider),
+                ));
+              },
+              onPaySupplier: () async {
+                Navigator.pop(context);
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (_) => SupplierPaymentDialog(supplier: supplier, languageProvider: languageProvider),
+                );
+                if (ok == true) _showSnack(
+                  languageProvider.isEnglish ? 'Payment recorded successfully' : 'ادائیگی کامیابی سے ریکارڈ ہوگئی',
+                  _C.green,
+                  languageProvider,
+                );
+              },
+              languageProvider: languageProvider,
+            ),
+          ),
+        ),
+      );
+    } else {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => SupplierDetailsSheet(
+          supplier: supplier,
+          isWeb: false,
+          onEdit: () { Navigator.pop(context); _showEditSupplierDialog(supplier, languageProvider); },
+          onToggleStatus: () { Navigator.pop(context); _toggleSupplierStatus(supplier); },
+          onViewLedger: () {
+            Navigator.pop(context);
+            Navigator.push(context, MaterialPageRoute(
+              builder: (_) => SupplierLedgerScreen(supplier: supplier, languageProvider: languageProvider),
+            ));
+          },
+          onViewPayments: () {
+            Navigator.pop(context);
+            Navigator.push(context, MaterialPageRoute(
+              builder: (_) => SupplierPaymentsScreen(supplier: supplier, languageProvider: languageProvider),
+            ));
+          },
+          onPaySupplier: () async {
+            Navigator.pop(context);
+            final ok = await showDialog<bool>(
+              context: context,
+              builder: (_) => SupplierPaymentDialog(supplier: supplier, languageProvider: languageProvider),
+            );
+            if (ok == true) _showSnack(
+              languageProvider.isEnglish ? 'Payment recorded successfully' : 'ادائیگی کامیابی سے ریکارڈ ہوگئی',
+              _C.green,
+              languageProvider,
+            );
+          },
+          languageProvider: languageProvider,
+        ),
+      );
+    }
   }
 
   Future<void> _toggleSupplierStatus(Supplier supplier) async {
@@ -366,14 +493,27 @@ class _SupplierScreenState extends State<SupplierScreen> {
 class _Header extends StatelessWidget {
   final SupplierProvider provider;
   final LanguageProvider languageProvider;
-  const _Header({required this.provider, required this.languageProvider});
+  final bool isMobile;
+  final bool isWeb;
+
+  const _Header({
+    required this.provider,
+    required this.languageProvider,
+    required this.isMobile,
+    required this.isWeb,
+  });
 
   @override
   Widget build(BuildContext context) {
     final active = provider.suppliers.where((s) => s.isActive).length;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(28, 28, 28, 20),
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? 16.0 : 28.0,
+        isMobile ? 16.0 : 28.0,
+        isMobile ? 16.0 : 28.0,
+        isMobile ? 12.0 : 20.0,
+      ),
       decoration: const BoxDecoration(
         color: _C.surface,
         border: Border(bottom: BorderSide(color: _C.border)),
@@ -384,68 +524,131 @@ class _Header extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 44, height: 44,
+                width: isMobile ? 36.0 : 44.0,
+                height: isMobile ? 36.0 : 44.0,
                 decoration: BoxDecoration(
                   color: _C.brandLight,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(isMobile ? 10 : 12),
                 ),
-                child: const Icon(Icons.local_shipping_rounded, color: _C.brand, size: 22),
+                child: Icon(Icons.local_shipping_rounded, color: _C.brand, size: isMobile ? 18 : 22),
               ),
               const SizedBox(width: 14),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(languageProvider.isEnglish ? 'Suppliers' : 'سپلائرز',
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700,
-                          color: _C.text1, letterSpacing: -0.4)),
-                  Text(languageProvider.isEnglish ? 'Manage supplier relationships & contacts' : 'سپلائر تعلقات اور رابطوں کا انتظام کریں',
-                      style: TextStyle(fontSize: 13, color: Colors.grey[500], fontFamily: languageProvider.fontFamily)),
+                  Text(
+                    languageProvider.isEnglish ? 'Suppliers' : 'سپلائرز',
+                    style: TextStyle(
+                      fontSize: isMobile ? 18.0 : 22.0,
+                      fontWeight: FontWeight.w700,
+                      color: _C.text1,
+                      letterSpacing: -0.4,
+                      fontFamily: languageProvider.fontFamily,
+                    ),
+                  ),
+                  if (!isMobile)
+                    Text(
+                      languageProvider.isEnglish ? 'Manage supplier relationships & contacts' : 'سپلائر تعلقات اور رابطوں کا انتظام کریں',
+                      style: TextStyle(
+                        fontSize: 13.0,
+                        color: Colors.grey.shade500,
+                        fontFamily: languageProvider.fontFamily,
+                      ),
+                    ),
                 ],
               ),
               const Spacer(),
-              OutlinedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.download_rounded, size: 16),
-                label: Text(languageProvider.isEnglish ? 'Export' : 'ایکسپورٹ'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _C.brand,
-                  side: const BorderSide(color: _C.brand),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              if (!isMobile)
+                OutlinedButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.download_rounded, size: 16),
+                  label: Text(languageProvider.isEnglish ? 'Export' : 'ایکسپورٹ'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _C.brand,
+                    side: const BorderSide(color: _C.brand),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
                 ),
-              ),
             ],
           ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              _StatTile(
-                label: languageProvider.isEnglish ? 'Total Suppliers' : 'کل سپلائرز',
-                value: provider.totalItems.toString(),
-                color: _C.brand,
-                languageProvider: languageProvider,
-              ),
-              Container(width: 1, height: 36, margin: const EdgeInsets.symmetric(horizontal: 12), color: _C.border),
-              _StatTile(
-                label: languageProvider.isEnglish ? 'Active' : 'فعال',
-                value: active.toString(),
-                color: _C.green,
-                languageProvider: languageProvider,
-              ),
-              Container(width: 1, height: 36, margin: const EdgeInsets.symmetric(horizontal: 12), color: _C.border),
-              _StatTile(
-                label: languageProvider.isEnglish ? 'Inactive' : 'غیر فعال',
-                value: (provider.totalItems - active).toString(),
-                color: _C.text3,
-                languageProvider: languageProvider,
-              ),
-            ],
-          ),
+          SizedBox(height: isMobile ? 12.0 : 20.0),
+          _buildStatsRow(active, context),
         ],
       ),
     );
   }
+
+  Widget _buildStatsRow(int active, BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth > 600;
+
+    if (isWide) {
+      return Row(
+        children: [
+          _StatTile(
+            label: languageProvider.isEnglish ? 'Total Suppliers' : 'کل سپلائرز',
+            value: provider.totalItems.toString(),
+            color: _C.brand,
+            languageProvider: languageProvider,
+            isMobile: isMobile,
+          ),
+          _divider(),
+          _StatTile(
+            label: languageProvider.isEnglish ? 'Active' : 'فعال',
+            value: active.toString(),
+            color: _C.green,
+            languageProvider: languageProvider,
+            isMobile: isMobile,
+          ),
+          _divider(),
+          _StatTile(
+            label: languageProvider.isEnglish ? 'Inactive' : 'غیر فعال',
+            value: (provider.totalItems - active).toString(),
+            color: _C.text3,
+            languageProvider: languageProvider,
+            isMobile: isMobile,
+          ),
+        ],
+      );
+    } else {
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _StatTile(
+            label: languageProvider.isEnglish ? 'Total Suppliers' : 'کل سپلائرز',
+            value: provider.totalItems.toString(),
+            color: _C.brand,
+            languageProvider: languageProvider,
+            isMobile: isMobile,
+          ),
+          _StatTile(
+            label: languageProvider.isEnglish ? 'Active' : 'فعال',
+            value: active.toString(),
+            color: _C.green,
+            languageProvider: languageProvider,
+            isMobile: isMobile,
+          ),
+          _StatTile(
+            label: languageProvider.isEnglish ? 'Inactive' : 'غیر فعال',
+            value: (provider.totalItems - active).toString(),
+            color: _C.text3,
+            languageProvider: languageProvider,
+            isMobile: isMobile,
+          ),
+        ],
+      );
+    }
+  }
+
+  Widget _divider() => Container(
+    width: 1.0,
+    height: 36.0,
+    margin: const EdgeInsets.symmetric(horizontal: 12),
+    color: _C.border,
+  );
 }
 
 class _StatTile extends StatelessWidget {
@@ -453,18 +656,45 @@ class _StatTile extends StatelessWidget {
   final String value;
   final Color color;
   final LanguageProvider languageProvider;
-  const _StatTile({required this.label, required this.value, required this.color, required this.languageProvider});
+  final bool isMobile;
+
+  const _StatTile({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.languageProvider,
+    required this.isMobile,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: TextStyle(fontSize: 11, color: _C.text3, fontWeight: FontWeight.w500, fontFamily: languageProvider.fontFamily)),
-        const SizedBox(height: 2),
-        Text(value,
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: color, letterSpacing: -0.5)),
-      ],
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 4.0 : 0.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: isMobile ? 10.0 : 11.0,
+              color: _C.text3,
+              fontWeight: FontWeight.w500,
+              fontFamily: languageProvider.fontFamily,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: isMobile ? 16.0 : 20.0,
+              fontWeight: FontWeight.w700,
+              color: color,
+              letterSpacing: -0.5,
+              fontFamily: languageProvider.fontFamily,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -478,24 +708,34 @@ class _SearchBar extends StatelessWidget {
   final VoidCallback onToggleActive;
   final void Function(String) onSort;
   final LanguageProvider languageProvider;
+  final bool isMobile;
+  final bool isWeb;
 
   const _SearchBar({
-    required this.controller, required this.currentSearch,
-    required this.showActiveOnly, required this.onSearch,
-    required this.onToggleActive, required this.onSort,
+    required this.controller,
+    required this.currentSearch,
+    required this.showActiveOnly,
+    required this.onSearch,
+    required this.onToggleActive,
+    required this.onSort,
     required this.languageProvider,
+    required this.isMobile,
+    required this.isWeb,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 16.0 : 24.0,
+        vertical: isMobile ? 8.0 : 14.0,
+      ),
       color: _C.surface,
       child: Row(
         children: [
           Expanded(
             child: Container(
-              height: 44,
+              height: isMobile ? 40.0 : 44.0,
               decoration: BoxDecoration(
                 color: _C.bg,
                 borderRadius: BorderRadius.circular(10),
@@ -504,13 +744,19 @@ class _SearchBar extends StatelessWidget {
               child: TextField(
                 controller: controller,
                 onChanged: onSearch,
-                style: TextStyle(fontSize: 14, color: _C.text1, fontFamily: languageProvider.fontFamily),
+                style: TextStyle(
+                  fontSize: isMobile ? 13.0 : 14.0,
+                  color: _C.text1,
+                  fontFamily: languageProvider.fontFamily,
+                ),
                 decoration: InputDecoration(
-                  hintText: languageProvider.isEnglish
+                  hintText: isMobile
+                      ? (languageProvider.isEnglish ? 'Search…' : 'تلاش کریں…')
+                      : (languageProvider.isEnglish
                       ? 'Search by name, contact or address…'
-                      : 'نام، رابطہ یا پتے سے تلاش کریں…',
+                      : 'نام، رابطہ یا پتے سے تلاش کریں…'),
                   hintStyle: const TextStyle(color: _C.text3, fontSize: 14),
-                  prefixIcon: const Icon(Icons.search, color: _C.text3, size: 19),
+                  prefixIcon: Icon(Icons.search, color: _C.text3, size: isMobile ? 17 : 19),
                   suffixIcon: currentSearch.isNotEmpty
                       ? IconButton(
                     icon: const Icon(Icons.close, size: 17, color: _C.text3),
@@ -524,54 +770,91 @@ class _SearchBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          GestureDetector(
-            onTap: onToggleActive,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-              decoration: BoxDecoration(
-                color: showActiveOnly ? _C.brand : _C.surface,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: showActiveOnly ? _C.brand : _C.border),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    showActiveOnly ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
-                    size: 15,
-                    color: showActiveOnly ? Colors.white : _C.text3,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(languageProvider.isEnglish ? 'Active only' : 'صرف فعال',
-                      style: TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w500,
-                        color: showActiveOnly ? Colors.white : _C.text2,
-                        fontFamily: languageProvider.fontFamily,
-                      )),
-                ],
-              ),
+          if (!isMobile || isWeb)
+            _FilterPill(
+              label: languageProvider.isEnglish ? 'Active only' : 'صرف فعال',
+              selected: showActiveOnly,
+              onTap: onToggleActive,
+              languageProvider: languageProvider,
+              isMobile: isMobile,
             ),
-          ),
-          const SizedBox(width: 10),
-          PopupMenuButton<String>(
-            onSelected: onSort,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            icon: Container(
-              padding: const EdgeInsets.all(9),
-              decoration: BoxDecoration(
-                color: _C.surface,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _C.border),
+          if (!isMobile)
+            const SizedBox(width: 10),
+          if (!isMobile)
+            PopupMenuButton<String>(
+              onSelected: onSort,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              icon: Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: _C.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _C.border),
+                ),
+                child: const Icon(Icons.sort_rounded, color: _C.text2, size: 18),
               ),
-              child: const Icon(Icons.sort_rounded, color: _C.text2, size: 18),
+              itemBuilder: (_) => [
+                PopupMenuItem(value: 'name',    child: Text(languageProvider.isEnglish ? 'Name A–Z' : 'نام A–Z')),
+                PopupMenuItem(value: 'contact', child: Text(languageProvider.isEnglish ? 'Contact' : 'رابطہ')),
+                PopupMenuItem(value: 'status',  child: Text(languageProvider.isEnglish ? 'Status' : 'حالت')),
+              ],
             ),
-            itemBuilder: (_) => [
-              PopupMenuItem(value: 'name',    child: Text(languageProvider.isEnglish ? 'Name A–Z' : 'نام A–Z')),
-              PopupMenuItem(value: 'contact', child: Text(languageProvider.isEnglish ? 'Contact' : 'رابطہ')),
-              PopupMenuItem(value: 'status',  child: Text(languageProvider.isEnglish ? 'Status' : 'حالت')),
-            ],
-          ),
         ],
+      ),
+    );
+  }
+}
+
+class _FilterPill extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final LanguageProvider languageProvider;
+  final bool isMobile;
+
+  const _FilterPill({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    required this.languageProvider,
+    required this.isMobile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: EdgeInsets.symmetric(
+          horizontal: isMobile ? 10.0 : 14.0,
+          vertical: isMobile ? 7.0 : 9.0,
+        ),
+        decoration: BoxDecoration(
+          color: selected ? _C.brand : _C.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: selected ? _C.brand : _C.border),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+              size: isMobile ? 13 : 15,
+              color: selected ? Colors.white : _C.text3,
+            ),
+            const SizedBox(width: 6),
+            if (!isMobile)
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: selected ? Colors.white : _C.text2,
+                  fontFamily: languageProvider.fontFamily,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -583,12 +866,28 @@ class _TableHeader extends StatelessWidget {
   final bool sortAscending;
   final void Function(String) onSort;
   final LanguageProvider languageProvider;
-  const _TableHeader({required this.sortColumn, required this.sortAscending, required this.onSort, required this.languageProvider});
+  final bool isWeb;
+
+  const _TableHeader({
+    required this.sortColumn,
+    required this.sortAscending,
+    required this.onSort,
+    required this.languageProvider,
+    required this.isWeb,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth > 800;
+
     return Container(
-      margin: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+      margin: EdgeInsets.fromLTRB(
+        isWeb ? _getWebPadding(screenWidth) : 16.0,
+        12.0,
+        isWeb ? _getWebPadding(screenWidth) : 16.0,
+        0.0,
+      ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
         color: const Color(0xFFF0EDFD),
@@ -597,12 +896,13 @@ class _TableHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _col(languageProvider.isEnglish ? 'Supplier' : 'سپلائر', 'name',    flex: 3),
-          _col(languageProvider.isEnglish ? 'Contact' : 'رابطہ',  'contact', flex: 2),
-          _col(languageProvider.isEnglish ? 'Address' : 'پتہ',  'address', flex: 4),
-          _col(languageProvider.isEnglish ? 'Discount' : 'چھوٹ', '',        flex: 2),
-          _col(languageProvider.isEnglish ? 'Status' : 'حالت',   'status',  flex: 2),
-          const SizedBox(width: 90),
+          _col(languageProvider.isEnglish ? 'Supplier' : 'سپلائر', 'name',    flex: isWide ? 3 : 2),
+          _col(languageProvider.isEnglish ? 'Contact' : 'رابطہ',  'contact', flex: isWide ? 2 : 1),
+          if (isWide)
+            _col(languageProvider.isEnglish ? 'Address' : 'پتہ',  'address', flex: 4),
+          _col(languageProvider.isEnglish ? 'Discount' : 'چھوٹ', '',        flex: isWide ? 2 : 1),
+          _col(languageProvider.isEnglish ? 'Status' : 'حالت',   'status',  flex: isWide ? 2 : 1),
+          SizedBox(width: isWide ? 90.0 : 60.0),
         ],
       ),
     );
@@ -618,8 +918,10 @@ class _TableHeader extends StatelessWidget {
           children: [
             Text(label,
                 style: const TextStyle(
-                  fontSize: 11, fontWeight: FontWeight.w700,
-                  color: _C.text2, letterSpacing: 0.5,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: _C.text2,
+                  letterSpacing: 0.5,
                 )),
             if (col.isNotEmpty) ...[
               const SizedBox(width: 3),
@@ -636,12 +938,20 @@ class _TableHeader extends StatelessWidget {
       ),
     );
   }
+
+  double _getWebPadding(double screenWidth) {
+    if (screenWidth > 1400) return 48;
+    if (screenWidth > 1200) return 32;
+    return 24;
+  }
 }
 
 // ─── Supplier Row ─────────────────────────────────────────────────────────────
 class _SupplierRow extends StatefulWidget {
   final Supplier supplier;
   final int index;
+  final bool isMobile;
+  final bool isWeb;
   final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onToggle;
@@ -649,9 +959,14 @@ class _SupplierRow extends StatefulWidget {
   final LanguageProvider languageProvider;
 
   const _SupplierRow({
-    required this.supplier, required this.index,
-    required this.onTap, required this.onEdit,
-    required this.onToggle, required this.onDelete,
+    required this.supplier,
+    required this.index,
+    required this.isMobile,
+    required this.isWeb,
+    required this.onTap,
+    required this.onEdit,
+    required this.onToggle,
+    required this.onDelete,
     required this.languageProvider,
   });
 
@@ -666,6 +981,8 @@ class _SupplierRowState extends State<_SupplierRow> {
   Widget build(BuildContext context) {
     final s = widget.supplier;
     final isEven = widget.index % 2 == 0;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth > 800;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -674,134 +991,264 @@ class _SupplierRowState extends State<_SupplierRow> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
-          margin: const EdgeInsets.only(bottom: 1),
+          margin: EdgeInsets.symmetric(
+            horizontal: widget.isWeb ? _getWebPadding(screenWidth) : 0.0,
+          ),
           decoration: BoxDecoration(
             color: _hovered ? _C.rowHover : (isEven ? Colors.white : const Color(0xFFFBFBFD)),
             border: Border(
               left: BorderSide(
                 color: _hovered ? _C.brand : Colors.transparent,
-                width: 3,
+                width: 3.0,
               ),
               bottom: const BorderSide(color: _C.border, width: 0.5),
             ),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+          child: widget.isMobile
+              ? _buildMobileRow(s)
+              : _buildDesktopRow(s, isWide, screenWidth),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobileRow(Supplier s) {
+    return Row(
+      children: [
+        Expanded(
           child: Row(
             children: [
+              Container(
+                width: 34.0,
+                height: 34.0,
+                decoration: BoxDecoration(
+                  color: _C.brandLight,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Icon(Icons.local_shipping_rounded, color: _C.brand, size: 16),
+              ),
+              const SizedBox(width: 10),
               Expanded(
-                flex: 3,
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 34, height: 34,
-                      decoration: BoxDecoration(
-                        color: _C.brandLight,
-                        borderRadius: BorderRadius.circular(9),
-                      ),
-                      child: const Icon(Icons.local_shipping_rounded, color: _C.brand, size: 16),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(s.name,
-                        style: TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w600, color: _C.text1,
-                          fontFamily: widget.languageProvider.fontFamily,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text(s.contact,
-                  style: TextStyle(fontSize: 13, color: _C.text2, fontFamily: widget.languageProvider.fontFamily),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Expanded(
-                flex: 4,
-                child: Text(
-                  s.address?.isNotEmpty == true ? s.address! : '—',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: s.address?.isNotEmpty == true ? _C.text2 : _C.text3,
-                    fontFamily: widget.languageProvider.fontFamily,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: s.discountPercent > 0
-                    ? Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: _C.brand.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    '${s.discountPercent.toStringAsFixed(1)}%',
-                    style: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w600, color: _C.brand,
-                    ),
-                  ),
-                )
-                    : Text('—', style: TextStyle(fontSize: 13, color: _C.text3, fontFamily: widget.languageProvider.fontFamily)),
-              ),
-              Expanded(
-                flex: 2,
-                child: Row(
-                  children: [
-                    Container(
-                      width: 7, height: 7,
-                      decoration: BoxDecoration(
-                        color: s.isActive ? _C.green : _C.text3,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      s.isActive
-                          ? (widget.languageProvider.isEnglish ? 'Active' : 'فعال')
-                          : (widget.languageProvider.isEnglish ? 'Inactive' : 'غیر فعال'),
+                    Text(s.name,
                       style: TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w500,
-                        color: s.isActive ? _C.green : _C.text3,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _C.text1,
+                        fontFamily: widget.languageProvider.fontFamily,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(s.contact,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: _C.text3,
                         fontFamily: widget.languageProvider.fontFamily,
                       ),
                     ),
                   ],
                 ),
               ),
-              SizedBox(
-                width: 90,
-                child: AnimatedOpacity(
-                  opacity: _hovered ? 1 : 0.4,
-                  duration: const Duration(milliseconds: 120),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      _ActionBtn(icon: Icons.edit_outlined,       color: _C.brand,   tooltip: widget.languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں', onTap: widget.onEdit, languageProvider: widget.languageProvider),
-                      _ActionBtn(
-                        icon: s.isActive ? Icons.pause_circle_outline : Icons.play_circle_outline,
-                        color: s.isActive ? _C.orange : _C.green,
-                        tooltip: s.isActive
-                            ? (widget.languageProvider.isEnglish ? 'Deactivate' : 'غیر فعال کریں')
-                            : (widget.languageProvider.isEnglish ? 'Activate' : 'فعال کریں'),
-                        onTap: widget.onToggle,
-                        languageProvider: widget.languageProvider,
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        _StatusDot(
+          active: s.isActive,
+          languageProvider: widget.languageProvider,
+          isMobile: true,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDesktopRow(Supplier s, bool isWide, double screenWidth) {
+    return Row(
+      children: [
+        Expanded(
+          flex: isWide ? 3 : 2,
+          child: Row(
+            children: [
+              Container(
+                width: 34.0,
+                height: 34.0,
+                decoration: BoxDecoration(
+                  color: _C.brandLight,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Icon(Icons.local_shipping_rounded, color: _C.brand, size: 16),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(s.name,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _C.text1,
+                        fontFamily: widget.languageProvider.fontFamily,
                       ),
-                      _ActionBtn(icon: Icons.delete_outline,      color: _C.red,     tooltip: widget.languageProvider.isEnglish ? 'Delete' : 'حذف کریں', onTap: widget.onDelete, languageProvider: widget.languageProvider),
-                    ],
-                  ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (s.address != null && s.address!.isNotEmpty)
+                      Text(s.address!,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _C.text3,
+                          fontFamily: widget.languageProvider.fontFamily,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
-      ),
+        Expanded(
+          flex: isWide ? 2 : 1,
+          child: Text(s.contact,
+            style: TextStyle(
+              fontSize: 13,
+              color: _C.text2,
+              fontFamily: widget.languageProvider.fontFamily,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        if (isWide)
+          Expanded(
+            flex: 4,
+            child: Text(
+              s.address?.isNotEmpty == true ? s.address! : '—',
+              style: TextStyle(
+                fontSize: 12,
+                color: s.address?.isNotEmpty == true ? _C.text2 : _C.text3,
+                fontFamily: widget.languageProvider.fontFamily,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        Expanded(
+          flex: isWide ? 2 : 1,
+          child: s.discountPercent > 0
+              ? Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: _C.brand.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              '${s.discountPercent.toStringAsFixed(1)}%',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _C.brand,
+              ),
+            ),
+          )
+              : Text('—', style: TextStyle(fontSize: 13, color: _C.text3, fontFamily: widget.languageProvider.fontFamily)),
+        ),
+        Expanded(
+          flex: isWide ? 2 : 1,
+          child: _StatusDot(
+            active: s.isActive,
+            languageProvider: widget.languageProvider,
+            isMobile: false,
+          ),
+        ),
+        SizedBox(
+          width: isWide ? 90.0 : 60.0,
+          child: AnimatedOpacity(
+            opacity: _hovered ? 1.0 : 0.4,
+            duration: const Duration(milliseconds: 120),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                _ActionBtn(
+                  icon: Icons.edit_outlined,
+                  color: _C.brand,
+                  tooltip: widget.languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں',
+                  onTap: widget.onEdit,
+                  languageProvider: widget.languageProvider,
+                ),
+                _ActionBtn(
+                  icon: s.isActive ? Icons.pause_circle_outline : Icons.play_circle_outline,
+                  color: s.isActive ? _C.orange : _C.green,
+                  tooltip: s.isActive
+                      ? (widget.languageProvider.isEnglish ? 'Deactivate' : 'غیر فعال کریں')
+                      : (widget.languageProvider.isEnglish ? 'Activate' : 'فعال کریں'),
+                  onTap: widget.onToggle,
+                  languageProvider: widget.languageProvider,
+                ),
+                _ActionBtn(
+                  icon: Icons.delete_outline,
+                  color: _C.red,
+                  tooltip: widget.languageProvider.isEnglish ? 'Delete' : 'حذف کریں',
+                  onTap: widget.onDelete,
+                  languageProvider: widget.languageProvider,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  double _getWebPadding(double screenWidth) {
+    if (screenWidth > 1400) return 48;
+    if (screenWidth > 1200) return 32;
+    return 24;
+  }
+}
+
+class _StatusDot extends StatelessWidget {
+  final bool active;
+  final LanguageProvider languageProvider;
+  final bool isMobile;
+
+  const _StatusDot({
+    required this.active,
+    required this.languageProvider,
+    required this.isMobile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final statusText = active
+        ? (languageProvider.isEnglish ? 'Active' : 'فعال')
+        : (languageProvider.isEnglish ? 'Inactive' : 'غیر فعال');
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: isMobile ? 6.0 : 7.0,
+          height: isMobile ? 6.0 : 7.0,
+          decoration: BoxDecoration(
+            color: active ? _C.green : _C.text3,
+            shape: BoxShape.circle,
+          ),
+        ),
+        if (!isMobile) ...[
+          const SizedBox(width: 6),
+          Text(
+            statusText,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: active ? _C.green : _C.text3,
+              fontFamily: languageProvider.fontFamily,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -812,7 +1259,14 @@ class _ActionBtn extends StatelessWidget {
   final String tooltip;
   final VoidCallback onTap;
   final LanguageProvider languageProvider;
-  const _ActionBtn({required this.icon, required this.color, required this.tooltip, required this.onTap, required this.languageProvider});
+
+  const _ActionBtn({
+    required this.icon,
+    required this.color,
+    required this.tooltip,
+    required this.onTap,
+    required this.languageProvider,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -835,47 +1289,82 @@ class _EmptyState extends StatelessWidget {
   final bool hasSearch;
   final VoidCallback onAdd;
   final LanguageProvider languageProvider;
-  const _EmptyState({required this.hasSearch, required this.onAdd, required this.languageProvider});
+  final bool isWeb;
+
+  const _EmptyState({
+    required this.hasSearch,
+    required this.onAdd,
+    required this.languageProvider,
+    required this.isWeb,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 80, height: 80,
-            decoration: BoxDecoration(color: _C.brandLight, borderRadius: BorderRadius.circular(20)),
-            child: const Icon(Icons.local_shipping_rounded, size: 40, color: _C.brand),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            hasSearch
-                ? (languageProvider.isEnglish ? 'No suppliers found' : 'کوئی سپلائر نہیں ملا')
-                : (languageProvider.isEnglish ? 'No suppliers yet' : 'ابھی تک کوئی سپلائر نہیں'),
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: _C.text1, fontFamily: languageProvider.fontFamily),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            hasSearch
-                ? (languageProvider.isEnglish ? 'Try a different search term' : 'مختلف تلاش کی اصطلاح آزمائیں')
-                : (languageProvider.isEnglish ? 'Add your first supplier to get started' : 'شروع کرنے کے لیے اپنا پہلا سپلائر شامل کریں'),
-            style: TextStyle(fontSize: 13, color: _C.text3, fontFamily: languageProvider.fontFamily),
-          ),
-          if (!hasSearch) ...[
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: onAdd,
-              icon: const Icon(Icons.add_rounded, size: 17),
-              label: Text(languageProvider.isEnglish ? 'Add Supplier' : 'سپلائر شامل کریں'),
-              style: FilledButton.styleFrom(
-                backgroundColor: _C.brand,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: EdgeInsets.all(isWeb ? 48.0 : 24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: isWeb ? 100.0 : 80.0,
+              height: isWeb ? 100.0 : 80.0,
+              decoration: BoxDecoration(
+                color: _C.brandLight,
+                borderRadius: BorderRadius.circular(isWeb ? 24 : 20),
+              ),
+              child: Icon(
+                Icons.local_shipping_rounded,
+                size: isWeb ? 50 : 40,
+                color: _C.brand,
               ),
             ),
+            const SizedBox(height: 20),
+            Text(
+              hasSearch
+                  ? (languageProvider.isEnglish ? 'No suppliers found' : 'کوئی سپلائر نہیں ملا')
+                  : (languageProvider.isEnglish ? 'No suppliers yet' : 'ابھی تک کوئی سپلائر نہیں'),
+              style: TextStyle(
+                fontSize: isWeb ? 20.0 : 17.0,
+                fontWeight: FontWeight.w600,
+                color: _C.text1,
+                fontFamily: languageProvider.fontFamily,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              hasSearch
+                  ? (languageProvider.isEnglish ? 'Try a different search term' : 'مختلف تلاش کی اصطلاح آزمائیں')
+                  : (languageProvider.isEnglish ? 'Add your first supplier to get started' : 'شروع کرنے کے لیے اپنا پہلا سپلائر شامل کریں'),
+              style: TextStyle(
+                fontSize: isWeb ? 14.0 : 13.0,
+                color: _C.text3,
+                fontFamily: languageProvider.fontFamily,
+              ),
+            ),
+            if (!hasSearch) ...[
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: onAdd,
+                icon: Icon(Icons.add_rounded, size: isWeb ? 19 : 17),
+                label: Text(
+                  languageProvider.isEnglish ? 'Add Supplier' : 'سپلائر شامل کریں',
+                  style: TextStyle(fontSize: isWeb ? 15.0 : 13.0),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: _C.brand,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isWeb ? 28.0 : 20.0,
+                    vertical: isWeb ? 14.0 : 12.0,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(isWeb ? 12 : 10),
+                  ),
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -885,16 +1374,35 @@ class _EmptyState extends StatelessWidget {
 class _AddFAB extends StatelessWidget {
   final VoidCallback onPressed;
   final LanguageProvider languageProvider;
-  const _AddFAB({required this.onPressed, required this.languageProvider});
+  final bool isMobile;
+
+  const _AddFAB({
+    required this.onPressed,
+    required this.languageProvider,
+    required this.isMobile,
+  });
 
   @override
   Widget build(BuildContext context) {
+    if (!isMobile) {
+      return FloatingActionButton(
+        onPressed: onPressed,
+        backgroundColor: _C.brand,
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.add_rounded, size: 24),
+        elevation: 3,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      );
+    }
     return FloatingActionButton.extended(
       onPressed: onPressed,
       backgroundColor: _C.brand,
       foregroundColor: Colors.white,
       icon: const Icon(Icons.add_rounded, size: 20),
-      label: Text(languageProvider.isEnglish ? 'Add Supplier' : 'سپلائر شامل کریں', style: const TextStyle(fontWeight: FontWeight.w600)),
+      label: Text(
+        languageProvider.isEnglish ? 'Add Supplier' : 'سپلائر شامل کریں',
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     );
@@ -904,6 +1412,7 @@ class _AddFAB extends StatelessWidget {
 // ─── Supplier Details Sheet ───────────────────────────────────────────────────
 class SupplierDetailsSheet extends StatelessWidget {
   final Supplier supplier;
+  final bool isWeb;
   final VoidCallback onEdit;
   final VoidCallback onToggleStatus;
   final VoidCallback onViewLedger;
@@ -914,6 +1423,7 @@ class SupplierDetailsSheet extends StatelessWidget {
   const SupplierDetailsSheet({
     Key? key,
     required this.supplier,
+    required this.isWeb,
     required this.onEdit,
     required this.onToggleStatus,
     required this.onViewLedger,
@@ -925,36 +1435,58 @@ class SupplierDetailsSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasDiscount = supplier.discountPercent > 0;
+    final padding = isWeb ? 32.0 : 24.0;
 
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: isWeb
+            ? BorderRadius.circular(20)
+            : const BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      padding: EdgeInsets.fromLTRB(24, 20, 24,
-          MediaQuery.of(context).viewInsets.bottom + 24),
+      padding: EdgeInsets.fromLTRB(
+        padding,
+        isWeb ? 24.0 : 20.0,
+        padding,
+        isWeb ? 24.0 : MediaQuery.of(context).viewInsets.bottom + 24.0,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Center(
-            child: Container(
-              width: 36, height: 4,
-              decoration: BoxDecoration(color: _C.border, borderRadius: BorderRadius.circular(2)),
+          if (!isWeb)
+            Center(
+              child: Container(
+                width: 36.0,
+                height: 4.0,
+                decoration: BoxDecoration(
+                  color: _C.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
+          if (!isWeb) const SizedBox(height: 16),
 
           Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(9),
-                decoration: BoxDecoration(color: _C.brandLight, borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(
+                  color: _C.brandLight,
+                  borderRadius: BorderRadius.circular(10),
+                ),
                 child: const Icon(Icons.local_shipping_rounded, color: _C.brand, size: 19),
               ),
               const SizedBox(width: 12),
-              Text(languageProvider.isEnglish ? 'Supplier Details' : 'سپلائر کی تفصیلات',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _C.text1, fontFamily: languageProvider.fontFamily)),
+              Text(
+                languageProvider.isEnglish ? 'Supplier Details' : 'سپلائر کی تفصیلات',
+                style: TextStyle(
+                  fontSize: isWeb ? 18.0 : 16.0,
+                  fontWeight: FontWeight.w700,
+                  color: _C.text1,
+                  fontFamily: languageProvider.fontFamily,
+                ),
+              ),
               const Spacer(),
               IconButton(
                 onPressed: () => Navigator.pop(context),
@@ -980,19 +1512,27 @@ class SupplierDetailsSheet extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(supplier.name,
-                          style: const TextStyle(
-                              fontSize: 17, fontWeight: FontWeight.w700, color: _C.text1)),
+                          style: TextStyle(
+                            fontSize: isWeb ? 19.0 : 17.0,
+                            fontWeight: FontWeight.w700,
+                            color: _C.text1,
+                            fontFamily: languageProvider.fontFamily,
+                          )),
                       const SizedBox(height: 3),
                       Text(supplier.contact,
-                          style: TextStyle(fontSize: 13, color: _C.text3, fontFamily: languageProvider.fontFamily)),
+                          style: TextStyle(
+                            fontSize: isWeb ? 14.0 : 13.0,
+                            color: _C.text3,
+                            fontFamily: languageProvider.fontFamily,
+                          )),
                     ],
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                   decoration: BoxDecoration(
                     color: supplier.isActive ? _C.green.withOpacity(0.1) : _C.text3.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: supplier.isActive ? _C.green.withOpacity(0.3) : _C.text3.withOpacity(0.3),
                     ),
@@ -1000,7 +1540,8 @@ class SupplierDetailsSheet extends StatelessWidget {
                   child: Row(
                     children: [
                       Container(
-                        width: 6, height: 6,
+                        width: 6.0,
+                        height: 6.0,
                         decoration: BoxDecoration(
                           color: supplier.isActive ? _C.green : _C.text3,
                           shape: BoxShape.circle,
@@ -1012,8 +1553,10 @@ class SupplierDetailsSheet extends StatelessWidget {
                             ? (languageProvider.isEnglish ? 'Active' : 'فعال')
                             : (languageProvider.isEnglish ? 'Inactive' : 'غیر فعال'),
                         style: TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
                           color: supplier.isActive ? _C.green : _C.text3,
+                          fontFamily: languageProvider.fontFamily,
                         ),
                       ),
                     ],
@@ -1036,7 +1579,9 @@ class SupplierDetailsSheet extends StatelessWidget {
 
           const SizedBox(height: 22),
 
-          Row(
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
             children: [
               _SheetBtn(
                 icon: Icons.account_balance_wallet_rounded,
@@ -1044,21 +1589,16 @@ class SupplierDetailsSheet extends StatelessWidget {
                 color: _C.brand,
                 onTap: onViewLedger,
                 languageProvider: languageProvider,
+                isWeb: isWeb,
               ),
-              const SizedBox(width: 10),
               _SheetBtn(
                 icon: Icons.history_rounded,
                 label: languageProvider.isEnglish ? 'Payments' : 'ادائیگیاں',
                 color: _C.blue,
                 onTap: onViewPayments,
                 languageProvider: languageProvider,
+                isWeb: isWeb,
               ),
-            ],
-          ),
-          const SizedBox(height: 10),
-
-          Row(
-            children: [
               _SheetBtn(
                 icon: Icons.payments_rounded,
                 label: languageProvider.isEnglish ? 'Pay Supplier' : 'سپلائر کو ادائیگی کریں',
@@ -1066,28 +1606,27 @@ class SupplierDetailsSheet extends StatelessWidget {
                 onTap: onPaySupplier,
                 primary: true,
                 languageProvider: languageProvider,
+                isWeb: isWeb,
               ),
-              const SizedBox(width: 10),
               _SheetBtn(
                 icon: Icons.edit_rounded,
                 label: languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں',
                 color: _C.brand,
                 onTap: onEdit,
                 languageProvider: languageProvider,
+                isWeb: isWeb,
+              ),
+              _SheetBtn(
+                icon: supplier.isActive ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                label: supplier.isActive
+                    ? (languageProvider.isEnglish ? 'Deactivate' : 'غیر فعال کریں')
+                    : (languageProvider.isEnglish ? 'Activate' : 'فعال کریں'),
+                color: supplier.isActive ? _C.red : _C.green,
+                onTap: onToggleStatus,
+                languageProvider: languageProvider,
+                isWeb: isWeb,
               ),
             ],
-          ),
-          const SizedBox(height: 10),
-
-          _SheetBtn(
-            icon: supplier.isActive ? Icons.pause_rounded : Icons.play_arrow_rounded,
-            label: supplier.isActive
-                ? (languageProvider.isEnglish ? 'Deactivate Supplier' : 'سپلائر غیر فعال کریں')
-                : (languageProvider.isEnglish ? 'Activate Supplier' : 'سپلائر فعال کریں'),
-            color: supplier.isActive ? _C.red : _C.green,
-            onTap: onToggleStatus,
-            fullWidth: true,
-            languageProvider: languageProvider,
           ),
         ],
       ),
@@ -1101,7 +1640,14 @@ class _Info extends StatelessWidget {
   final IconData icon;
   final Color? color;
   final LanguageProvider languageProvider;
-  const _Info(this.label, this.value, this.icon, {this.color, required this.languageProvider});
+
+  const _Info(
+      this.label,
+      this.value,
+      this.icon, {
+        this.color,
+        required this.languageProvider,
+      });
 
   @override
   Widget build(BuildContext context) {
@@ -1116,12 +1662,21 @@ class _Info extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label,
-                    style: TextStyle(fontSize: 10, color: _C.text3,
-                        fontWeight: FontWeight.w600, letterSpacing: 0.3, fontFamily: languageProvider.fontFamily)),
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: _C.text3,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3,
+                      fontFamily: languageProvider.fontFamily,
+                    )),
                 const SizedBox(height: 1),
                 Text(value,
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500,
-                        color: color ?? _C.text1, fontFamily: languageProvider.fontFamily)),
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: color ?? _C.text1,
+                      fontFamily: languageProvider.fontFamily,
+                    )),
               ],
             ),
           ),
@@ -1137,46 +1692,51 @@ class _SheetBtn extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
   final bool primary;
-  final bool fullWidth;
   final LanguageProvider languageProvider;
+  final bool isWeb;
+
   const _SheetBtn({
-    required this.icon, required this.label,
-    required this.color, required this.onTap,
-    this.primary = false, this.fullWidth = false,
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+    this.primary = false,
     required this.languageProvider,
+    required this.isWeb,
   });
 
   @override
   Widget build(BuildContext context) {
-    final child = GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: fullWidth ? double.infinity : null,
-        padding: const EdgeInsets.symmetric(vertical: 11),
-        decoration: BoxDecoration(
-          gradient: primary
-              ? LinearGradient(colors: [color, color.withOpacity(0.8)])
-              : null,
-          color: primary ? null : color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: primary ? Colors.transparent : color.withOpacity(0.2)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 15, color: primary ? Colors.white : color),
-            const SizedBox(width: 6),
-            Text(label,
-                style: TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w600,
-                  color: primary ? Colors.white : color,
-                  fontFamily: languageProvider.fontFamily,
-                )),
-          ],
+    return SizedBox(
+      width: isWeb ? 160.0 : double.infinity,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 11),
+          decoration: BoxDecoration(
+            gradient: primary
+                ? LinearGradient(colors: [color, color.withOpacity(0.8)])
+                : null,
+            color: primary ? null : color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: primary ? Colors.transparent : color.withOpacity(0.2)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 15, color: primary ? Colors.white : color),
+              const SizedBox(width: 6),
+              Text(label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: primary ? Colors.white : color,
+                    fontFamily: languageProvider.fontFamily,
+                  )),
+            ],
+          ),
         ),
       ),
     );
-
-    return fullWidth ? child : Expanded(child: child);
   }
 }

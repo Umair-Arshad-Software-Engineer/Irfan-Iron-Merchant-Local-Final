@@ -12,8 +12,6 @@ import '../providers/lanprovider.dart';
 import '../services/CustomerLedgerPdfGenerator.dart';
 import '../Banks/banknames.dart';
 
-// Update the CustomerLedgerScreen class definition at the top of the file:
-
 class CustomerLedgerScreen extends StatefulWidget {
   final Customer customer;
   final LanguageProvider languageProvider;
@@ -30,6 +28,7 @@ class CustomerLedgerScreen extends StatefulWidget {
 
 class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
   final ScrollController _verticalScroll = ScrollController();
+  final ScrollController _horizontalScroll = ScrollController();
   final _currencyFormat = NumberFormat('#,##0.00');
   final _dateFormat = DateFormat('MMM dd, yyyy');
   final _dateTimeFormat = DateFormat('MMM dd, yyyy • hh:mm a');
@@ -37,11 +36,11 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
   String _selectedFilter = 'all';
   DateTimeRange? _dateRange;
   int? _expandedEntryId;
+  LedgerViewType _ledgerViewType = LedgerViewType.consolidated;
 
   final Map<int, List<Map<String, dynamic>>> _saleItemsCache = {};
   final Map<int, bool> _saleItemsLoading = {};
 
-  // Payment method meta (same as supplier ledger for consistency)
   static const Map<String, Map<String, dynamic>> _paymentMethodMeta = {
     'cash': {'label': 'Cash', 'icon': Icons.payments_outlined, 'color': Color(0xFF10B981)},
     'bank': {'label': 'Bank', 'icon': Icons.account_balance_outlined, 'color': Color(0xFF3B82F6)},
@@ -49,7 +48,6 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
     'slip': {'label': 'Slip', 'icon': Icons.receipt_outlined, 'color': Color(0xFF8B5CF6)},
   };
 
-  // Filter options with bilingual labels
   List<Map<String, String>> _getFilterOptions(LanguageProvider lp) => [
     {'value': 'all', 'label': lp.isEnglish ? 'All' : 'سب'},
     {'value': 'sale', 'label': lp.isEnglish ? 'Sales' : 'فروخت'},
@@ -67,6 +65,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
   @override
   void dispose() {
     _verticalScroll.dispose();
+    _horizontalScroll.dispose();
     super.dispose();
   }
 
@@ -88,6 +87,11 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
       sortBy: 'date',
       sortOrder: 'asc',
     );
+
+    // Auto-fetch sale items when in itemized view
+    if (_ledgerViewType == LedgerViewType.itemized) {
+      _prefetchAllSaleItems(provider.entries);
+    }
   }
 
   Future<void> _loadMore() async {
@@ -101,6 +105,23 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
       sortBy: 'created_at',
       sortOrder: 'asc',
     );
+
+    // Also prefetch for newly loaded entries in itemized view
+    if (_ledgerViewType == LedgerViewType.itemized) {
+      _prefetchAllSaleItems(provider.entries);
+    }
+  }
+
+  /// Prefetch all sale items that aren't cached yet
+  void _prefetchAllSaleItems(List<dynamic> entries) {
+    for (final entry in entries) {
+      if (entry['transaction_type'] == 'sale' && entry['reference_id'] != null) {
+        final refId = entry['reference_id'] as int;
+        if (!_saleItemsCache.containsKey(refId) && !(_saleItemsLoading[refId] ?? false)) {
+          _fetchSaleItems(refId);
+        }
+      }
+    }
   }
 
   List<String> _parseDynamicList(dynamic val) {
@@ -144,7 +165,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
 
   Future<void> _fetchSaleItems(int saleId) async {
     if (_saleItemsCache.containsKey(saleId)) return;
-    setState(() => _saleItemsLoading[saleId] = true);
+    if (mounted) setState(() => _saleItemsLoading[saleId] = true);
     try {
       final response = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/sales/$saleId'),
@@ -188,12 +209,101 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
     return _paymentMethodMeta[method]?['color'] ?? const Color(0xFF8E8E93);
   }
 
-  Future<void> _generatePdf(LanguageProvider lp) async {
+  // ─── Type Helper Methods ──────────────────────────────────────────────────
+  Color _getTypeColor(String type) {
+    switch (type) {
+      case 'sale': return const Color(0xFFEF4444);
+      case 'payment': return const Color(0xFF10B981);
+      case 'adjustment': return const Color(0xFF6366F1);
+      default: return const Color(0xFFF59E0B);
+    }
+  }
+
+  Color _getTypeBg(String type) {
+    switch (type) {
+      case 'sale': return const Color(0xFFFEF2F2);
+      case 'payment': return const Color(0xFFECFDF5);
+      case 'adjustment': return const Color(0xFFEEF2FF);
+      default: return const Color(0xFFFFFBEB);
+    }
+  }
+
+  String _getTypeLabel(String type, LanguageProvider lp) {
+    switch (type) {
+      case 'sale': return lp.isEnglish ? 'Sale' : 'فروخت';
+      case 'payment': return lp.isEnglish ? 'Payment' : 'ادائیگی';
+      case 'adjustment': return lp.isEnglish ? 'Adjustment' : 'ایڈجسٹمنٹ';
+      default: return type.replaceAll('_', ' ').toUpperCase();
+    }
+  }
+
+  Map<String, dynamic> _extractLengthDataForItem(Map<String, dynamic> item) {
+    String display = '';
+    bool hasLengths = false;
+
+    if (item['selected_lengths'] != null && item['selected_lengths'] is List) {
+      final selectedLengths = List<String>.from(item['selected_lengths']);
+      final lengthQuantities = item['length_quantities'] as Map<String, dynamic>? ?? {};
+
+      List<String> parts = [];
+      for (var length in selectedLengths) {
+        int qty = 1;
+        if (lengthQuantities.containsKey(length)) {
+          final qtyValue = lengthQuantities[length];
+          if (qtyValue != null) {
+            if (qtyValue is int) {
+              qty = qtyValue;
+            } else if (qtyValue is double) {
+              qty = qtyValue.toInt();
+            } else if (qtyValue is String) {
+              qty = int.tryParse(qtyValue) ?? 1;
+            } else {
+              qty = (qtyValue as num?)?.toInt() ?? 1;
+            }
+          }
+        }
+        if (qty > 1) {
+          parts.add('$length×$qty');
+        } else {
+          parts.add(length);
+        }
+      }
+      if (parts.isNotEmpty) {
+        display = parts.join(', ');
+        hasLengths = true;
+      }
+    }
+
+    return {
+      'display': display,
+      'hasLengths': hasLengths,
+    };
+  }
+
+  /// Total pieces from length_quantities
+  int _getTotalPiecesFromItem(Map<String, dynamic> item) {
+    if (item['selected_lengths'] == null || item['selected_lengths'] is! List) return 0;
+    final selectedLengths = List<String>.from(item['selected_lengths']);
+    final lengthQuantities = item['length_quantities'] as Map<String, dynamic>? ?? {};
+    return selectedLengths.fold<int>(0, (sum, length) {
+      final qtyValue = lengthQuantities[length];
+      int qty = 1;
+      if (qtyValue is int) qty = qtyValue;
+      else if (qtyValue is double) qty = qtyValue.toInt();
+      else if (qtyValue is String) qty = int.tryParse(qtyValue) ?? 1;
+      return sum + qty;
+    });
+  }
+
+  Future<void> _generatePdf(LanguageProvider lp, PdfType pdfType) async {
     final provider = Provider.of<CustomerLedgerProvider>(context, listen: false);
 
     if (provider.entries.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(lp.isEnglish ? 'No transactions to export' : 'ایکسپورٹ کرنے کے لیے کوئی لین دین نہیں'), backgroundColor: Colors.orange),
+        SnackBar(
+          content: Text(lp.isEnglish ? 'No transactions to export' : 'ایکسپورٹ کرنے کے لیے کوئی لین دین نہیں'),
+          backgroundColor: Colors.orange,
+        ),
       );
       return;
     }
@@ -222,12 +332,17 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
         dateRange: _dateRange,
         saleItemsCache: _saleItemsCache,
         languageProvider: lp,
+        pdfType: pdfType,
+        ledgerViewType: _ledgerViewType,
       );
 
       if (mounted) {
         Navigator.pop(context);
+
+        final typeLabel = pdfType == PdfType.summary ? 'summary' : 'detailed';
+        final viewLabel = _ledgerViewType == LedgerViewType.consolidated ? 'consolidated' : 'itemized';
         final fileName =
-            'customer_ledger_${widget.customer.name.replaceAll(' ', '_')}_'
+            'customer_ledger_${typeLabel}_${viewLabel}_${widget.customer.name.replaceAll(' ', '_')}_'
             '${DateFormat('yyyyMMdd').format(DateTime.now())}.pdf';
         await Printing.sharePdf(bytes: pdfData, filename: fileName);
       }
@@ -236,10 +351,112 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${lp.isEnglish ? 'Error generating PDF' : 'PDF بنانے میں خرابی'}: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('${lp.isEnglish ? 'Error generating PDF' : 'PDF بنانے میں خرابی'}: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
+  }
+
+  Future<void> _showPdfOptions(LanguageProvider lp) async {
+    await showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                lp.isEnglish ? 'Export PDF' : 'پی ڈی ایف ایکسپورٹ کریں',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1C1C1E),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                lp.isEnglish ? 'Select PDF format:' : 'پی ڈی ایف فارمیٹ منتخب کریں:',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: const Color(0xFF8E8E93),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7C3AED).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.summarize, color: Color(0xFF7C3AED)),
+                ),
+                title: Text(
+                  lp.isEnglish ? 'Summary View' : 'خلاصہ ویو',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1C1C1E),
+                  ),
+                ),
+                subtitle: Text(
+                  lp.isEnglish
+                      ? 'Shows only invoice-wise entries without items'
+                      : 'صرف انوائس کے مطابق اندراجات دکھاتا ہے، اشیاء کے بغیر',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF8E8E93),
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _generatePdf(lp, PdfType.summary);
+                },
+              ),
+              const Divider(height: 1, color: Color(0xFFE5E5EA)),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7C3AED).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.receipt_long, color: Color(0xFF7C3AED)),
+                ),
+                title: Text(
+                  lp.isEnglish ? 'Detailed View' : 'تفصیلی ویو',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1C1C1E),
+                  ),
+                ),
+                subtitle: Text(
+                  lp.isEnglish
+                      ? 'Shows full invoice items expanded'
+                      : 'مکمل انوائس اشیاء دکھاتا ہے',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF8E8E93),
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _generatePdf(lp, PdfType.detailed);
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -271,6 +488,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
     );
   }
 
+  // ─── AppBar ──────────────────────────────────────────────────────────────────
   PreferredSizeWidget _buildAppBar(LanguageProvider lp) {
     return AppBar(
       backgroundColor: Colors.white,
@@ -283,13 +501,75 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
       title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(widget.customer.name,
             style: const TextStyle(color: Color(0xFF1C1C1E), fontWeight: FontWeight.bold, fontSize: 17)),
-        Text(lp.isEnglish ? 'Customer Ledger' : 'کسٹمر لیجر',
+        Text(_ledgerViewType == LedgerViewType.consolidated
+            ? (lp.isEnglish ? 'Consolidated Ledger' : 'مجموعی لیجر')
+            : (lp.isEnglish ? 'Itemized Ledger' : 'تفصیلی لیجر'),
             style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 12, fontWeight: FontWeight.normal)),
       ]),
       actions: [
+        Container(
+          margin: const EdgeInsets.only(right: 4),
+          child: SegmentedButton<LedgerViewType>(
+            segments: [
+              ButtonSegment<LedgerViewType>(
+                value: LedgerViewType.consolidated,
+                label: Text(lp.isEnglish ? 'Consolidated' : 'مجموعی'),
+                icon: const Icon(Icons.table_rows, size: 16),
+              ),
+              ButtonSegment<LedgerViewType>(
+                value: LedgerViewType.itemized,
+                label: Text(lp.isEnglish ? 'Itemized' : 'تفصیلی'),
+                icon: const Icon(Icons.receipt_long, size: 16),
+              ),
+            ],
+            selected: {_ledgerViewType},
+            onSelectionChanged: (Set<LedgerViewType> newSelection) {
+              final newType = newSelection.first;
+              setState(() => _ledgerViewType = newType);
+              // Auto-prefetch when switching to itemized
+              if (newType == LedgerViewType.itemized) {
+                final provider = Provider.of<CustomerLedgerProvider>(context, listen: false);
+                _prefetchAllSaleItems(provider.entries);
+              }
+            },
+            style: ButtonStyle(
+              backgroundColor: MaterialStateProperty.resolveWith<Color?>(
+                    (Set<MaterialState> states) {
+                  if (states.contains(MaterialState.selected)) {
+                    return const Color(0xFF7C3AED);
+                  }
+                  return Colors.transparent;
+                },
+              ),
+              foregroundColor: MaterialStateProperty.resolveWith<Color?>(
+                    (Set<MaterialState> states) {
+                  if (states.contains(MaterialState.selected)) {
+                    return Colors.white;
+                  }
+                  return const Color(0xFF3C3C43);
+                },
+              ),
+              side: MaterialStateProperty.resolveWith<BorderSide?>(
+                    (Set<MaterialState> states) {
+                  if (states.contains(MaterialState.selected)) {
+                    return const BorderSide(color: Color(0xFF7C3AED), width: 1);
+                  }
+                  return const BorderSide(color: Color(0xFFE5E5EA), width: 1);
+                },
+              ),
+              visualDensity: VisualDensity.compact,
+              padding: MaterialStateProperty.all(
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              ),
+              textStyle: MaterialStateProperty.all(
+                const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+        ),
         IconButton(
           icon: const Icon(Icons.picture_as_pdf, color: Color(0xFF7C3AED)),
-          onPressed: () => _generatePdf(lp),
+          onPressed: () => _showPdfOptions(lp),
           tooltip: lp.isEnglish ? 'Export to PDF' : 'PDF ایکسپورٹ کریں',
         ),
         IconButton(
@@ -315,6 +595,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
     );
   }
 
+  // ─── Filters Bar ────────────────────────────────────────────────────────────
   Widget _buildFiltersBar(LanguageProvider lp, List<Map<String, String>> filterOptions) {
     return Container(
       color: Colors.white,
@@ -370,6 +651,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
     );
   }
 
+  // ─── Summary Cards ──────────────────────────────────────────────────────────
   Widget _buildSummaryCards(CustomerLedgerProvider provider, LanguageProvider lp) {
     final s = provider.summary;
 
@@ -468,6 +750,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
     );
   }
 
+  // ─── Table Section ──────────────────────────────────────────────────────────
   Widget _buildTableSection(CustomerLedgerProvider provider, LanguageProvider lp) {
     if (provider.isLoading && provider.entries.isEmpty) {
       return const Center(child: CircularProgressIndicator(color: Color(0xFF7C3AED)));
@@ -502,84 +785,588 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: Column(children: [
-              _buildTableHeader(lp),
-              const Divider(height: 1, color: Color(0xFFE5E5EA)),
-              Expanded(
-                child: ListView.builder(
-                  controller: _verticalScroll,
-                  itemCount: provider.entries.length + 1,
-                  itemBuilder: (context, index) {
-                    if (index == provider.entries.length) {
-                      return provider.isLoading
-                          ? const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16),
-                          child: Center(
-                              child: CircularProgressIndicator(
-                                  color: Color(0xFF7C3AED), strokeWidth: 2)))
-                          : const SizedBox(height: 16);
-                    }
-                    final entry = provider.entries[index];
-                    final isExpanded = _expandedEntryId == entry['id'];
-                    return _ExpandableRow(
-                      key: ValueKey(entry['id']),
-                      entry: entry,
-                      isEven: index % 2 == 0,
-                      isExpanded: isExpanded,
-                      isLast: index == provider.entries.length - 1,
-                      currencyFormat: _currencyFormat,
-                      dateFormat: _dateFormat,
-                      dateTimeFormat: _dateTimeFormat,
-                      paymentMethodMeta: _paymentMethodMeta,
-                      saleItems: entry['transaction_type'] == 'sale' && entry['reference_id'] != null
-                          ? _saleItemsCache[entry['reference_id']]
-                          : null,
-                      isLoadingItems: entry['transaction_type'] == 'sale' && entry['reference_id'] != null
-                          ? (_saleItemsLoading[entry['reference_id']] ?? false)
-                          : false,
-                      onTap: () => _toggleRow(entry),
-                      languageProvider: lp,
-                    );
-                  },
+            child: Column(
+              children: [
+                // Fixed Header - Now scrolls with the body using the same controller
+                Container(
+                  color: const Color(0xFFF5F5F7),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    controller: _horizontalScroll,
+                    physics: const ClampingScrollPhysics(),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                      child: _buildTableHeaders(lp),
+                    ),
+                  ),
                 ),
-              ),
-            ]),
+                const Divider(height: 1, color: Color(0xFFE5E5EA)),
+                // Scrollable body with horizontal scroll sync
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: _verticalScroll,
+                    scrollDirection: Axis.vertical,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: SingleChildScrollView(
+                      controller: _horizontalScroll,
+                      scrollDirection: Axis.horizontal,
+                      physics: const ClampingScrollPhysics(),
+                      child: Column(
+                        children: [
+                          // Build all rows as a single column
+                          ...provider.entries.asMap().entries.map((entry) {
+                            final index = entry.key;
+                            final entryData = entry.value;
+                            if (_ledgerViewType == LedgerViewType.itemized) {
+                              return _buildItemizedRow(
+                                entry: entryData,
+                                index: index,
+                                isEven: index % 2 == 0,
+                                isLast: index == provider.entries.length - 1,
+                                languageProvider: lp,
+                              );
+                            }
+                            final isExpanded = _expandedEntryId == entryData['id'];
+                            return _ExpandableRow(
+                              key: ValueKey(entryData['id']),
+                              entry: entryData,
+                              isEven: index % 2 == 0,
+                              isExpanded: isExpanded,
+                              isLast: index == provider.entries.length - 1,
+                              currencyFormat: _currencyFormat,
+                              dateFormat: _dateFormat,
+                              dateTimeFormat: _dateTimeFormat,
+                              paymentMethodMeta: _paymentMethodMeta,
+                              saleItems: entryData['transaction_type'] == 'sale' && entryData['reference_id'] != null
+                                  ? _saleItemsCache[entryData['reference_id']]
+                                  : null,
+                              isLoadingItems: entryData['transaction_type'] == 'sale' && entryData['reference_id'] != null
+                                  ? (_saleItemsLoading[entryData['reference_id']] ?? false)
+                                  : false,
+                              onTap: () => _toggleRow(entryData),
+                              languageProvider: lp,
+                              horizontalScrollController: _horizontalScroll,
+                            );
+                          }),
+                          // Loading indicator at bottom
+                          if (provider.isLoading)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 16),
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  color: Color(0xFF7C3AED),
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
+// ─── Column widths (wider for full data display) ────────────────────────────────
+  static const double _iDate   = 100;
+  static const double _iRef    = 120;
+  static const double _iProd   = 200;
+  static const double _iType   = 80;
+  static const double _iQty    = 60;
+  static const double _iWgt    = 80;
+  static const double _iRate   = 100;
+  static const double _iTotal  = 110;
+  static const double _iMeth   = 100;
+  static const double _iDebit  = 110;
+  static const double _iCred   = 110;
+  static const double _iBal    = 110;
 
-  Widget _buildTableHeader(LanguageProvider lp) {
-    return Container(
-      color: const Color(0xFFF5F5F7),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-      child: Row(children: [
-        _hCell(lp.isEnglish ? 'DATE' : 'تاریخ', flex: 2),
-        _hCell(lp.isEnglish ? 'REF #' : 'حوالہ نمبر', flex: 2),
-        _hCell(lp.isEnglish ? 'TYPE' : 'قسم', flex: 1),
-        _hCell(lp.isEnglish ? 'METHOD' : 'طریقہ', flex: 1),
-        _hCell(lp.isEnglish ? 'BANK' : 'بینک', flex: 2),
-        _hCell(lp.isEnglish ? 'DESCRIPTION' : 'تفصیل', flex: 3),
-        _hCell(lp.isEnglish ? 'DEBIT' : 'ڈیبٹ', flex: 2, right: true),
-        _hCell(lp.isEnglish ? 'CREDIT' : 'کریڈٹ', flex: 2, right: true),
-        _hCell(lp.isEnglish ? 'BALANCE' : 'بیلنس', flex: 2, right: true),
-        const SizedBox(width: 24),
-      ]),
+  Widget _buildTableHeaders(LanguageProvider lp) {
+    if (_ledgerViewType == LedgerViewType.itemized) {
+      return IntrinsicWidth(
+        child: Row(
+          children: [
+            _hCell(lp.isEnglish ? 'Date' : 'تاریخ', width: 100),
+            _hCell(lp.isEnglish ? 'Ref #' : 'حوالہ', width: 120),
+            _hCell(lp.isEnglish ? 'Product' : 'پروڈکٹ', width: 200),
+            _hCell(lp.isEnglish ? 'Type' : 'قسم', width: 80),
+            _hCell(lp.isEnglish ? 'Qty' : 'مقدار', width: 60, right: true),
+            _hCell(lp.isEnglish ? 'Weight' : 'وزن', width: 80, right: true),
+            _hCell(lp.isEnglish ? 'Rate' : 'ریٹ', width: 100, right: true),
+            _hCell(lp.isEnglish ? 'Total' : 'کل', width: 110, right: true),
+            _hCell(lp.isEnglish ? 'Method' : 'طریقہ', width: 100),
+            _hCell(lp.isEnglish ? 'Debit' : 'ڈیبٹ', width: 110, right: true),
+            _hCell(lp.isEnglish ? 'Credit' : 'کریڈٹ', width: 110, right: true),
+            _hCell(lp.isEnglish ? 'Balance' : 'بیلنس', width: 110, right: true),
+            const SizedBox(width: 8),
+          ],
+        ),
+      );
+    }
+    // Consolidated headers
+    return IntrinsicWidth(
+      child: Row(
+        children: [
+          _hCell(lp.isEnglish ? 'Date' : 'تاریخ', width: 110),
+          _hCell(lp.isEnglish ? 'Ref #' : 'حوالہ', width: 120),
+          _hCell(lp.isEnglish ? 'Type' : 'قسم', width: 90),
+          _hCell(lp.isEnglish ? 'Method' : 'طریقہ', width: 110),
+          _hCell(lp.isEnglish ? 'Bank' : 'بینک', width: 140),
+          _hCell(lp.isEnglish ? 'Description' : 'تفصیل', width: 250),
+          _hCell(lp.isEnglish ? 'Debit' : 'ڈیبٹ', width: 110, right: true),
+          _hCell(lp.isEnglish ? 'Credit' : 'کریڈٹ', width: 110, right: true),
+          _hCell(lp.isEnglish ? 'Balance' : 'بیلنس', width: 110, right: true),
+          const SizedBox(width: 8),
+        ],
+      ),
     );
   }
 
-  Widget _hCell(String text, {int flex = 1, bool right = false}) => Expanded(
-    flex: flex,
+  Widget _hCell(String text, {double width = 60, bool right = false}) => SizedBox(
+    width: width,
     child: Text(text,
         textAlign: right ? TextAlign.right : TextAlign.left,
         style: const TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w700,
             color: Color(0xFF8E8E93),
-            letterSpacing: 0.5)),
+            letterSpacing: 0.3)),
   );
 
+  // ─── Itemized Row Builder ──────────────────────────────────────────────────
+  Widget _buildItemizedRow({
+    required Map<String, dynamic> entry,
+    required int index,
+    required bool isEven,
+    required bool isLast,
+    required LanguageProvider languageProvider,
+  }) {
+    final isSale = entry['transaction_type'] == 'sale';
+    final referenceId = entry['reference_id'] as int?;
+    final saleItems = referenceId != null ? _saleItemsCache[referenceId] : null;
+    final isLoading = referenceId != null ? (_saleItemsLoading[referenceId] ?? false) : false;
+
+    // Trigger fetch if not cached and not loading
+    if (isSale && referenceId != null && saleItems == null && !isLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _fetchSaleItems(referenceId);
+      });
+    }
+
+    // Loading state — show skeleton row
+    if (isSale && referenceId != null && isLoading && saleItems == null) {
+      return _buildItemizedLoadingRow(entry: entry, isEven: isEven, isLast: isLast, lp: languageProvider);
+    }
+
+    // Non-sale or sale without items yet
+    if (!isSale || saleItems == null || saleItems.isEmpty) {
+      return _buildItemizedSingleRow(
+        entry: entry,
+        isEven: isEven,
+        isLast: isLast,
+        lp: languageProvider,
+        isSale: isSale,
+      );
+    }
+
+    // Sale with items — show header + item rows
+    final List<Widget> rows = [];
+    rows.add(_buildItemizedSaleHeader(
+      entry: entry,
+      isEven: isEven,
+      isLast: false,
+      lp: languageProvider,
+      itemCount: saleItems.length,
+    ));
+    for (int i = 0; i < saleItems.length; i++) {
+      rows.add(_buildItemizedItemRow(
+        item: saleItems[i],
+        isEven: isEven,
+        isLast: isLast && i == saleItems.length - 1,
+        lp: languageProvider,
+        itemIndex: i,
+      ));
+    }
+    return Column(children: rows);
+  }
+
+  /// Skeleton row shown while items are loading
+  Widget _buildItemizedLoadingRow({
+    required Map<String, dynamic> entry,
+    required bool isEven,
+    required bool isLast,
+    required LanguageProvider lp,
+  }) {
+    DateTime? txDate;
+    try { txDate = DateTime.parse(entry['date']); } catch (_) {}
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isEven ? Colors.white : const Color(0xFFFAFAFC),
+        border: isLast ? null : const Border(bottom: BorderSide(color: Color(0xFFF0F0F5))),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        child: Row(children: [
+          _buildDataCell(txDate != null ? _dateFormat.format(txDate) : '—', width: _iDate, fontSize: 11),
+          _buildDataCell(entry['reference_number'] ?? '—', width: _iRef, fontSize: 11,
+              color: const Color(0xFF7C3AED), bold: true),
+          SizedBox(
+            width: _iProd,
+            child: Row(children: [
+              const SizedBox(width: 4),
+              const SizedBox(
+                width: 12, height: 12,
+                child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF7C3AED)),
+              ),
+              const SizedBox(width: 6),
+              Text(lp.isEnglish ? 'Loading…' : 'لوڈ ہو رہا ہے',
+                  style: const TextStyle(fontSize: 10, color: Color(0xFF8E8E93))),
+            ]),
+          ),
+          const SizedBox(width: _iType + _iQty + _iWgt + _iRate + _iTotal + _iMeth + _iDebit + _iCred + _iBal + 8),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildItemizedSaleHeader({
+    required Map<String, dynamic> entry,
+    required bool isEven,
+    required bool isLast,
+    required LanguageProvider lp,
+    required int itemCount,
+  }) {
+    final debitValue = double.tryParse(entry['debit'].toString()) ?? 0.0;
+    final creditValue = double.tryParse(entry['credit'].toString()) ?? 0.0;
+    final balanceValue = double.tryParse(entry['balance'].toString()) ?? 0.0;
+    final paymentMethod = entry['payment_method']?.toString();
+    final refNum = entry['reference_number'] ?? '—';
+
+    final balColor = balanceValue > 0
+        ? const Color(0xFFEF4444)
+        : balanceValue < 0 ? const Color(0xFF10B981) : const Color(0xFF8E8E93);
+
+    final typeColor = _getTypeColor('sale');
+    final typeBg = _getTypeBg('sale');
+    final typeLabel = _getTypeLabel('sale', lp);
+    final methodColor = _getPaymentMethodColor(paymentMethod);
+
+    DateTime? txDate;
+    try { txDate = DateTime.parse(entry['date']); } catch (_) {}
+
+    final displayText =
+        '${lp.isEnglish ? 'Sale' : 'فروخت'} ($itemCount ${lp.isEnglish ? 'items' : 'اشیاء'})';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isEven ? const Color(0xFFFDF8FF) : const Color(0xFFF9F4FF),
+        border: isLast ? null : const Border(bottom: BorderSide(color: Color(0xFFE0D4FB))),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(children: [
+          _buildDataCell(txDate != null ? _dateFormat.format(txDate) : '—',
+              width: _iDate, fontSize: 11),
+          _buildDataCell(refNum,
+              width: _iRef, fontSize: 11, color: const Color(0xFF7C3AED), bold: true),
+          SizedBox(
+            width: _iProd,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF7C3AED).withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFF7C3AED).withOpacity(0.2)),
+                ),
+                child: Text(displayText,
+                    style: const TextStyle(
+                        fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF7C3AED)),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          ),
+          _buildTypeBadge(typeLabel, typeColor, typeBg, width: _iType),
+          _buildDataCell('', width: _iQty, fontSize: 11, align: TextAlign.right),
+          _buildDataCell('', width: _iWgt, fontSize: 11, align: TextAlign.right),
+          _buildDataCell('', width: _iRate, fontSize: 11, align: TextAlign.right),
+          _buildDataCell('', width: _iTotal, fontSize: 11, align: TextAlign.right),
+          _buildMethodBadge(_getPaymentMethodLabel(paymentMethod, lp), methodColor, width: _iMeth),
+          _buildDataCell(
+            debitValue > 0 ? 'Rs ${_currencyFormat.format(debitValue)}' : '—',
+            width: _iDebit, fontSize: 11, align: TextAlign.right,
+            color: debitValue > 0 ? const Color(0xFFEF4444) : const Color(0xFF8E8E93),
+            bold: debitValue > 0,
+          ),
+          _buildDataCell(
+            creditValue > 0 ? 'Rs ${_currencyFormat.format(creditValue)}' : '—',
+            width: _iCred, fontSize: 11, align: TextAlign.right,
+            color: creditValue > 0 ? const Color(0xFF10B981) : const Color(0xFF8E8E93),
+            bold: creditValue > 0,
+          ),
+          _buildDataCell(
+            'Rs ${_currencyFormat.format(balanceValue)}',
+            width: _iBal, fontSize: 11, align: TextAlign.right,
+            color: balColor, bold: true,
+          ),
+          const SizedBox(width: 8),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildItemizedSingleRow({
+    required Map<String, dynamic> entry,
+    required bool isEven,
+    required bool isLast,
+    required LanguageProvider lp,
+    required bool isSale,
+  }) {
+    final debitValue = double.tryParse(entry['debit'].toString()) ?? 0.0;
+    final creditValue = double.tryParse(entry['credit'].toString()) ?? 0.0;
+    final balanceValue = double.tryParse(entry['balance'].toString()) ?? 0.0;
+    final transactionType = entry['transaction_type'].toString();
+    final paymentMethod = entry['payment_method']?.toString();
+    final refNum = entry['reference_number'] ?? '—';
+
+    final balColor = balanceValue > 0
+        ? const Color(0xFFEF4444)
+        : balanceValue < 0 ? const Color(0xFF10B981) : const Color(0xFF8E8E93);
+
+    final typeColor = _getTypeColor(transactionType);
+    final typeBg = _getTypeBg(transactionType);
+    final typeLabel = _getTypeLabel(transactionType, lp);
+    final methodColor = _getPaymentMethodColor(paymentMethod);
+
+    DateTime? txDate;
+    try { txDate = DateTime.parse(entry['date']); } catch (_) {}
+
+    final displayText = entry['description'] ?? '—';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isEven ? Colors.white : const Color(0xFFFAFAFC),
+        border: isLast ? null : const Border(bottom: BorderSide(color: Color(0xFFF0F0F5))),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(children: [
+          _buildDataCell(txDate != null ? _dateFormat.format(txDate) : '—',
+              width: _iDate, fontSize: 11),
+          _buildDataCell(refNum,
+              width: _iRef, fontSize: 11, color: const Color(0xFF7C3AED), bold: true),
+          _buildDataCell(displayText,
+              width: _iProd, fontSize: 11),
+          _buildTypeBadge(typeLabel, typeColor, typeBg, width: _iType),
+          _buildDataCell('—', width: _iQty, fontSize: 11, align: TextAlign.right, color: const Color(0xFF8E8E93)),
+          _buildDataCell('—', width: _iWgt, fontSize: 11, align: TextAlign.right, color: const Color(0xFF8E8E93)),
+          _buildDataCell('—', width: _iRate, fontSize: 11, align: TextAlign.right, color: const Color(0xFF8E8E93)),
+          _buildDataCell('—', width: _iTotal, fontSize: 11, align: TextAlign.right, color: const Color(0xFF8E8E93)),
+          _buildMethodBadge(_getPaymentMethodLabel(paymentMethod, lp), methodColor, width: _iMeth),
+          _buildDataCell(
+            debitValue > 0 ? 'Rs ${_currencyFormat.format(debitValue)}' : '—',
+            width: _iDebit, fontSize: 11, align: TextAlign.right,
+            color: debitValue > 0 ? const Color(0xFFEF4444) : const Color(0xFF8E8E93),
+            bold: debitValue > 0,
+          ),
+          _buildDataCell(
+            creditValue > 0 ? 'Rs ${_currencyFormat.format(creditValue)}' : '—',
+            width: _iCred, fontSize: 11, align: TextAlign.right,
+            color: creditValue > 0 ? const Color(0xFF10B981) : const Color(0xFF8E8E93),
+            bold: creditValue > 0,
+          ),
+          _buildDataCell(
+            'Rs ${_currencyFormat.format(balanceValue)}',
+            width: _iBal, fontSize: 11, align: TextAlign.right,
+            color: balColor, bold: true,
+          ),
+          const SizedBox(width: 8),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildItemizedItemRow({
+    required Map<String, dynamic> item,
+    required bool isEven,
+    required bool isLast,
+    required LanguageProvider lp,
+    required int itemIndex,
+  }) {
+    final productName = item['product_name'] as String? ?? 'Unknown';
+    final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
+    final unitPrice = (item['unit_price'] as num?)?.toDouble() ?? 0.0;
+    final totalPrice = (item['total_price'] as num?)?.toDouble() ?? 0.0;
+    final weight = (item['weight'] as num?)?.toDouble() ?? 0.0;
+
+    final isSarya = weight > 0 && quantity == 0;
+    final lengthData = _extractLengthDataForItem(item);
+    final hasLengths = lengthData['hasLengths'] as bool;
+    final lengthsDisplay = lengthData['display'] as String;
+    final totalPieces = hasLengths ? _getTotalPiecesFromItem(item) : 0;
+
+    final String qtyDisplay = isSarya
+        ? '—'
+        : hasLengths
+        ? (totalPieces > 0 ? '$totalPieces' : '$quantity')
+        : '$quantity';
+
+    final String weightDisplay = weight > 0 ? '${weight.toStringAsFixed(2)} kg' : '—';
+
+    final Color itemBg = itemIndex % 2 == 0
+        ? const Color(0xFFF5F3FF)
+        : const Color(0xFFEDE9FE);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: itemBg,
+        border: isLast ? null : const Border(bottom: BorderSide(color: Color(0xFFE5E5EA))),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Row(children: [
+          _buildDataCell('', width: _iDate, fontSize: 11),
+          _buildDataCell('', width: _iRef, fontSize: 11),
+          SizedBox(
+            width: _iProd,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Row(children: [
+                Container(
+                  width: 3, height: 28,
+                  margin: const EdgeInsets.only(right: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7C3AED).withOpacity(0.35),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(productName,
+                        style: const TextStyle(
+                            fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF1C1C1E))),
+                    if (hasLengths)
+                      Text(lengthsDisplay,
+                          style: const TextStyle(
+                              fontSize: 9, color: Color(0xFF3B82F6), fontStyle: FontStyle.italic)),
+                    if (isSarya)
+                      Text('${lp.isEnglish ? 'Sarya' : 'سریا'} • ${weight.toStringAsFixed(2)} kg',
+                          style: const TextStyle(fontSize: 9, color: Color(0xFF1D4ED8))),
+                  ]),
+                ),
+              ]),
+            ),
+          ),
+          _buildTypeBadge(lp.isEnglish ? 'ITEM' : 'آئٹم', const Color(0xFF3B82F6), const Color(0xFFEFF6FF), width: _iType),
+          _buildDataCell(qtyDisplay,
+              width: _iQty, fontSize: 11, align: TextAlign.right,
+              color: const Color(0xFF6366F1), bold: true),
+          _buildDataCell(weightDisplay,
+              width: _iWgt, fontSize: 10, align: TextAlign.right,
+              color: isSarya ? const Color(0xFF1D4ED8) : const Color(0xFF8E8E93)),
+          _buildDataCell('Rs ${_currencyFormat.format(unitPrice)}',
+              width: _iRate, fontSize: 11, align: TextAlign.right,
+              color: const Color(0xFF3C3C43)),
+          _buildDataCell('Rs ${_currencyFormat.format(totalPrice)}',
+              width: _iTotal, fontSize: 11, align: TextAlign.right,
+              color: const Color(0xFF10B981), bold: true),
+          _buildDataCell('', width: _iMeth, fontSize: 11),
+          _buildDataCell('', width: _iDebit, fontSize: 11),
+          _buildDataCell('', width: _iCred, fontSize: 11),
+          _buildDataCell('', width: _iBal, fontSize: 11),
+          const SizedBox(width: 8),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildDataCell(String text, {
+    double width = 60,
+    double fontSize = 12,
+    TextAlign align = TextAlign.left,
+    Color color = const Color(0xFF1C1C1E),
+    bool bold = false,
+  }) {
+    return SizedBox(
+      width: width,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Text(
+          text,
+          textAlign: align,
+          style: TextStyle(
+            fontSize: fontSize,
+            fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
+            color: color,
+            fontFamily: widget.languageProvider.fontFamily,
+          ),
+          // Removed maxLines and overflow - show full text
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTypeBadge(String label, Color color, Color bg, {double width = 60}) {
+    return SizedBox(
+      width: width,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 10,
+            color: color,
+            fontWeight: FontWeight.w600,
+            fontFamily: widget.languageProvider.fontFamily,
+          ),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMethodBadge(String label, Color color, {double width = 60}) {
+    if (label == '—') {
+      return SizedBox(
+        width: width,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          decoration: BoxDecoration(color: const Color(0xFFF5F5F7), borderRadius: BorderRadius.circular(6)),
+          child: Text(label,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 10, color: const Color(0xFF8E8E93),
+                  fontWeight: FontWeight.w500, fontFamily: widget.languageProvider.fontFamily),
+              overflow: TextOverflow.ellipsis),
+        ),
+      );
+    }
+    return SizedBox(
+      width: width,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
+        child: Text(label,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600,
+                fontFamily: widget.languageProvider.fontFamily),
+            overflow: TextOverflow.ellipsis),
+      ),
+    );
+  }
+
+  // ─── Date Picker ────────────────────────────────────────────────────────────
   Future<void> _pickDateRange() async {
     final now = DateTime.now();
     final picked = await showDateRangePicker(
@@ -599,11 +1386,12 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
     }
   }
 
+  // ─── Add Adjustment Dialog ──────────────────────────────────────────────────
   Future<void> _showAddEntryDialog(LanguageProvider lp) async {
-    final descCtrl = TextEditingController();
+    final descCtrl  = TextEditingController();
     final debitCtrl = TextEditingController(text: '0');
     final creditCtrl = TextEditingController(text: '0');
-    final refCtrl = TextEditingController();
+    final refCtrl   = TextEditingController();
     DateTime selectedDate = DateTime.now();
 
     await showDialog(
@@ -619,34 +1407,26 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
           ]),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              _dlgField(
-                  ctrl: descCtrl,
+              _dlgField(ctrl: descCtrl,
                   label: lp.isEnglish ? 'Description *' : 'تفصیل *',
                   hint: lp.isEnglish ? 'e.g. Opening balance adjustment' : 'مثال: ابتدائی بیلنس ایڈجسٹمنٹ',
                   lp: lp),
               const SizedBox(height: 12),
               Row(children: [
                 Expanded(
-                    child: _dlgField(
-                        ctrl: debitCtrl,
+                    child: _dlgField(ctrl: debitCtrl,
                         label: lp.isEnglish ? 'Debit (Customer Owes)' : 'ڈیبٹ (کسٹمر کا قرض)',
-                        hint: '0.00',
-                        num: true,
-                        lp: lp)),
+                        hint: '0.00', num: true, lp: lp)),
                 const SizedBox(width: 12),
                 Expanded(
-                    child: _dlgField(
-                        ctrl: creditCtrl,
+                    child: _dlgField(ctrl: creditCtrl,
                         label: lp.isEnglish ? 'Credit (Payment)' : 'کریڈٹ (ادائیگی)',
-                        hint: '0.00',
-                        num: true,
-                        lp: lp)),
+                        hint: '0.00', num: true, lp: lp)),
               ]),
               const SizedBox(height: 12),
               _dlgField(ctrl: refCtrl,
                   label: lp.isEnglish ? 'Reference # (optional)' : 'حوالہ نمبر (اختیاری)',
-                  hint: lp.isEnglish ? 'e.g. ADJ-001' : 'مثال: ADJ-001',
-                  lp: lp),
+                  hint: lp.isEnglish ? 'e.g. ADJ-001' : 'مثال: ADJ-001', lp: lp),
               const SizedBox(height: 12),
               GestureDetector(
                 onTap: () async {
@@ -657,8 +1437,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
                       lastDate: DateTime.now(),
                       builder: (c, child) => Theme(
                         data: Theme.of(c).copyWith(
-                            colorScheme:
-                            const ColorScheme.light(primary: Color(0xFF7C3AED))),
+                            colorScheme: const ColorScheme.light(primary: Color(0xFF7C3AED))),
                         child: child!,
                       ));
                   if (p != null) setDlg(() => selectedDate = p);
@@ -732,7 +1511,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
   }) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label,
-          style: TextStyle(fontSize: 12, color: const Color(0xFF8E8E93), fontWeight: FontWeight.w500)),
+          style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E93), fontWeight: FontWeight.w500)),
       const SizedBox(height: 4),
       TextFormField(
         controller: ctrl,
@@ -755,8 +1534,7 @@ class _CustomerLedgerScreenState extends State<CustomerLedgerScreen> {
   }
 }
 
-// ─── Expandable Row (Updated to match supplier ledger design) ────────────────────────────────────────────────────────
-
+// ─── Expandable Row (Consolidated View) — UNCHANGED ──────────────────────────
 class _ExpandableRow extends StatelessWidget {
   final Map<String, dynamic> entry;
   final bool isEven, isExpanded, isLast, isLoadingItems;
@@ -766,6 +1544,7 @@ class _ExpandableRow extends StatelessWidget {
   final List<Map<String, dynamic>>? saleItems;
   final VoidCallback onTap;
   final LanguageProvider languageProvider;
+  final ScrollController horizontalScrollController;
 
   const _ExpandableRow({
     super.key,
@@ -779,17 +1558,14 @@ class _ExpandableRow extends StatelessWidget {
     required this.paymentMethodMeta,
     required this.onTap,
     required this.languageProvider,
+    required this.horizontalScrollController,
     this.saleItems,
     this.isLoadingItems = false,
   });
 
   List<String> _parseDynamicList(dynamic val) {
     if (val is String) {
-      try {
-        return List<String>.from(jsonDecode(val));
-      } catch (_) {
-        return [];
-      }
+      try { return List<String>.from(jsonDecode(val)); } catch (_) { return []; }
     }
     if (val is List) return val.cast<String>();
     return [];
@@ -797,7 +1573,6 @@ class _ExpandableRow extends StatelessWidget {
 
   Map<String, int> _parseLengthQuantities(dynamic val) {
     if (val == null) return {};
-
     if (val is String) {
       try {
         final decoded = jsonDecode(val);
@@ -807,11 +1582,9 @@ class _ExpandableRow extends StatelessWidget {
       } catch (_) {}
       return {};
     }
-
     if (val is Map) {
       return Map<String, int>.from(val.map((k, v) => MapEntry(k.toString(), _toInt(v))));
     }
-
     return {};
   }
 
@@ -855,9 +1628,7 @@ class _ExpandableRow extends StatelessWidget {
           orElse: () => Bank(name: bankName, iconPath: ''),
         ),
       );
-    } catch (_) {
-      return null;
-    }
+    } catch (_) { return null; }
   }
 
   Widget _buildBankWidget(Color color) {
@@ -876,46 +1647,24 @@ class _ExpandableRow extends StatelessWidget {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
-              child: Image.asset(
-                bank.iconPath,
-                width: 24,
-                height: 24,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Icon(
-                  Icons.account_balance,
-                  size: 20,
-                  color: color,
-                ),
-              ),
+              child: Image.asset(bank.iconPath, width: 20, height: 20, fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => Icon(Icons.account_balance, size: 16, color: color)),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 4),
             Expanded(
-              child: Text(
-                bankName,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: color,
-                  fontWeight: FontWeight.w500,
-                  fontFamily: languageProvider.fontFamily,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
+              child: Text(bankName,
+                  style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w500,
+                      fontFamily: languageProvider.fontFamily),
+                  overflow: TextOverflow.ellipsis),
             ),
           ],
         ),
       );
     }
-
-    return Text(
-      bankName,
-      style: TextStyle(
-        fontSize: 11,
-        color: color,
-        fontWeight: FontWeight.w500,
-        fontFamily: languageProvider.fontFamily,
-      ),
-      overflow: TextOverflow.ellipsis,
-    );
+    return Text(bankName,
+        style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w500,
+            fontFamily: languageProvider.fontFamily),
+        overflow: TextOverflow.ellipsis);
   }
 
   @override
@@ -926,42 +1675,28 @@ class _ExpandableRow extends StatelessWidget {
     final transactionType = entry['transaction_type'].toString();
     final paymentMethod = entry['payment_method']?.toString();
 
-    Color typeColor;
-    Color typeBg;
-    IconData typeIcon;
-    String typeLabel;
-
+    Color typeColor; Color typeBg; IconData typeIcon; String typeLabel;
     switch (transactionType) {
       case 'sale':
-        typeColor = const Color(0xFFEF4444);
-        typeBg = const Color(0xFFFEF2F2);
-        typeIcon = Icons.shopping_cart_outlined;
-        typeLabel = languageProvider.isEnglish ? 'Sale' : 'فروخت';
+        typeColor = const Color(0xFFEF4444); typeBg = const Color(0xFFFEF2F2);
+        typeIcon = Icons.shopping_cart_outlined; typeLabel = languageProvider.isEnglish ? 'Sale' : 'فروخت';
         break;
       case 'payment':
-        typeColor = const Color(0xFF10B981);
-        typeBg = const Color(0xFFECFDF5);
-        typeIcon = Icons.payments_outlined;
-        typeLabel = languageProvider.isEnglish ? 'Payment' : 'ادائیگی';
+        typeColor = const Color(0xFF10B981); typeBg = const Color(0xFFECFDF5);
+        typeIcon = Icons.payments_outlined; typeLabel = languageProvider.isEnglish ? 'Payment' : 'ادائیگی';
         break;
       case 'adjustment':
-        typeColor = const Color(0xFF6366F1);
-        typeBg = const Color(0xFFEEF2FF);
-        typeIcon = Icons.edit_note_outlined;
-        typeLabel = languageProvider.isEnglish ? 'Adjustment' : 'ایڈجسٹمنٹ';
+        typeColor = const Color(0xFF6366F1); typeBg = const Color(0xFFEEF2FF);
+        typeIcon = Icons.edit_note_outlined; typeLabel = languageProvider.isEnglish ? 'Adjustment' : 'ایڈجسٹمنٹ';
         break;
       default:
-        typeColor = const Color(0xFFF59E0B);
-        typeBg = const Color(0xFFFFFBEB);
-        typeIcon = Icons.info_outline;
-        typeLabel = transactionType.replaceAll('_', ' ').toUpperCase();
+        typeColor = const Color(0xFFF59E0B); typeBg = const Color(0xFFFFFBEB);
+        typeIcon = Icons.info_outline; typeLabel = transactionType.replaceAll('_', ' ').toUpperCase();
     }
 
     final balColor = balanceValue > 0
         ? const Color(0xFFEF4444)
-        : balanceValue < 0
-        ? const Color(0xFF10B981)
-        : const Color(0xFF8E8E93);
+        : balanceValue < 0 ? const Color(0xFF10B981) : const Color(0xFF8E8E93);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
@@ -973,50 +1708,35 @@ class _ExpandableRow extends StatelessWidget {
         InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(children: [
-              Expanded(flex: 2, child: Text(dateFormat.format(DateTime.parse(entry['date'])),
-                  style: TextStyle(fontSize: 12, color: Color(0xFF3C3C43), fontFamily: languageProvider.fontFamily))),
-              Expanded(flex: 2, child: Text(entry['reference_number'] ?? '—',
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF7C3AED), fontWeight: FontWeight.w500),
-                  overflow: TextOverflow.ellipsis)),
-              Expanded(flex: 1, child: _typeBadge(typeLabel, typeColor, typeBg)),
-              Expanded(flex: 1, child: _methodBadge(_getPaymentMethodLabel(paymentMethod),
-                  _getPaymentMethodColor(paymentMethod))),
-              Expanded(flex: 2, child: _buildBankWidget(_getPaymentMethodColor(paymentMethod))),
-              Expanded(flex: 3, child: Padding(
-                padding: const EdgeInsets.only(left: 4),
-                child: Text(entry['description'] ?? '—',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF1C1C1E), fontFamily: languageProvider.fontFamily),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-              )),
-              Expanded(flex: 2, child: Text(debitValue > 0 ? 'Rs ${currencyFormat.format(debitValue)}' : '—',
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: debitValue > 0 ? FontWeight.w600 : FontWeight.normal,
-                      color: debitValue > 0 ? const Color(0xFFEF4444) : const Color(0xFF8E8E93),
-                      fontFamily: languageProvider.fontFamily))),
-              Expanded(flex: 2, child: Text(creditValue > 0 ? 'Rs ${currencyFormat.format(creditValue)}' : '—',
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: creditValue > 0 ? FontWeight.w600 : FontWeight.normal,
-                      color: creditValue > 0 ? const Color(0xFF10B981) : const Color(0xFF8E8E93),
-                      fontFamily: languageProvider.fontFamily))),
-              Expanded(flex: 2, child: Text('Rs ${currencyFormat.format(balanceValue)}',
-                  textAlign: TextAlign.right,
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: balColor,
-                      fontFamily: languageProvider.fontFamily))),
-              const SizedBox(width: 4),
-              AnimatedRotation(
-                  turns: isExpanded ? 0.5 : 0,
-                  duration: const Duration(milliseconds: 200),
-                  child: Icon(Icons.keyboard_arrow_down,
-                      size: 18,
-                      color: isExpanded ? const Color(0xFF7C3AED) : const Color(0xFF8E8E93))),
-            ]),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                _buildDataCell(dateFormat.format(DateTime.parse(entry['date'])), width: 90, fontSize: 11),
+                _buildDataCell(entry['reference_number'] ?? '—', width: 80, fontSize: 11,
+                    color: const Color(0xFF7C3AED), bold: true),
+                _buildTypeBadge(typeLabel, typeColor, typeBg, width: 75),
+                _buildMethodBadge(_getPaymentMethodLabel(paymentMethod),
+                    _getPaymentMethodColor(paymentMethod), width: 80),
+                SizedBox(width: 90, child: _buildBankWidget(_getPaymentMethodColor(paymentMethod))),
+                _buildDataCell(entry['description'] ?? '—', width: 120, fontSize: 11, maxLines: 1),
+                _buildDataCell(debitValue > 0 ? 'Rs ${currencyFormat.format(debitValue)}' : '—',
+                    width: 85, fontSize: 11, align: TextAlign.right,
+                    color: debitValue > 0 ? const Color(0xFFEF4444) : const Color(0xFF8E8E93),
+                    bold: debitValue > 0),
+                _buildDataCell(creditValue > 0 ? 'Rs ${currencyFormat.format(creditValue)}' : '—',
+                    width: 85, fontSize: 11, align: TextAlign.right,
+                    color: creditValue > 0 ? const Color(0xFF10B981) : const Color(0xFF8E8E93),
+                    bold: creditValue > 0),
+                _buildDataCell('Rs ${currencyFormat.format(balanceValue)}',
+                    width: 90, fontSize: 11, align: TextAlign.right, color: balColor, bold: true),
+                const SizedBox(width: 8),
+                AnimatedRotation(
+                    turns: isExpanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(Icons.keyboard_arrow_down, size: 18,
+                        color: isExpanded ? const Color(0xFF7C3AED) : const Color(0xFF8E8E93))),
+              ],
+            ),
           ),
         ),
         AnimatedCrossFade(
@@ -1030,71 +1750,79 @@ class _ExpandableRow extends StatelessWidget {
     );
   }
 
-  Widget _typeBadge(String label, Color color, Color bg) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-    decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
-    child: Text(label,
-        style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600,
-            fontFamily: languageProvider.fontFamily),
-        overflow: TextOverflow.ellipsis),
-  );
-
-  Widget _methodBadge(String label, Color color) {
-    if (label == '—') {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-        decoration: BoxDecoration(color: const Color(0xFFF5F5F7), borderRadius: BorderRadius.circular(6)),
-        child: Text(label,
-            style: TextStyle(fontSize: 10, color: Color(0xFF8E8E93), fontWeight: FontWeight.w500,
-                fontFamily: languageProvider.fontFamily),
-            overflow: TextOverflow.ellipsis),
-      );
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
-      child: Text(label,
-          style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600,
-              fontFamily: languageProvider.fontFamily),
-          overflow: TextOverflow.ellipsis),
+  Widget _buildDataCell(String text, {
+    double width = 60, double fontSize = 12,
+    TextAlign align = TextAlign.left, Color color = const Color(0xFF1C1C1E),
+    bool bold = false, int maxLines = 2,
+  }) {
+    return SizedBox(
+      width: width,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Text(text, textAlign: align,
+            style: TextStyle(fontSize: fontSize,
+                fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
+                color: color, fontFamily: languageProvider.fontFamily),
+            maxLines: maxLines, overflow: TextOverflow.ellipsis),
+      ),
     );
   }
 
-  Widget _getBankLogo(String bankName, Color color, {double size = 28}) {
-    final bank = _getBankByName(bankName);
-    if (bank != null && bank.iconPath.isNotEmpty) {
-      return Image.asset(
-        bank.iconPath,
-        width: size,
-        height: size,
-        fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            Icons.account_balance,
-            size: size * 0.6,
-            color: color,
-          ),
+  Widget _buildTypeBadge(String label, Color color, Color bg, {double width = 60}) {
+    return SizedBox(
+      width: width,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+        child: Text(label, textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600,
+                fontFamily: languageProvider.fontFamily),
+            overflow: TextOverflow.ellipsis),
+      ),
+    );
+  }
+
+  Widget _buildMethodBadge(String label, Color color, {double width = 60}) {
+    if (label == '—') {
+      return SizedBox(
+        width: width,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          decoration: BoxDecoration(color: const Color(0xFFF5F5F7), borderRadius: BorderRadius.circular(6)),
+          child: Text(label, textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 10, color: const Color(0xFF8E8E93), fontWeight: FontWeight.w500,
+                  fontFamily: languageProvider.fontFamily),
+              overflow: TextOverflow.ellipsis),
         ),
       );
     }
+    return SizedBox(
+      width: width,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
+        child: Text(label, textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600,
+                fontFamily: languageProvider.fontFamily),
+            overflow: TextOverflow.ellipsis),
+      ),
+    );
+  }
+
+  Widget _getBankLogo(String bankName, Color color, {double size = 24}) {
+    final bank = _getBankByName(bankName);
+    if (bank != null && bank.iconPath.isNotEmpty) {
+      return Image.asset(bank.iconPath, width: size, height: size, fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => Container(
+            width: size, height: size,
+            decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+            child: Icon(Icons.account_balance, size: size * 0.6, color: color),
+          ));
+    }
     return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Icon(
-        Icons.account_balance,
-        size: size * 0.6,
-        color: color,
-      ),
+      width: size, height: size,
+      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+      child: Icon(Icons.account_balance, size: size * 0.6, color: color),
     );
   }
 
@@ -1128,14 +1856,14 @@ class _ExpandableRow extends StatelessWidget {
   }
 
   Widget _buildPaymentMethodSection(Color typeColor) {
-    final method = entry['payment_method']?.toString();
-    final bankName = entry['bank_name']?.toString();
+    final method    = entry['payment_method']?.toString();
+    final bankName  = entry['bank_name']?.toString();
     final chequeNum = entry['cheque_number']?.toString();
     final chequeDate = entry['cheque_date']?.toString();
 
     if (method == null) return const SizedBox.shrink();
 
-    final meta = paymentMethodMeta[method] ?? paymentMethodMeta['cash']!;
+    final meta  = paymentMethodMeta[method] ?? paymentMethodMeta['cash']!;
     final color = meta['color'] as Color;
 
     return Container(
@@ -1157,18 +1885,15 @@ class _ExpandableRow extends StatelessWidget {
                   fontFamily: languageProvider.fontFamily)),
         ]),
         const SizedBox(height: 10),
-
         Row(children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20)),
+            decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(meta['icon'] as IconData, size: 12, color: color),
               const SizedBox(width: 5),
-              Text(_methodLabel(method), style: TextStyle(fontSize: 11,
-                  fontWeight: FontWeight.bold, color: color, letterSpacing: 0.3,
-                  fontFamily: languageProvider.fontFamily)),
+              Text(_methodLabel(method), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold,
+                  color: color, letterSpacing: 0.3, fontFamily: languageProvider.fontFamily)),
             ]),
           ),
           if (bankName != null && bankName.isNotEmpty) ...[
@@ -1176,67 +1901,35 @@ class _ExpandableRow extends StatelessWidget {
             Expanded(
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: color.withOpacity(0.2)),
-                ),
-                child: Row(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: _getBankLogo(bankName, color, size: 28),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            languageProvider.isEnglish ? 'Bank' : 'بینک',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: color.withOpacity(0.7),
-                              fontWeight: FontWeight.w600,
-                              fontFamily: languageProvider.fontFamily,
-                            ),
-                          ),
-                          Text(
-                            bankName,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF1C1C1E),
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: color.withOpacity(0.2))),
+                child: Row(children: [
+                  ClipRRect(borderRadius: BorderRadius.circular(6),
+                      child: _getBankLogo(bankName, color, size: 24)),
+                  const SizedBox(width: 8),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(languageProvider.isEnglish ? 'Bank' : 'بینک',
+                        style: TextStyle(fontSize: 10, color: color.withOpacity(0.7),
+                            fontWeight: FontWeight.w600, fontFamily: languageProvider.fontFamily)),
+                    Text(bankName, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+                        color: Color(0xFF1C1C1E)), overflow: TextOverflow.ellipsis),
+                  ])),
+                ]),
               ),
             ),
           ],
         ]),
-
         if (chequeNum != null && chequeNum.isNotEmpty) ...[
           const SizedBox(height: 8),
           Row(children: [
-            Expanded(child: _infoChip(
-                icon: Icons.receipt_long_outlined,
+            Expanded(child: _infoChip(icon: Icons.receipt_long_outlined,
                 label: languageProvider.isEnglish ? 'Cheque Number' : 'چیک نمبر',
-                value: chequeNum,
-                color: color
-            )),
+                value: chequeNum, color: color)),
             if (chequeDate != null) ...[
               const SizedBox(width: 8),
-              Expanded(child: _infoChip(
-                  icon: Icons.event_outlined,
+              Expanded(child: _infoChip(icon: Icons.event_outlined,
                   label: languageProvider.isEnglish ? 'Cheque Date' : 'چیک کی تاریخ',
-                  value: chequeDate,
-                  color: color
-              )),
+                  value: chequeDate, color: color)),
             ],
           ]),
           const SizedBox(height: 8),
@@ -1256,23 +1949,19 @@ class _ExpandableRow extends StatelessWidget {
   Widget _buildDetailPanel(Color typeColor, Color typeBg, IconData typeIcon, String typeLabel,
       double debitValue, double creditValue, double balanceValue) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0xFF7C3AED).withOpacity(0.2)),
-        boxShadow: [
-          BoxShadow(
-              color: const Color(0xFF7C3AED).withOpacity(0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 2))
-        ],
+        boxShadow: [BoxShadow(color: const Color(0xFF7C3AED).withOpacity(0.06),
+            blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-              color: typeBg, borderRadius: const BorderRadius.vertical(top: Radius.circular(10))),
+          decoration: BoxDecoration(color: typeBg,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(10))),
           child: Row(children: [
             Icon(typeIcon, size: 16, color: typeColor),
             const SizedBox(width: 8),
@@ -1281,86 +1970,64 @@ class _ExpandableRow extends StatelessWidget {
                     fontFamily: languageProvider.fontFamily)),
             const Spacer(),
             Text('ID #${entry['id']}',
-                style: TextStyle(
-                    fontSize: 11,
-                    color: typeColor.withOpacity(0.7),
-                    fontWeight: FontWeight.w500,
-                    fontFamily: languageProvider.fontFamily)),
+                style: TextStyle(fontSize: 11, color: typeColor.withOpacity(0.7),
+                    fontWeight: FontWeight.w500, fontFamily: languageProvider.fontFamily)),
           ]),
         ),
         Padding(
           padding: const EdgeInsets.all(14),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Expanded(
-                  child: _detailItem(
-                      icon: Icons.calendar_today_outlined,
-                      label: languageProvider.isEnglish ? 'Transaction Date' : 'لین دین کی تاریخ',
-                      value: dateTimeFormat.format(DateTime.parse(entry['date'])))),
+              Expanded(child: _detailItem(icon: Icons.calendar_today_outlined,
+                  label: languageProvider.isEnglish ? 'Transaction Date' : 'لین دین کی تاریخ',
+                  value: dateTimeFormat.format(DateTime.parse(entry['date'])))),
               const SizedBox(width: 16),
-              Expanded(
-                  child: _detailItem(
-                      icon: Icons.access_time_outlined,
-                      label: languageProvider.isEnglish ? 'Recorded On' : 'ریکارڈ شدہ',
-                      value: dateTimeFormat.format(DateTime.parse(entry['created_at'])))),
+              Expanded(child: _detailItem(icon: Icons.access_time_outlined,
+                  label: languageProvider.isEnglish ? 'Recorded On' : 'ریکارڈ شدہ',
+                  value: dateTimeFormat.format(DateTime.parse(entry['created_at'])))),
             ]),
             const SizedBox(height: 12),
             Row(children: [
-              Expanded(
-                  child: _detailItem(
-                      icon: Icons.tag_outlined,
-                      label: languageProvider.isEnglish ? 'Reference Number' : 'حوالہ نمبر',
-                      value: entry['reference_number'] ?? 'N/A')),
+              Expanded(child: _detailItem(icon: Icons.tag_outlined,
+                  label: languageProvider.isEnglish ? 'Reference Number' : 'حوالہ نمبر',
+                  value: entry['reference_number'] ?? 'N/A')),
               const SizedBox(width: 16),
-              Expanded(
-                  child: _detailItem(
-                      icon: Icons.category_outlined,
-                      label: languageProvider.isEnglish ? 'Transaction Type' : 'لین دین کی قسم',
-                      value: typeLabel,
-                      valueColor: typeColor)),
+              Expanded(child: _detailItem(icon: Icons.category_outlined,
+                  label: languageProvider.isEnglish ? 'Transaction Type' : 'لین دین کی قسم',
+                  value: typeLabel, valueColor: typeColor)),
             ]),
             const SizedBox(height: 12),
-            _detailItem(
-                icon: Icons.notes_outlined,
+            _detailItem(icon: Icons.notes_outlined,
                 label: languageProvider.isEnglish ? 'Description' : 'تفصیل',
-                value: entry['description'] ?? (languageProvider.isEnglish ? 'No description provided' : 'کوئی تفصیل فراہم نہیں کی گئی')),
+                value: entry['description'] ?? (languageProvider.isEnglish
+                    ? 'No description provided' : 'کوئی تفصیل فراہم نہیں کی گئی')),
             const SizedBox(height: 12),
-
             if (entry['transaction_type'] == 'payment') ...[
               _buildPaymentMethodSection(typeColor),
               const SizedBox(height: 12),
             ],
-
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                  color: const Color(0xFFF5F5F7), borderRadius: BorderRadius.circular(8)),
+              decoration: BoxDecoration(color: const Color(0xFFF5F5F7), borderRadius: BorderRadius.circular(8)),
               child: Row(children: [
-                Expanded(
-                    child: _amountCell(
-                        label: languageProvider.isEnglish ? 'Debit (Owes)' : 'ڈیبٹ (قرض)',
-                        value: debitValue > 0 ? 'Rs ${currencyFormat.format(debitValue)}' : '—',
-                        color: const Color(0xFFEF4444))),
+                Expanded(child: _amountCell(
+                    label: languageProvider.isEnglish ? 'Debit (Owes)' : 'ڈیبٹ (قرض)',
+                    value: debitValue > 0 ? 'Rs ${currencyFormat.format(debitValue)}' : '—',
+                    color: const Color(0xFFEF4444))),
                 Container(width: 1, height: 36, color: const Color(0xFFE5E5EA)),
-                Expanded(
-                    child: _amountCell(
-                        label: languageProvider.isEnglish ? 'Credit (Paid)' : 'کریڈٹ (ادا شدہ)',
-                        value: creditValue > 0 ? 'Rs ${currencyFormat.format(creditValue)}' : '—',
-                        color: const Color(0xFF10B981))),
+                Expanded(child: _amountCell(
+                    label: languageProvider.isEnglish ? 'Credit (Paid)' : 'کریڈٹ (ادا شدہ)',
+                    value: creditValue > 0 ? 'Rs ${currencyFormat.format(creditValue)}' : '—',
+                    color: const Color(0xFF10B981))),
                 Container(width: 1, height: 36, color: const Color(0xFFE5E5EA)),
-                Expanded(
-                    child: _amountCell(
-                        label: languageProvider.isEnglish ? 'Running Balance' : 'چلتا بیلنس',
-                        value: 'Rs ${currencyFormat.format(balanceValue)}',
-                        color: balanceValue > 0
-                            ? const Color(0xFFEF4444)
-                            : balanceValue < 0
-                            ? const Color(0xFF10B981)
-                            : const Color(0xFF8E8E93),
-                        bold: true)),
+                Expanded(child: _amountCell(
+                    label: languageProvider.isEnglish ? 'Running Balance' : 'چلتا بیلنس',
+                    value: 'Rs ${currencyFormat.format(balanceValue)}',
+                    color: balanceValue > 0 ? const Color(0xFFEF4444)
+                        : balanceValue < 0 ? const Color(0xFF10B981) : const Color(0xFF8E8E93),
+                    bold: true)),
               ]),
             ),
-
             if (entry['transaction_type'] == 'sale') ...[
               const SizedBox(height: 14),
               _buildSaleItemsSection(),
@@ -1372,113 +2039,71 @@ class _ExpandableRow extends StatelessWidget {
   }
 
   Widget _buildLengthChips(Map<String, dynamic> item) {
-    final lengths = _parseDynamicList(item['selected_lengths']);
+    final lengths    = _parseDynamicList(item['selected_lengths']);
     final quantities = _parseLengthQuantities(item['length_quantities']);
-
     if (lengths.isEmpty) return const SizedBox.shrink();
 
-    final totalPieces = lengths.fold<int>(0, (sum, length) {
-      return sum + (quantities[length] ?? 1);
-    });
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF0FDF4),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFF10B981).withOpacity(0.3)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    languageProvider.isEnglish ? 'Length Breakdown' : 'لمبائی کی تفصیل',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF065F46),
-                    ),
-                  ),
-                  if (totalPieces > 0)
-                    Text(
-                      languageProvider.isEnglish ? '$totalPieces pcs' : '$totalPieces ٹکڑے',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.teal[700],
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: lengths.map((length) {
-                  final qty = quantities[length] ?? 1;
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFD1FAE5),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFF10B981)),
-                    ),
-                    child: Text(
-                      _safeLengthLabel(length, qty),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF065F46),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
+    final totalPieces = lengths.fold<int>(0, (sum, l) => sum + (quantities[l] ?? 1));
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const SizedBox(height: 8),
+      Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0FDF4),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFF10B981).withOpacity(0.3)),
         ),
-      ],
-    );
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Text(languageProvider.isEnglish ? 'Length Breakdown' : 'لمبائی کی تفصیل',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF065F46))),
+            if (totalPieces > 0)
+              Text(languageProvider.isEnglish ? '$totalPieces pcs' : '$totalPieces ٹکڑے',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.teal[700])),
+          ]),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6, runSpacing: 6,
+            children: lengths.map((length) {
+              final qty = quantities[length] ?? 1;
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD1FAE5), borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFF10B981)),
+                ),
+                child: Text(_safeLengthLabel(length, qty),
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF065F46))),
+              );
+            }).toList(),
+          ),
+        ]),
+      ),
+    ]);
   }
 
   Widget _buildSaleItemsSection() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        Container(
-            width: 3,
-            height: 16,
-            decoration: BoxDecoration(
-                color: const Color(0xFF7C3AED), borderRadius: BorderRadius.circular(2))),
+        Container(width: 3, height: 16,
+            decoration: BoxDecoration(color: const Color(0xFF7C3AED), borderRadius: BorderRadius.circular(2))),
         const SizedBox(width: 8),
         Text(languageProvider.isEnglish ? 'Sale Items' : 'فروخت کی اشیاء',
-            style: const TextStyle(
-                fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1C1C1E))),
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1C1C1E))),
         const Spacer(),
         if (isLoadingItems)
-          const SizedBox(
-              width: 14,
-              height: 14,
+          const SizedBox(width: 14, height: 14,
               child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF7C3AED))),
       ]),
       const SizedBox(height: 10),
       if (isLoadingItems && saleItems == null)
-        const Center(
-            child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: CircularProgressIndicator(color: Color(0xFF7C3AED), strokeWidth: 2)))
+        const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 16),
+            child: CircularProgressIndicator(color: Color(0xFF7C3AED), strokeWidth: 2)))
       else if (saleItems == null || saleItems!.isEmpty)
-        Container(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            alignment: Alignment.center,
+        Container(padding: const EdgeInsets.symmetric(vertical: 16), alignment: Alignment.center,
             child: Text(languageProvider.isEnglish ? 'No items found' : 'کوئی اشیاء نہیں ملی',
-                style: TextStyle(fontSize: 13, color: Colors.grey[400], fontFamily: languageProvider.fontFamily)))
+                style: TextStyle(fontSize: 13, color: Colors.grey[400],
+                    fontFamily: languageProvider.fontFamily)))
       else ...[
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1487,41 +2112,21 @@ class _ExpandableRow extends StatelessWidget {
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
                 border: Border.all(color: const Color(0xFF7C3AED).withOpacity(0.15))),
             child: Row(children: [
-              Expanded(
-                  flex: 5,
-                  child: Text(languageProvider.isEnglish ? 'PRODUCT' : 'پروڈکٹ',
-                      style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF7C3AED),
-                          letterSpacing: 0.4))),
-              Expanded(
-                  flex: 2,
-                  child: Text(languageProvider.isEnglish ? 'QTY' : 'مقدار',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF7C3AED),
-                          letterSpacing: 0.4))),
-              Expanded(
-                  flex: 3,
-                  child: Text(languageProvider.isEnglish ? 'PRICE' : 'قیمت',
-                      textAlign: TextAlign.right,
-                      style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF7C3AED),
-                          letterSpacing: 0.4))),
-              Expanded(
-                  flex: 3,
-                  child: Text(languageProvider.isEnglish ? 'TOTAL' : 'کل',
-                      textAlign: TextAlign.right,
-                      style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF7C3AED),
-                          letterSpacing: 0.4))),
+              Expanded(flex: 5, child: Text(languageProvider.isEnglish ? 'PRODUCT' : 'پروڈکٹ',
+                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                      color: Color(0xFF7C3AED), letterSpacing: 0.4))),
+              Expanded(flex: 2, child: Text(languageProvider.isEnglish ? 'QTY' : 'مقدار',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                      color: Color(0xFF7C3AED), letterSpacing: 0.4))),
+              Expanded(flex: 3, child: Text(languageProvider.isEnglish ? 'PRICE' : 'قیمت',
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                      color: Color(0xFF7C3AED), letterSpacing: 0.4))),
+              Expanded(flex: 3, child: Text(languageProvider.isEnglish ? 'TOTAL' : 'کل',
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                      color: Color(0xFF7C3AED), letterSpacing: 0.4))),
             ]),
           ),
           Container(
@@ -1530,120 +2135,75 @@ class _ExpandableRow extends StatelessWidget {
                 borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8))),
             child: Column(
               children: saleItems!.asMap().entries.map((e) {
-                final i = e.key;
+                final i    = e.key;
                 final item = e.value;
-                final qty = (item['quantity'] as num?)?.toInt() ?? 0;
+                final qty   = (item['quantity'] as num?)?.toInt() ?? 0;
                 final price = item['unit_price'] as double? ?? 0.0;
                 final total = item['total_price'] as double? ?? (qty * price);
                 final isLast = i == saleItems!.length - 1;
 
-                final lengths = _parseDynamicList(item['selected_lengths']);
+                final lengths    = _parseDynamicList(item['selected_lengths']);
                 final hasLengths = lengths.isNotEmpty;
-
-                final weight = double.tryParse(item['weight']?.toString() ?? '0') ?? 0.0;
-
                 final quantities = _parseLengthQuantities(item['length_quantities']);
                 final totalPieces = hasLengths
-                    ? lengths.fold<int>(0, (sum, length) => sum + (quantities[length] ?? 1))
+                    ? lengths.fold<int>(0, (sum, l) => sum + (quantities[l] ?? 1))
                     : 0;
+                final weight = double.tryParse(item['weight']?.toString() ?? '0') ?? 0.0;
 
-                return Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                          color: i % 2 == 0 ? Colors.white : const Color(0xFFFAFAFC),
-                          border: isLast && !hasLengths
-                              ? null
-                              : const Border(bottom: BorderSide(color: Color(0xFFF0F0F5)))),
-                      child: Row(children: [
-                        Expanded(
-                            flex: 5,
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(item['product_name'] as String,
-                                  style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF1C1C1E)),
-                                  overflow: TextOverflow.ellipsis),
-                              if (item['barcode'] != null)
-                                Text('${languageProvider.isEnglish ? 'Barcode' : 'بارکوڈ'}: ${item['barcode']}',
-                                    style: const TextStyle(fontSize: 10, color: Color(0xFF8E8E93))),
-                              if (hasLengths && item['selected_lengths_display'] != null) ...[
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.straighten, size: 11, color: Color(0xFF7C3AED)),
-                                    const SizedBox(width: 4),
-                                    Expanded(
-                                      child: Directionality(
-                                        textDirection: TextDirection.ltr,
-                                        child: Text(
-                                          item['selected_lengths_display']!,
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            color: Color(0xFF7C3AED),
-                                            fontStyle: FontStyle.italic,
-                                          ),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                              if (hasLengths && totalPieces > 0) ...[
-                                const SizedBox(height: 2),
-                                Text(
-                                  languageProvider.isEnglish ? '$totalPieces pcs total' : 'کل $totalPieces ٹکڑے',
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.teal[700],
-                                      fontWeight: FontWeight.w500),
-                                ),
-                              ],
-                              if (weight > 0 && !hasLengths)
-                                Text('${languageProvider.isEnglish ? 'Weight' : 'وزن'}: ${weight.toStringAsFixed(2)} Kg',
-                                    style: const TextStyle(
-                                        fontSize: 10, color: Color(0xFF1D4ED8))),
-                            ])),
-                        Expanded(
-                            flex: 2,
-                            child: Container(
-                                margin: const EdgeInsets.symmetric(horizontal: 4),
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                                decoration: BoxDecoration(
-                                    color: const Color(0xFFEEF2FF),
-                                    borderRadius: BorderRadius.circular(6)),
-                                child: Text('$qty',
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF6366F1))))),
-                        Expanded(
-                            flex: 3,
-                            child: Text('Rs ${currencyFormat.format(price)}',
-                                textAlign: TextAlign.right,
-                                style: const TextStyle(fontSize: 12, color: Color(0xFF3C3C43)))),
-                        Expanded(
-                            flex: 3,
-                            child: Text('Rs ${currencyFormat.format(total)}',
-                                textAlign: TextAlign.right,
-                                style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF1C1C1E)))),
-                      ]),
-                    ),
-                    if (hasLengths)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                        child: _buildLengthChips(item),
-                      ),
-                  ],
-                );
+                return Column(children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                        color: i % 2 == 0 ? Colors.white : const Color(0xFFFAFAFC),
+                        border: isLast && !hasLengths
+                            ? null : const Border(bottom: BorderSide(color: Color(0xFFF0F0F5)))),
+                    child: Row(children: [
+                      Expanded(flex: 5, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(item['product_name'] as String,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                                color: Color(0xFF1C1C1E)), overflow: TextOverflow.ellipsis),
+                        if (item['barcode'] != null)
+                          Text('${languageProvider.isEnglish ? 'Barcode' : 'بارکوڈ'}: ${item['barcode']}',
+                              style: const TextStyle(fontSize: 10, color: Color(0xFF8E8E93))),
+                        if (hasLengths && item['selected_lengths_display'] != null) ...[
+                          const SizedBox(height: 4),
+                          Row(children: [
+                            const Icon(Icons.straighten, size: 11, color: Color(0xFF7C3AED)),
+                            const SizedBox(width: 4),
+                            Expanded(child: Directionality(textDirection: TextDirection.ltr,
+                                child: Text(item['selected_lengths_display']!,
+                                    style: const TextStyle(fontSize: 11, color: Color(0xFF7C3AED),
+                                        fontStyle: FontStyle.italic),
+                                    maxLines: 2, overflow: TextOverflow.ellipsis))),
+                          ]),
+                        ],
+                        if (hasLengths && totalPieces > 0) ...[
+                          const SizedBox(height: 2),
+                          Text(languageProvider.isEnglish ? '$totalPieces pcs total' : 'کل $totalPieces ٹکڑے',
+                              style: TextStyle(fontSize: 11, color: Colors.teal[700], fontWeight: FontWeight.w500)),
+                        ],
+                        if (weight > 0 && !hasLengths)
+                          Text('${languageProvider.isEnglish ? 'Weight' : 'وزن'}: ${weight.toStringAsFixed(2)} Kg',
+                              style: const TextStyle(fontSize: 10, color: Color(0xFF1D4ED8))),
+                      ])),
+                      Expanded(flex: 2, child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(color: const Color(0xFFEEF2FF), borderRadius: BorderRadius.circular(6)),
+                          child: Text('$qty', textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF6366F1))))),
+                      Expanded(flex: 3, child: Text('Rs ${currencyFormat.format(price)}',
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF3C3C43)))),
+                      Expanded(flex: 3, child: Text('Rs ${currencyFormat.format(total)}',
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1C1C1E)))),
+                    ]),
+                  ),
+                  if (hasLengths)
+                    Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                        child: _buildLengthChips(item)),
+                ]);
               }).toList(),
             ),
           ),
@@ -1651,67 +2211,45 @@ class _ExpandableRow extends StatelessWidget {
             margin: const EdgeInsets.only(top: 6),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             decoration: BoxDecoration(
-                color: const Color(0xFFF5F3FF),
-                borderRadius: BorderRadius.circular(8),
+                color: const Color(0xFFF5F3FF), borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: const Color(0xFF7C3AED).withOpacity(0.2))),
             child: Row(children: [
-              const Expanded(
-                  child: Text('Total',
-                      style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1C1C1E)))),
-              Text(
-                  'Rs ${currencyFormat.format(saleItems!.fold<double>(0, (sum, item) => sum + (item['total_price'] as double? ?? 0.0)))}',
-                  style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF7C3AED))),
+              const Expanded(child: Text('Total',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1C1C1E)))),
+              Text('Rs ${currencyFormat.format(saleItems!.fold<double>(0, (s, item) => s + (item['total_price'] as double? ?? 0.0)))}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF7C3AED))),
             ]),
           ),
         ],
     ]);
   }
 
-  Widget _detailItem(
-      {required IconData icon,
-        required String label,
-        required String value,
-        Color? valueColor}) {
+  Widget _detailItem({required IconData icon, required String label,
+    required String value, Color? valueColor}) {
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Icon(icon, size: 14, color: const Color(0xFF8E8E93)),
       const SizedBox(width: 6),
-      Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label,
-                style: TextStyle(
-                    fontSize: 10, color: Color(0xFF8E8E93), fontWeight: FontWeight.w500,
-                    fontFamily: languageProvider.fontFamily)),
-            const SizedBox(height: 2),
-            Text(value,
-                style: TextStyle(
-                    fontSize: 13,
-                    color: valueColor ?? const Color(0xFF1C1C1E),
-                    fontWeight: valueColor != null ? FontWeight.w600 : FontWeight.w500,
-                    fontFamily: languageProvider.fontFamily)),
-          ])),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: TextStyle(fontSize: 10, color: const Color(0xFF8E8E93),
+            fontWeight: FontWeight.w500, fontFamily: languageProvider.fontFamily)),
+        const SizedBox(height: 2),
+        Text(value, style: TextStyle(fontSize: 13,
+            color: valueColor ?? const Color(0xFF1C1C1E),
+            fontWeight: valueColor != null ? FontWeight.w600 : FontWeight.w500,
+            fontFamily: languageProvider.fontFamily)),
+      ])),
     ]);
   }
 
-  Widget _amountCell(
-      {required String label, required String value, required Color color, bool bold = false}) {
+  Widget _amountCell({required String label, required String value,
+    required Color color, bool bold = false}) {
     return Column(children: [
-      Text(label,
-          style: TextStyle(
-              fontSize: 10, color: Color(0xFF8E8E93), fontWeight: FontWeight.w500,
-              fontFamily: languageProvider.fontFamily)),
+      Text(label, style: TextStyle(fontSize: 10, color: const Color(0xFF8E8E93),
+          fontWeight: FontWeight.w500, fontFamily: languageProvider.fontFamily)),
       const SizedBox(height: 4),
-      Text(value,
-          style: TextStyle(
-              fontSize: 13,
-              fontWeight: bold ? FontWeight.bold : FontWeight.w600,
-              color: color,
-              fontFamily: languageProvider.fontFamily)),
+      Text(value, style: TextStyle(fontSize: 13,
+          fontWeight: bold ? FontWeight.bold : FontWeight.w600, color: color,
+          fontFamily: languageProvider.fontFamily)),
     ]);
   }
 }

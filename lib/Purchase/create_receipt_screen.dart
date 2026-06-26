@@ -1,5 +1,6 @@
 // lib/screens/purchases/create_receipt_screen.dart
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:printing/printing.dart';
@@ -39,10 +40,15 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
   final _currencyFormat = NumberFormat.currency(symbol: 'Rs ');
   final _dateFormat = DateFormat('MMM dd, yyyy');
 
+  // Web-specific
+  final ScrollController _scrollController = ScrollController();
+  final FocusNode _shortcutFocusNode = FocusNode();
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadOrder());
+    _setupKeyboardShortcuts();
   }
 
   @override
@@ -51,7 +57,30 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
     for (var c in _quantityControllers.values) c.dispose();
     for (var c in _batchControllers.values) c.dispose();
     for (var e in _extraItems) e.dispose();
+    _scrollController.dispose();
+    _shortcutFocusNode.dispose();
     super.dispose();
+  }
+
+  void _setupKeyboardShortcuts() {
+    // Keyboard shortcuts will be handled by the KeyboardListener widget
+  }
+
+  KeyEventResult _handleKeyEvent(KeyEvent event) {
+    if (event is KeyDownEvent) {
+      final bool isCtrl = HardwareKeyboard.instance.isControlPressed ||
+          HardwareKeyboard.instance.isMetaPressed;
+
+      if (isCtrl && event.logicalKey == LogicalKeyboardKey.keyS) {
+        _createReceipt();
+        return KeyEventResult.handled;
+      }
+      if (isCtrl && event.logicalKey == LogicalKeyboardKey.keyP) {
+        _printReceiptPreview();
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.ignored;
   }
 
   Future<void> _printReceiptPreview() async {
@@ -208,47 +237,41 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
-            Row(
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
               children: [
-                Expanded(
-                  child: _buildPrintOption(
-                    icon: Icons.print,
-                    label: lp.isEnglish ? 'Print' : 'پرنٹ کریں',
-                    color: const Color(0xFF7C3AED),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      PurchasePdfGenerator.printPdf(pdfData);
-                    },
-                    lp: lp,
-                  ),
+                _buildPrintOption(
+                  icon: Icons.print,
+                  label: lp.isEnglish ? 'Print' : 'پرنٹ کریں',
+                  color: const Color(0xFF7C3AED),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    PurchasePdfGenerator.printPdf(pdfData);
+                  },
+                  lp: lp,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildPrintOption(
-                    icon: Icons.share,
-                    label: lp.isEnglish ? 'Share' : 'شیئر کریں',
-                    color: const Color(0xFF10B981),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      PurchasePdfGenerator.sharePdf(pdfData, filename);
-                    },
-                    lp: lp,
-                  ),
+                _buildPrintOption(
+                  icon: Icons.share,
+                  label: lp.isEnglish ? 'Share' : 'شیئر کریں',
+                  color: const Color(0xFF10B981),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    PurchasePdfGenerator.sharePdf(pdfData, filename);
+                  },
+                  lp: lp,
+                ),
+                _buildPrintOption(
+                  icon: Icons.visibility,
+                  label: lp.isEnglish ? 'Preview' : 'پیش نظارہ',
+                  color: const Color(0xFF3B82F6),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showPdfPreview(pdfData);
+                  },
+                  lp: lp,
                 ),
               ],
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: _buildPrintOption(
-                icon: Icons.visibility,
-                label: lp.isEnglish ? 'Preview' : 'پیش نظارہ',
-                color: const Color(0xFF3B82F6),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _showPdfPreview(pdfData);
-                },
-                lp: lp,
-              ),
             ),
             const SizedBox(height: 16),
             TextButton(
@@ -268,29 +291,32 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
     required VoidCallback onTap,
     required LanguageProvider lp,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.3)),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-                fontFamily: lp.fontFamily,
+    return SizedBox(
+      width: 100,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: color, size: 28),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  fontFamily: lp.fontFamily,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -327,64 +353,288 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    final isMobile = screenSize.width < 600;
+    final isTablet = screenSize.width >= 600 && screenSize.width < 1200;
+    final isDesktop = screenSize.width >= 1200;
+
     return Consumer<LanguageProvider>(
       builder: (context, languageProvider, _) {
         return Scaffold(
           backgroundColor: const Color(0xFFF5F5F7),
-          appBar: _buildAppBar(languageProvider),
-          body: Consumer<PurchaseOrderProvider>(
-            builder: (context, provider, child) {
-              if (provider.isLoading) {
-                return const Center(
-                  child: CircularProgressIndicator(color: Color(0xFF7C3AED)),
-                );
-              }
+          appBar: _buildAppBar(languageProvider, isMobile),
+          body: KeyboardListener(
+            focusNode: _shortcutFocusNode,
+            onKeyEvent: _handleKeyEvent,
+            child: Consumer<PurchaseOrderProvider>(
+              builder: (context, provider, child) {
+                if (provider.isLoading) {
+                  return const Center(
+                    child: CircularProgressIndicator(color: Color(0xFF7C3AED)),
+                  );
+                }
 
-              final order = provider.selectedPurchaseOrder;
-              if (order == null) {
-                return Center(child: Text(languageProvider.isEnglish ? 'Order not found' : 'آرڈر نہیں ملا'));
-              }
+                final order = provider.selectedPurchaseOrder;
+                if (order == null) {
+                  return Center(child: Text(languageProvider.isEnglish ? 'Order not found' : 'آرڈر نہیں ملا'));
+                }
 
-              final items = order.items
-                  ?.where((i) => i.remainingQuantity > 0)
-                  .toList() ??
-                  [];
+                final items = order.items
+                    ?.where((i) => i.remainingQuantity > 0)
+                    .toList() ??
+                    [];
 
-              if (items.isEmpty && _extraItems.isEmpty) {
-                return _buildAllReceivedState(languageProvider);
-              }
+                if (items.isEmpty && _extraItems.isEmpty) {
+                  return _buildAllReceivedState(languageProvider);
+                }
 
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                return Row(
                   children: [
-                    _buildOrderInfoCard(order, languageProvider),
-                    const SizedBox(height: 16),
-                    if (items.isNotEmpty) _buildItemsTable(items, languageProvider),
-                    const SizedBox(height: 16),
-                    _buildExtraItemsSection(languageProvider),
-                    const SizedBox(height: 16),
-                    _buildReceiptDateCard(languageProvider),
-                    const SizedBox(height: 16),
-                    _buildNotesCard(languageProvider),
-                    const SizedBox(height: 24),
-                    _buildSubmitButton(languageProvider),
-                    const SizedBox(height: 20),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        controller: _scrollController,
+                        padding: EdgeInsets.all(
+                          isMobile ? 16 : isTablet ? 20 : 24,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Two-column layout for desktop
+                            if (isDesktop) ...[
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    flex: 3,
+                                    child: Column(
+                                      children: [
+                                        _buildOrderInfoCard(order, languageProvider, isMobile),
+                                        const SizedBox(height: 16),
+                                        if (items.isNotEmpty) _buildItemsTable(items, languageProvider, isMobile, isTablet),
+                                        const SizedBox(height: 16),
+                                        _buildExtraItemsSection(languageProvider, isMobile, isTablet),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Column(
+                                      children: [
+                                        _buildReceiptDateCard(languageProvider, isMobile),
+                                        const SizedBox(height: 16),
+                                        _buildNotesCard(languageProvider, isMobile),
+                                        const SizedBox(height: 16),
+                                        _buildSummaryCard(order, items, languageProvider),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ] else ...[
+                              _buildOrderInfoCard(order, languageProvider, isMobile),
+                              const SizedBox(height: 16),
+                              if (items.isNotEmpty) _buildItemsTable(items, languageProvider, isMobile, isTablet),
+                              const SizedBox(height: 16),
+                              _buildExtraItemsSection(languageProvider, isMobile, isTablet),
+                              const SizedBox(height: 16),
+                              _buildReceiptDateCard(languageProvider, isMobile),
+                              const SizedBox(height: 16),
+                              _buildNotesCard(languageProvider, isMobile),
+                            ],
+                            const SizedBox(height: 24),
+                            _buildSubmitButton(languageProvider, isDesktop),
+                            const SizedBox(height: 20),
+                          ],
+                        ),
+                      ),
+                    ),
+                    // Sidebar for desktop - quick actions
+                    if (isDesktop) ...[
+                      Container(
+                        width: 280,
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          border: Border(
+                            left: BorderSide(
+                              color: const Color(0xFFF0F0F5),
+                              width: 1,
+                            ),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              languageProvider.isEnglish ? 'Quick Actions' : 'فوری کارروائیاں',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF2D3142),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            _buildQuickActionButton(
+                              icon: Icons.add_shopping_cart,
+                              label: languageProvider.isEnglish ? 'Add Extra Item' : 'اضافی آئٹم شامل کریں',
+                              color: const Color(0xFF7C3AED),
+                              onTap: _addExtraItem,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildQuickActionButton(
+                              icon: Icons.print,
+                              label: languageProvider.isEnglish ? 'Print Preview' : 'پرنٹ پیش نظارہ',
+                              color: const Color(0xFF10B981),
+                              onTap: _printReceiptPreview,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildQuickActionButton(
+                              icon: Icons.save,
+                              label: languageProvider.isEnglish ? 'Save Receipt' : 'رسید محفوظ کریں',
+                              color: const Color(0xFF3B82F6),
+                              onTap: _createReceipt,
+                            ),
+                            const SizedBox(height: 20),
+                            const Divider(),
+                            const SizedBox(height: 20),
+                            Text(
+                              languageProvider.isEnglish ? 'Summary' : 'خلاصہ',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF2D3142),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            _buildSummaryLine(
+                              languageProvider.isEnglish ? 'PO Items' : 'پی او اشیاء',
+                              items.where((i) => _itemIncluded[i.id] ?? true).length.toString(),
+                            ),
+                            _buildSummaryLine(
+                              languageProvider.isEnglish ? 'Extra Items' : 'اضافی اشیاء',
+                              _extraItems.length.toString(),
+                            ),
+                            const SizedBox(height: 20),
+                            if (kIsWeb) ...[
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[50],
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '⌨️ ${languageProvider.isEnglish ? 'Keyboard Shortcuts' : 'کی بورڈ شارٹ کٹس'}',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Ctrl+S ${languageProvider.isEnglish ? 'Save' : 'محفوظ کریں'}',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.grey[500],
+                                      ),
+                                    ),
+                                    Text(
+                                      'Ctrl+P ${languageProvider.isEnglish ? 'Print Preview' : 'پرنٹ پیش نظارہ'}',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.grey[500],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         );
       },
     );
   }
 
-  PreferredSizeWidget _buildAppBar(LanguageProvider lp) {
+  Widget _buildQuickActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    VoidCallback? onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withOpacity(0.2)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryLine(String label, String value, {bool isBold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                color: isBold ? const Color(0xFF2D3142) : const Color(0xFF6B7280),
+                fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 14,
+                color: isBold ? const Color(0xFF7C3AED) : const Color(0xFF2D3142),
+                fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ]
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar(LanguageProvider lp, bool isMobile) {
     return AppBar(
       backgroundColor: Colors.white,
-      elevation: 0,
+      elevation: isMobile ? 0 : 1,
       surfaceTintColor: Colors.transparent,
       leading: IconButton(
         icon: const Icon(Icons.close, color: Color(0xFF1C1C1E)),
@@ -401,14 +651,15 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
               fontSize: 18,
             ),
           ),
-          Text(
-            lp.isEnglish ? 'Record incoming stock' : 'آنے والا اسٹاک ریکارڈ کریں',
-            style: const TextStyle(
-              color: Color(0xFF8E8E93),
-              fontSize: 12,
-              fontWeight: FontWeight.normal,
+          if (!isMobile)
+            Text(
+              lp.isEnglish ? 'Record incoming stock' : 'آنے والا اسٹاک ریکارڈ کریں',
+              style: const TextStyle(
+                color: Color(0xFF8E8E93),
+                fontSize: 12,
+                fontWeight: FontWeight.normal,
+              ),
             ),
-          ),
         ],
       ),
       actions: [
@@ -417,15 +668,104 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
           onPressed: _printReceiptPreview,
           tooltip: lp.isEnglish ? 'Print Preview' : 'پرنٹ پیش نظارہ',
         ),
+        if (!isMobile)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: ElevatedButton.icon(
+              onPressed: _isLoading ? null : _createReceipt,
+              icon: _isLoading
+                  ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+                  : const Icon(Icons.save, color: Colors.white),
+              label: Text(lp.isEnglish ? 'Save' : 'محفوظ کریں'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF7C3AED),
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ),
+        if (isMobile)
+          TextButton(
+            onPressed: _isLoading ? null : _createReceipt,
+            child: Text(
+              lp.isEnglish ? 'Save' : 'محفوظ کریں',
+              style: TextStyle(
+                color: _isLoading ? Colors.grey : const Color(0xFF7C3AED),
+                fontWeight: FontWeight.w600,
+                fontSize: 16,
+              ),
+            ),
+          ),
+        const SizedBox(width: 8),
       ],
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(1),
-        child: Container(height: 1, color: const Color(0xFFE5E5EA)),
+    );
+  }
+
+  Widget _buildSummaryCard(PurchaseOrderModel order, List<PurchaseOrderItemModel> items, LanguageProvider lp) {
+    final totalItems = items.where((i) => _itemIncluded[i.id] ?? true).length;
+    final extraItemsCount = _extraItems.length;
+
+    double totalAmount = 0;
+    for (var item in items) {
+      if (!(_itemIncluded[item.id] ?? true)) continue;
+      final qty = int.tryParse(_quantityControllers[item.id]?.text ?? '0') ?? 0;
+      if (qty <= 0) continue;
+      final subtotal = qty * item.unitCost;
+      final afterDiscount = subtotal * (1 - item.discountPercent / 100);
+      totalAmount += afterDiscount * (1 + item.taxPercent / 100);
+    }
+
+    for (var extra in _extraItems) {
+      final qty = int.tryParse(extra.quantityController.text) ?? 0;
+      if (qty <= 0 || extra.selectedProductId == null) continue;
+      final cost = double.tryParse(extra.unitCostController.text) ?? 0;
+      final discount = double.tryParse(extra.discountController.text) ?? 0;
+      final subtotal = qty * cost;
+      totalAmount += subtotal * (1 - discount / 100);
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F3FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFDDD6FE)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            lp.isEnglish ? 'Receipt Summary' : 'رسید کا خلاصہ',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF4C1D95),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildSummaryLine(
+            lp.isEnglish ? 'PO Items' : 'پی او اشیاء',
+            '$totalItems',
+          ),
+          _buildSummaryLine(
+            lp.isEnglish ? 'Extra Items' : 'اضافی اشیاء',
+            '$extraItemsCount',
+          ),
+          const Divider(),
+          _buildSummaryLine(
+            lp.isEnglish ? 'Total Amount' : 'کل رقم',
+            _currencyFormat.format(totalAmount),
+            isBold: true,
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildOrderInfoCard(PurchaseOrderModel order, LanguageProvider lp) {
+  Widget _buildOrderInfoCard(PurchaseOrderModel order, LanguageProvider lp, bool isMobile) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -433,7 +773,61 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFE5E5EA)),
       ),
-      child: Row(
+      child: isMobile
+          ? Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF7C3AED).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.assignment, color: Color(0xFF7C3AED), size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      order.poNumber,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Color(0xFF1C1C1E),
+                      ),
+                    ),
+                    Text(
+                      order.supplier?.name ?? (lp.isEnglish ? 'Unknown Supplier' : 'نامعلوم سپلائر'),
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF8E8E93)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              order.statusText,
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.blue,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      )
+          : Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
@@ -484,7 +878,7 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
     );
   }
 
-  Widget _buildItemsTable(List<PurchaseOrderItemModel> items, LanguageProvider lp) {
+  Widget _buildItemsTable(List<PurchaseOrderItemModel> items, LanguageProvider lp, bool isMobile, bool isTablet) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -528,15 +922,16 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(
-              lp.isEnglish
-                  ? 'Toggle the checkbox to include/exclude each item. Set quantity to 0 or uncheck to skip.'
-                  : 'ہر آئٹم کو شامل/خارج کرنے کے لیے چیک باکس کو ٹوگل کریں۔ مقدار 0 مقرر کریں یا چھوڑنے کے لیے ان چیک کریں۔',
-              style: TextStyle(fontSize: 12, color: Colors.grey[500], fontFamily: lp.fontFamily),
+          if (!isMobile)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                lp.isEnglish
+                    ? 'Toggle the checkbox to include/exclude each item. Set quantity to 0 or uncheck to skip.'
+                    : 'ہر آئٹم کو شامل/خارج کرنے کے لیے چیک باکس کو ٹوگل کریں۔ مقدار 0 مقرر کریں یا چھوڑنے کے لیے ان چیک کریں۔',
+                style: TextStyle(fontSize: 12, color: Colors.grey[500], fontFamily: lp.fontFamily),
+              ),
             ),
-          ),
           Builder(builder: (context) {
             final overItems = _quantityErrors.entries
                 .where((e) => e.value?.contains('Exceeds') ?? false)
@@ -575,7 +970,8 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
                 bottom: BorderSide(color: Color(0xFFE5E5EA)),
               ),
             ),
-            child: Row(
+            child: isMobile
+                ? Row(
               children: [
                 const SizedBox(width: 32),
                 Expanded(
@@ -590,11 +986,41 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
                     ),
                   ),
                 ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    lp.isEnglish ? 'QTY' : 'مقدار',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF8E8E93),
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ],
+            )
+                : Row(
+              children: [
+                const SizedBox(width: 32),
+                Expanded(
+                  flex: isTablet ? 3 : 4,
+                  child: Text(
+                    lp.isEnglish ? 'PRODUCT' : 'پروڈکٹ',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF8E8E93),
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
                 _buildHeaderCell(lp.isEnglish ? 'ORDERED' : 'آرڈر شدہ', flex: 2, lp: lp),
                 _buildHeaderCell(lp.isEnglish ? 'RECV\'D' : 'موصول شدہ', flex: 2, lp: lp),
                 _buildHeaderCell(lp.isEnglish ? 'REM.' : 'باقی', flex: 2, lp: lp),
                 _buildHeaderCell(lp.isEnglish ? 'UNIT' : 'یونٹ', flex: 2, lp: lp),
-                _buildHeaderCell(lp.isEnglish ? 'QTY NOW' : 'اب مقدار', flex: 3, alignRight: false, lp: lp),
+                _buildHeaderCell(lp.isEnglish ? 'QTY NOW' : 'اب مقدار', flex: isTablet ? 2 : 3, alignRight: false, lp: lp),
               ],
             ),
           ),
@@ -604,8 +1030,8 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
             final isLast = index == items.length - 1;
             return Column(
               children: [
-                _buildTableRow(item, isLast, lp),
-                _buildDetailRow(item, lp),
+                _buildTableRow(item, isLast, lp, isMobile, isTablet),
+                if (!isMobile) _buildDetailRow(item, lp),
               ],
             );
           }),
@@ -630,9 +1056,13 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
     );
   }
 
-  Widget _buildTableRow(PurchaseOrderItemModel item, bool isLast, LanguageProvider lp) {
+  Widget _buildTableRow(PurchaseOrderItemModel item, bool isLast, LanguageProvider lp, bool isMobile, bool isTablet) {
     final isIncluded = _itemIncluded[item.id] ?? true;
     final hasError = _quantityErrors[item.id] != null;
+
+    if (isMobile) {
+      return _buildMobileTableRow(item, isIncluded, hasError, lp);
+    }
 
     return Container(
       decoration: BoxDecoration(
@@ -660,7 +1090,7 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
             ),
           ),
           Expanded(
-            flex: 3,
+            flex: isTablet ? 3 : 4,
             child: Opacity(
               opacity: isIncluded ? 1.0 : 0.4,
               child: Column(
@@ -747,7 +1177,7 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
             ),
           ),
           Expanded(
-            flex: 3,
+            flex: isTablet ? 2 : 3,
             child: isIncluded
                 ? Column(
               children: [
@@ -825,18 +1255,186 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
     );
   }
 
+  Widget _buildMobileTableRow(PurchaseOrderItemModel item, bool isIncluded, bool hasError, LanguageProvider lp) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: isIncluded ? Colors.white : const Color(0xFFFAFAFC),
+        border: const Border(bottom: BorderSide(color: Color(0xFFF0F0F5))),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Checkbox(
+                value: isIncluded,
+                activeColor: const Color(0xFF7C3AED),
+                onChanged: (val) {
+                  setState(() {
+                    _itemIncluded[item.id] = val ?? false;
+                    if (val == true) {
+                      _quantityControllers[item.id]?.text = item.remainingQuantity.toString();
+                      _quantityErrors.remove(item.id);
+                    }
+                  });
+                },
+              ),
+              Expanded(
+                child: Opacity(
+                  opacity: isIncluded ? 1.0 : 0.4,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.product?.itemName ?? (lp.isEnglish ? 'Unknown Product' : 'نامعلوم پروڈکٹ'),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          color: Color(0xFF1C1C1E),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          if (item.product?.barcode != null)
+                            Text(
+                              item.product!.barcode!,
+                              style: const TextStyle(fontSize: 11, color: Color(0xFF8E8E93)),
+                            ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'Rem: ${item.remainingQuantity}',
+                              style: const TextStyle(fontSize: 10, color: Colors.orange, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF0F4FF),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              item.product?.unit?.symbol ?? '—',
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF4B5563)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (isIncluded) ...[
+            Padding(
+              padding: const EdgeInsets.only(left: 40),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        _buildQtyButton(
+                          icon: Icons.remove,
+                          onTap: () => _decrementQty(item),
+                          lp: lp,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _quantityControllers[item.id],
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: hasError ? Colors.red : const Color(0xFF1C1C1E),
+                              fontFamily: lp.fontFamily,
+                            ),
+                            decoration: InputDecoration(
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: hasError ? Colors.red : const Color(0xFFE5E5EA)),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: const BorderSide(color: Color(0xFF7C3AED), width: 1.5),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: hasError ? Colors.red : const Color(0xFFE5E5EA)),
+                              ),
+                            ),
+                            onChanged: (value) => _validateQty(item, value),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildQtyButton(
+                          icon: Icons.add,
+                          onTap: () => _incrementQty(item),
+                          lp: lp,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (hasError)
+                    Expanded(
+                      child: Text(
+                        _quantityErrors[item.id]!,
+                        style: const TextStyle(fontSize: 10, color: Colors.red),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.only(left: 40),
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5F5F7),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: _buildBatchExpiryFields(
+                  batchController: _batchControllers[item.id]!,
+                  expiryDate: _expiryDates[item.id],
+                  onExpiryTap: () => _selectExpiryDate(item.id),
+                  onExpiryClear: () => setState(() => _expiryDates[item.id] = null),
+                  lp: lp,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildQtyButton({required IconData icon, required VoidCallback onTap, required LanguageProvider lp}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 28,
-        height: 28,
+        width: 32,
+        height: 32,
         decoration: BoxDecoration(
           color: const Color(0xFFF5F5F7),
           borderRadius: BorderRadius.circular(6),
           border: Border.all(color: const Color(0xFFE5E5EA)),
         ),
-        child: Icon(icon, size: 14, color: const Color(0xFF3C3C43)),
+        child: Icon(icon, size: 16, color: const Color(0xFF3C3C43)),
       ),
     );
   }
@@ -1069,7 +1667,7 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
     );
   }
 
-  Widget _buildExtraItemsSection(LanguageProvider lp) {
+  Widget _buildExtraItemsSection(LanguageProvider lp, bool isMobile, bool isTablet) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1093,10 +1691,11 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
                         lp.isEnglish ? 'Additional Items' : 'اضافی اشیاء',
                         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF1C1C1E)),
                       ),
-                      Text(
-                        lp.isEnglish ? 'Add items received that were not in the PO' : 'PO میں شامل نہ ہونے والی موصول شدہ اشیاء شامل کریں',
-                        style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E93)),
-                      ),
+                      if (!isMobile)
+                        Text(
+                          lp.isEnglish ? 'Add items received that were not in the PO' : 'PO میں شامل نہ ہونے والی موصول شدہ اشیاء شامل کریں',
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E93)),
+                        ),
                     ],
                   ),
                 ),
@@ -1113,33 +1712,34 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
             ),
           ),
           if (_extraItems.isNotEmpty) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: const BoxDecoration(
-                color: Color(0xFFF5F5F7),
-                border: Border(
-                  top: BorderSide(color: Color(0xFFE5E5EA)),
-                  bottom: BorderSide(color: Color(0xFFE5E5EA)),
+            if (!isMobile)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF5F5F7),
+                  border: Border(
+                    top: BorderSide(color: Color(0xFFE5E5EA)),
+                    bottom: BorderSide(color: Color(0xFFE5E5EA)),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(flex: isTablet ? 3 : 4, child: Text(lp.isEnglish ? 'PRODUCT' : 'پروڈکٹ',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF8E8E93), letterSpacing: 0.5))),
+                    Expanded(flex: 2, child: Text(lp.isEnglish ? 'QTY' : 'مقدار',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF8E8E93), letterSpacing: 0.5))),
+                    Expanded(flex: isTablet ? 2 : 3, child: Text(lp.isEnglish ? 'UNIT COST' : 'فی یونٹ لاگت',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF8E8E93), letterSpacing: 0.5))),
+                    Expanded(flex: 2, child: Text(lp.isEnglish ? 'DISC %' : 'چھوٹ %',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF8E8E93), letterSpacing: 0.5))),
+                    const SizedBox(width: 36),
+                  ],
                 ),
               ),
-              child: Row(
-                children: [
-                  Expanded(flex: 4, child: Text(lp.isEnglish ? 'PRODUCT' : 'پروڈکٹ',
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF8E8E93), letterSpacing: 0.5))),
-                  Expanded(flex: 2, child: Text(lp.isEnglish ? 'QTY' : 'مقدار',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF8E8E93), letterSpacing: 0.5))),
-                  Expanded(flex: 3, child: Text(lp.isEnglish ? 'UNIT COST' : 'فی یونٹ لاگت',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF8E8E93), letterSpacing: 0.5))),
-                  Expanded(flex: 2, child: Text(lp.isEnglish ? 'DISC %' : 'چھوٹ %',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF8E8E93), letterSpacing: 0.5))),
-                  const SizedBox(width: 36),
-                ],
-              ),
-            ),
-            ...List.generate(_extraItems.length, (i) => _buildExtraItemRow(i, lp)),
+            ...List.generate(_extraItems.length, (i) => _buildExtraItemRow(i, lp, isMobile, isTablet)),
           ],
           Padding(
             padding: const EdgeInsets.all(16),
@@ -1171,8 +1771,13 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
     );
   }
 
-  Widget _buildExtraItemRow(int index, LanguageProvider lp) {
+  Widget _buildExtraItemRow(int index, LanguageProvider lp, bool isMobile, bool isTablet) {
     final extra = _extraItems[index];
+
+    if (isMobile) {
+      return _buildMobileExtraItemRow(index, extra, lp);
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF0F0F5)))),
@@ -1182,7 +1787,7 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                flex: 4,
+                flex: isTablet ? 3 : 4,
                 child: Consumer<ProductProvider>(
                   builder: (context, productProvider, _) {
                     return Container(
@@ -1272,7 +1877,7 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
               ),
               const SizedBox(width: 6),
               Expanded(
-                flex: 3,
+                flex: isTablet ? 2 : 3,
                 child: TextField(
                   controller: extra.unitCostController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -1353,6 +1958,176 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
     );
   }
 
+  Widget _buildMobileExtraItemRow(int index, _ExtraReceiptItem extra, LanguageProvider lp) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF0F0F5)))),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Consumer<ProductProvider>(
+                  builder: (context, productProvider, _) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF9FAFB),
+                        border: Border.all(color: const Color(0xFFE5E7EB)),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<int?>(
+                          value: extra.selectedProductId,
+                          isExpanded: true,
+                          hint: Text(lp.isEnglish ? 'Select product…' : 'پروڈکٹ منتخب کریں…',
+                              style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF2D3142)),
+                          icon: const Icon(Icons.keyboard_arrow_down, size: 16),
+                          items: [
+                            DropdownMenuItem<int?>(
+                                value: null,
+                                child: Text(lp.isEnglish ? 'Select product…' : 'پروڈکٹ منتخب کریں…',
+                                    style: const TextStyle(fontSize: 12, color: Colors.grey))),
+                            ...productProvider.products.map((p) => DropdownMenuItem<int?>(
+                              value: p.id,
+                              child: Text(p.itemName,
+                                  style: const TextStyle(fontSize: 12),
+                                  overflow: TextOverflow.ellipsis),
+                            )),
+                          ],
+                          onChanged: (v) {
+                            setState(() {
+                              extra.selectedProductId = v;
+                              if (v != null) {
+                                final product = productProvider.products.firstWhere((p) => p.id == v);
+                                extra.unitCostController.text = product.costPrice.toString();
+                              }
+                            });
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                icon: const Icon(Icons.remove_circle_outline, size: 20, color: Color(0xFFEF4444)),
+                onPressed: () => _removeExtraItem(index),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildMobileField(
+                label: lp.isEnglish ? 'Qty' : 'مقدار',
+                controller: extra.quantityController,
+                width: 60,
+                onChanged: (_) => setState(() {}),
+                lp: lp,
+              ),
+              _buildMobileField(
+                label: lp.isEnglish ? 'Unit Cost' : 'فی یونٹ لاگت',
+                controller: extra.unitCostController,
+                width: 80,
+                prefix: 'Rs ',
+                onChanged: (_) => setState(() {}),
+                lp: lp,
+              ),
+              _buildMobileField(
+                label: 'Disc %',
+                controller: extra.discountController,
+                width: 60,
+                onChanged: (_) => setState(() {}),
+                lp: lp,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: const Color(0xFFF5F5F7), borderRadius: BorderRadius.circular(8)),
+            child: _buildBatchExpiryFields(
+              batchController: extra.batchController,
+              expiryDate: extra.expiryDate,
+              onExpiryTap: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: extra.expiryDate ?? DateTime.now().add(const Duration(days: 30)),
+                  firstDate: DateTime.now(),
+                  lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+                  builder: (context, child) => Theme(
+                    data: Theme.of(context).copyWith(colorScheme: const ColorScheme.light(primary: Color(0xFF7C3AED))),
+                    child: child!,
+                  ),
+                );
+                if (picked != null) setState(() => extra.expiryDate = picked);
+              },
+              onExpiryClear: () => setState(() => extra.expiryDate = null),
+              lp: lp,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileField({
+    required String label,
+    required TextEditingController controller,
+    required double width,
+    String? prefix,
+    void Function(String)? onChanged,
+    required LanguageProvider lp,
+  }) {
+    return SizedBox(
+      width: width,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: Colors.grey[600],
+              fontFamily: lp.fontFamily,
+            ),
+          ),
+          TextField(
+            controller: controller,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: TextStyle(fontSize: 12, fontFamily: lp.fontFamily),
+            onChanged: onChanged,
+            decoration: InputDecoration(
+              prefixText: prefix,
+              prefixStyle: const TextStyle(fontSize: 10, color: Colors.grey),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              isDense: true,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(4),
+                borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(4),
+                borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(4),
+                borderSide: const BorderSide(color: Color(0xFF7C3AED), width: 1.5),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _addExtraItem() {
     setState(() {
       _extraItems.add(_ExtraReceiptItem());
@@ -1366,7 +2141,7 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
     });
   }
 
-  Widget _buildReceiptDateCard(LanguageProvider lp) {
+  Widget _buildReceiptDateCard(LanguageProvider lp, bool isMobile) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1443,7 +2218,7 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
     );
   }
 
-  Widget _buildNotesCard(LanguageProvider lp) {
+  Widget _buildNotesCard(LanguageProvider lp, bool isMobile) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1472,7 +2247,7 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
           const SizedBox(height: 12),
           TextFormField(
             controller: _notesController,
-            maxLines: 3,
+            maxLines: isMobile ? 2 : 3,
             style: TextStyle(fontSize: 14, fontFamily: lp.fontFamily),
             decoration: InputDecoration(
               hintText: lp.isEnglish ? 'Add any notes about this receipt...' : 'اس رسید کے بارے میں کوئی نوٹ شامل کریں...',
@@ -1489,8 +2264,10 @@ class _CreateReceiptScreenState extends State<CreateReceiptScreen> {
     );
   }
 
-  Widget _buildSubmitButton(LanguageProvider lp) {
-    return SizedBox(
+  Widget _buildSubmitButton(LanguageProvider lp, bool isDesktop) {
+    return isDesktop
+        ? const SizedBox.shrink()
+        : SizedBox(
       width: double.infinity,
       height: 52,
       child: ElevatedButton(

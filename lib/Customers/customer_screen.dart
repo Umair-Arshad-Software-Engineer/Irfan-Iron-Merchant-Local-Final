@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../components/confirmation_dialog.dart';
 import '../components/customer_form_dialog.dart';
 import '../models/customer.dart';
@@ -27,6 +28,10 @@ class _C {
   static const red        = Color(0xFFEF4444);
   static const orange     = Color(0xFFF59E0B);
   static const blue       = Color(0xFF3B82F6);
+
+  // Breakpoints
+  static const double mobileBreakpoint = 600;
+  static const double tabletBreakpoint = 1024;
 }
 
 class CustomerScreen extends StatefulWidget {
@@ -46,12 +51,17 @@ class _CustomerScreenState extends State<CustomerScreen> {
   String _sortColumn = 'name';
   bool _sortAscending = true;
 
+  // Responsive state
+  bool _isMobile = true;
+  bool _isTablet = false;
+
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_scrollListener);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _initializeData();
+      _updateResponsiveState();
     });
   }
 
@@ -60,6 +70,20 @@ class _CustomerScreenState extends State<CustomerScreen> {
     _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _updateResponsiveState() {
+    final width = MediaQuery.of(context).size.width;
+    setState(() {
+      _isMobile = width < _C.mobileBreakpoint;
+      _isTablet = width >= _C.mobileBreakpoint && width < _C.tabletBreakpoint;
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _updateResponsiveState();
   }
 
   Future<void> _initializeData() async {
@@ -170,45 +194,75 @@ class _CustomerScreenState extends State<CustomerScreen> {
 
             return Scaffold(
               backgroundColor: _C.bg,
-              body: Column(
-                children: [
-                  _Header(
-                    provider: provider,
-                    onReports: _navigateToReports,
-                    languageProvider: languageProvider,
-                  ),
-                  _SearchBar(
-                    controller: _searchController,
-                    currentSearch: _currentSearch,
-                    showActiveOnly: _showActiveOnly,
-                    onSearch: _handleSearch,
-                    onToggleActive: _toggleActiveFilter,
-                    languageProvider: languageProvider,
-                  ),
-                  _TypeChips(
-                    selected: _selectedType,
-                    onSelect: _handleTypeFilter,
-                    languageProvider: languageProvider,
-                  ),
-                  _TableHeader(
-                    sortColumn: _sortColumn,
-                    sortAscending: _sortAscending,
-                    onSort: _toggleSort,
-                    languageProvider: languageProvider,
-                  ),
-                  Expanded(
+              body: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isWeb = constraints.maxWidth >= _C.tabletBreakpoint;
+                  return _ResponsiveScaffold(
+                    isMobile: _isMobile,
+                    isTablet: _isTablet,
+                    isWeb: isWeb,
                     child: RefreshIndicator(
                       color: _C.brand,
                       onRefresh: _refreshCustomers,
-                      child: _buildBody(provider, sorted, languageProvider),
+                      child: CustomScrollView(
+                        slivers: [
+                          SliverToBoxAdapter(
+                            child: Column(
+                              children: [
+                                _Header(
+                                  provider: provider,
+                                  onReports: _navigateToReports,
+                                  languageProvider: languageProvider,
+                                  isMobile: _isMobile,
+                                  isWeb: isWeb,
+                                ),
+                                _SearchBar(
+                                  controller: _searchController,
+                                  currentSearch: _currentSearch,
+                                  showActiveOnly: _showActiveOnly,
+                                  onSearch: _handleSearch,
+                                  onToggleActive: _toggleActiveFilter,
+                                  languageProvider: languageProvider,
+                                  isMobile: _isMobile,
+                                  isWeb: isWeb,
+                                ),
+                                _TypeChips(
+                                  selected: _selectedType,
+                                  onSelect: _handleTypeFilter,
+                                  languageProvider: languageProvider,
+                                  isMobile: _isMobile,
+                                  isWeb: isWeb,
+                                ),
+                                if (!_isMobile)
+                                  _TableHeader(
+                                    sortColumn: _sortColumn,
+                                    sortAscending: _sortAscending,
+                                    onSort: _toggleSort,
+                                    languageProvider: languageProvider,
+                                    isWeb: isWeb,
+                                  ),
+                              ],
+                            ),
+                          ),
+                          SliverToBoxAdapter(
+                            child: _buildBodyWithSliver(provider, sorted, languageProvider, isWeb),
+                          ),
+                          SliverToBoxAdapter(
+                            child: SizedBox(height: _isMobile ? 80 : 32),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  );
+                },
               ),
-              floatingActionButton: _AddFAB(
+              floatingActionButton: _isMobile
+                  ? _AddFAB(
                 onPressed: () => _showAddCustomerDialog(languageProvider),
                 languageProvider: languageProvider,
-              ),
+                isWeb: false,
+              )
+                  : null,
             );
           },
         );
@@ -216,10 +270,25 @@ class _CustomerScreenState extends State<CustomerScreen> {
     );
   }
 
-  Widget _buildBody(CustomerProvider provider, List<Customer> customers, LanguageProvider lp) {
+  Widget _buildBodyWithSliver(CustomerProvider provider, List<Customer> customers, LanguageProvider lp, bool isWeb) {
     if (provider.isLoading && customers.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(color: _C.brand),
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(40.0),
+          child: Column(
+            children: [
+              const CircularProgressIndicator(color: _C.brand),
+              const SizedBox(height: 16),
+              Text(
+                lp.isEnglish ? 'Loading customers...' : 'کسٹمرز لوڈ ہو رہے ہیں...',
+                style: TextStyle(
+                  color: _C.text3,
+                  fontFamily: lp.fontFamily,
+                ),
+              ),
+            ],
+          ),
+        ),
       );
     }
     if (customers.isEmpty) {
@@ -227,17 +296,27 @@ class _CustomerScreenState extends State<CustomerScreen> {
         hasSearch: _currentSearch.isNotEmpty,
         onAdd: () => _showAddCustomerDialog(lp),
         languageProvider: lp,
+        isWeb: isWeb,
       );
     }
+
+    final padding = isWeb
+        ? EdgeInsets.symmetric(horizontal: _getWebPadding(), vertical: 8)
+        : const EdgeInsets.fromLTRB(16, 8, 16, 16);
+
     return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       controller: _scrollController,
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 120),
+      padding: padding,
       itemCount: customers.length + 1,
       itemBuilder: (context, i) {
         if (i < customers.length) {
           return _CustomerRow(
             customer: customers[i],
             index: i,
+            isMobile: _isMobile,
+            isWeb: isWeb,
             onTap: () => _showCustomerDetails(customers[i], lp),
             onEdit: () => _showEditCustomerDialog(customers[i], lp),
             onToggle: () => _toggleCustomerStatus(customers[i]),
@@ -255,6 +334,13 @@ class _CustomerScreenState extends State<CustomerScreen> {
     );
   }
 
+  double _getWebPadding() {
+    final width = MediaQuery.of(context).size.width;
+    if (width > 1400) return 48;
+    if (width > 1200) return 32;
+    return 24;
+  }
+
   void _navigateToReports() {
     Navigator.push(
       context,
@@ -262,12 +348,10 @@ class _CustomerScreenState extends State<CustomerScreen> {
     ).then((_) => _refreshCustomers());
   }
 
-// In CustomerScreen, update the _showAddCustomerDialog method:
-
   Future<void> _showAddCustomerDialog(LanguageProvider lp) async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (_) => CustomerFormDialog(languageProvider: lp), // Pass languageProvider
+      builder: (_) => CustomerFormDialog(languageProvider: lp),
     );
     if (result?['success'] == true) {
       _showSnack(result!['message'], _C.green, lp);
@@ -275,13 +359,12 @@ class _CustomerScreenState extends State<CustomerScreen> {
     }
   }
 
-// Update the _showEditCustomerDialog method:
   Future<void> _showEditCustomerDialog(Customer customer, LanguageProvider lp) async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) => CustomerFormDialog(
         customer: customer,
-        languageProvider: lp, // Pass languageProvider
+        languageProvider: lp,
       ),
     );
     if (result?['success'] == true) {
@@ -291,6 +374,39 @@ class _CustomerScreenState extends State<CustomerScreen> {
   }
 
   void _showCustomerDetails(Customer customer, LanguageProvider lp) {
+    final isWeb = MediaQuery.of(context).size.width >= _C.tabletBreakpoint;
+
+    if (isWeb) {
+      _showWebCustomerDetails(customer, lp);
+    } else {
+      _showMobileCustomerDetails(customer, lp);
+    }
+  }
+
+  void _showWebCustomerDetails(Customer customer, LanguageProvider lp) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600, maxHeight: 700),
+          child: CustomerDetailsSheet(
+            customer: customer,
+            languageProvider: lp,
+            isWeb: true,
+            onEdit: () { Navigator.pop(context); _showEditCustomerDialog(customer, lp); },
+            onToggleStatus: () { Navigator.pop(context); _toggleCustomerStatus(customer); },
+            onViewLedger: () { Navigator.pop(context); _viewCustomerLedger(customer, lp); },
+            onViewPayments: () { Navigator.pop(context); _viewCustomerPayments(customer, lp); },
+            onReceivePayment: () { Navigator.pop(context); _receiveCustomerPayment(customer, lp); },
+            onAdjustBalance: () { Navigator.pop(context); _adjustCustomerBalance(customer, lp); },
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showMobileCustomerDetails(Customer customer, LanguageProvider lp) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -298,6 +414,7 @@ class _CustomerScreenState extends State<CustomerScreen> {
       builder: (_) => CustomerDetailsSheet(
         customer: customer,
         languageProvider: lp,
+        isWeb: false,
         onEdit: () { Navigator.pop(context); _showEditCustomerDialog(customer, lp); },
         onToggleStatus: () { Navigator.pop(context); _toggleCustomerStatus(customer); },
         onViewLedger: () { Navigator.pop(context); _viewCustomerLedger(customer, lp); },
@@ -393,21 +510,63 @@ class _CustomerScreenState extends State<CustomerScreen> {
   }
 }
 
+// ─── Responsive Scaffold ──────────────────────────────────────────────────
+class _ResponsiveScaffold extends StatelessWidget {
+  final bool isMobile;
+  final bool isTablet;
+  final bool isWeb;
+  final Widget child;
+
+  const _ResponsiveScaffold({
+    required this.isMobile,
+    required this.isTablet,
+    required this.isWeb,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isWeb) {
+      return Center(
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 1400),
+          child: child,
+        ),
+      );
+    }
+    return child;
+  }
+}
+
 // ─── Header ──────────────────────────────────────────────────────────────────
 class _Header extends StatelessWidget {
   final CustomerProvider provider;
   final VoidCallback onReports;
   final LanguageProvider languageProvider;
-  const _Header({required this.provider, required this.onReports, required this.languageProvider});
+  final bool isMobile;
+  final bool isWeb;
+
+  const _Header({
+    required this.provider,
+    required this.onReports,
+    required this.languageProvider,
+    required this.isMobile,
+    required this.isWeb,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final active   = provider.customers.where((c) => c.isActive).length;
-    final withBal  = provider.customers.where((c) => c.balance > 0).length;
-    final total    = provider.totalOutstandingBalance;
+    final active = provider.customers.where((c) => c.isActive).length;
+    final withBal = provider.customers.where((c) => c.balance > 0).length;
+    final total = provider.totalOutstandingBalance;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(28, 28, 28, 20),
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? 16.0 : 28.0,
+        isMobile ? 16.0 : 28.0,
+        isMobile ? 16.0 : 28.0,
+        isMobile ? 12.0 : 20.0,
+      ),
       decoration: const BoxDecoration(
         color: _C.surface,
         border: Border(bottom: BorderSide(color: _C.border)),
@@ -418,69 +577,137 @@ class _Header extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: isMobile ? 36.0 : 44.0,
+                height: isMobile ? 36.0 : 44.0,
                 decoration: BoxDecoration(
                   color: _C.brandLight,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(isMobile ? 10 : 12),
                 ),
-                child: const Icon(Icons.people_alt_rounded, color: _C.brand, size: 22),
+                child: Icon(Icons.people_alt_rounded, color: _C.brand, size: isMobile ? 18 : 22),
               ),
               const SizedBox(width: 14),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(languageProvider.isEnglish ? 'Customers' : 'کسٹمرز',
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700,
-                          color: _C.text1, letterSpacing: -0.4)),
-                  Text(languageProvider.isEnglish ? 'Manage relationships & balances' : 'تعلقات اور بیلنس کا انتظام کریں',
-                      style: TextStyle(fontSize: 13, color: Colors.grey[500], fontFamily: languageProvider.fontFamily)),
+                  Text(
+                    languageProvider.isEnglish ? 'Customers' : 'کسٹمرز',
+                    style: TextStyle(
+                      fontSize: isMobile ? 18.0 : 22.0,
+                      fontWeight: FontWeight.w700,
+                      color: _C.text1,
+                      letterSpacing: -0.4,
+                      fontFamily: languageProvider.fontFamily,
+                    ),
+                  ),
+                  if (!isMobile)
+                    Text(
+                      languageProvider.isEnglish ? 'Manage relationships & balances' : 'تعلقات اور بیلنس کا انتظام کریں',
+                      style: TextStyle(
+                        fontSize: 13.0,
+                        color: Colors.grey.shade500,
+                        fontFamily: languageProvider.fontFamily,
+                      ),
+                    ),
                 ],
               ),
               const Spacer(),
-              _ReportsButton(onPressed: onReports, languageProvider: languageProvider),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              _StatTile(
-                label: languageProvider.isEnglish ? 'Total' : 'کل',
-                value: provider.totalItems.toString(),
-                color: _C.brand,
+              _ReportsButton(
+                onPressed: onReports,
                 languageProvider: languageProvider,
-              ),
-              _divider(),
-              _StatTile(
-                label: languageProvider.isEnglish ? 'Active' : 'فعال',
-                value: active.toString(),
-                color: _C.green,
-                languageProvider: languageProvider,
-              ),
-              _divider(),
-              _StatTile(
-                label: languageProvider.isEnglish ? 'With Balance' : 'بیلنس والے',
-                value: withBal.toString(),
-                color: _C.orange,
-                languageProvider: languageProvider,
-              ),
-              _divider(),
-              _StatTile(
-                label: languageProvider.isEnglish ? 'Total Owed' : 'کل بقایا',
-                value: total.toStringAsFixed(2),
-                color: _C.red,
-                isAmount: true,
-                languageProvider: languageProvider,
+                isMobile: isMobile,
               ),
             ],
           ),
+          SizedBox(height: isMobile ? 12.0 : 20.0),
+          _buildStatsRow(active, withBal, total, context),
         ],
       ),
     );
   }
 
+  Widget _buildStatsRow(int active, int withBal, double total, BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth > 600;
+
+    if (isWide) {
+      return Row(
+        children: [
+          _StatTile(
+            label: languageProvider.isEnglish ? 'Total' : 'کل',
+            value: provider.totalItems.toString(),
+            color: _C.brand,
+            languageProvider: languageProvider,
+            isMobile: isMobile,
+          ),
+          _divider(),
+          _StatTile(
+            label: languageProvider.isEnglish ? 'Active' : 'فعال',
+            value: active.toString(),
+            color: _C.green,
+            languageProvider: languageProvider,
+            isMobile: isMobile,
+          ),
+          _divider(),
+          _StatTile(
+            label: languageProvider.isEnglish ? 'With Balance' : 'بیلنس والے',
+            value: withBal.toString(),
+            color: _C.orange,
+            languageProvider: languageProvider,
+            isMobile: isMobile,
+          ),
+          _divider(),
+          _StatTile(
+            label: languageProvider.isEnglish ? 'Total Owed' : 'کل بقایا',
+            value: total.toStringAsFixed(2),
+            color: _C.red,
+            isAmount: true,
+            languageProvider: languageProvider,
+            isMobile: isMobile,
+          ),
+        ],
+      );
+    } else {
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _StatTile(
+            label: languageProvider.isEnglish ? 'Total' : 'کل',
+            value: provider.totalItems.toString(),
+            color: _C.brand,
+            languageProvider: languageProvider,
+            isMobile: isMobile,
+          ),
+          _StatTile(
+            label: languageProvider.isEnglish ? 'Active' : 'فعال',
+            value: active.toString(),
+            color: _C.green,
+            languageProvider: languageProvider,
+            isMobile: isMobile,
+          ),
+          _StatTile(
+            label: languageProvider.isEnglish ? 'With Balance' : 'بیلنس والے',
+            value: withBal.toString(),
+            color: _C.orange,
+            languageProvider: languageProvider,
+            isMobile: isMobile,
+          ),
+          _StatTile(
+            label: languageProvider.isEnglish ? 'Total Owed' : 'کل بقایا',
+            value: total.toStringAsFixed(2),
+            color: _C.red,
+            isAmount: true,
+            languageProvider: languageProvider,
+            isMobile: isMobile,
+          ),
+        ],
+      );
+    }
+  }
+
   Widget _divider() => Container(
-    width: 1, height: 36,
+    width: 1.0,
+    height: 36.0,
     margin: const EdgeInsets.symmetric(horizontal: 12),
     color: _C.border,
   );
@@ -492,25 +719,61 @@ class _StatTile extends StatelessWidget {
   final Color color;
   final bool isAmount;
   final LanguageProvider languageProvider;
-  const _StatTile({required this.label, required this.value, required this.color, this.isAmount = false, required this.languageProvider});
+  final bool isMobile;
+
+  const _StatTile({
+    required this.label,
+    required this.value,
+    required this.color,
+    this.isAmount = false,
+    required this.languageProvider,
+    required this.isMobile,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 11, color: _C.text3, fontWeight: FontWeight.w500)),
-        const SizedBox(height: 2),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            if (isAmount) Text('PKR ', style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600, fontFamily: languageProvider.fontFamily)),
-            Text(value,
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: color, letterSpacing: -0.5, fontFamily: languageProvider.fontFamily)),
-          ],
-        ),
-      ],
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 4.0 : 0.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: isMobile ? 10.0 : 11.0,
+              color: _C.text3,
+              fontWeight: FontWeight.w500,
+              fontFamily: languageProvider.fontFamily,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              if (isAmount) Text(
+                'PKR ',
+                style: TextStyle(
+                  fontSize: isMobile ? 9.0 : 10.0,
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: languageProvider.fontFamily,
+                ),
+              ),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: isMobile ? 16.0 : 20.0,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                  letterSpacing: -0.5,
+                  fontFamily: languageProvider.fontFamily,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -518,20 +781,42 @@ class _StatTile extends StatelessWidget {
 class _ReportsButton extends StatelessWidget {
   final VoidCallback onPressed;
   final LanguageProvider languageProvider;
-  const _ReportsButton({required this.onPressed, required this.languageProvider});
+  final bool isMobile;
+
+  const _ReportsButton({
+    required this.onPressed,
+    required this.languageProvider,
+    required this.isMobile,
+  });
 
   @override
   Widget build(BuildContext context) {
+    if (isMobile) {
+      return OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: _C.brand,
+          side: const BorderSide(color: _C.brand),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          minimumSize: const Size(40, 40),
+        ),
+        child: Icon(Icons.bar_chart_rounded, size: 14),
+      );
+    }
+
     return OutlinedButton.icon(
       onPressed: onPressed,
-      icon: const Icon(Icons.bar_chart_rounded, size: 16),
-      label: Text(languageProvider.isEnglish ? 'Reports' : 'رپورٹس'),
+      icon: Icon(Icons.bar_chart_rounded, size: 16),
+      label: Text(
+        languageProvider.isEnglish ? 'Reports' : 'رپورٹس',
+        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+      ),
       style: OutlinedButton.styleFrom(
         foregroundColor: _C.brand,
         side: const BorderSide(color: _C.brand),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
       ),
     );
   }
@@ -545,22 +830,33 @@ class _SearchBar extends StatelessWidget {
   final ValueChanged<String> onSearch;
   final VoidCallback onToggleActive;
   final LanguageProvider languageProvider;
+  final bool isMobile;
+  final bool isWeb;
+
   const _SearchBar({
-    required this.controller, required this.currentSearch,
-    required this.showActiveOnly, required this.onSearch, required this.onToggleActive,
+    required this.controller,
+    required this.currentSearch,
+    required this.showActiveOnly,
+    required this.onSearch,
+    required this.onToggleActive,
     required this.languageProvider,
+    required this.isMobile,
+    required this.isWeb,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 16.0 : 24.0,
+        vertical: isMobile ? 8.0 : 14.0,
+      ),
       color: _C.surface,
       child: Row(
         children: [
           Expanded(
             child: Container(
-              height: 44,
+              height: isMobile ? 40.0 : 44.0,
               decoration: BoxDecoration(
                 color: _C.bg,
                 borderRadius: BorderRadius.circular(10),
@@ -569,11 +865,17 @@ class _SearchBar extends StatelessWidget {
               child: TextField(
                 controller: controller,
                 onChanged: onSearch,
-                style: TextStyle(fontSize: 14, color: _C.text1, fontFamily: languageProvider.fontFamily),
+                style: TextStyle(
+                  fontSize: isMobile ? 13.0 : 14.0,
+                  color: _C.text1,
+                  fontFamily: languageProvider.fontFamily,
+                ),
                 decoration: InputDecoration(
-                  hintText: languageProvider.isEnglish ? 'Search by name, contact, email…' : 'نام، رابطہ، ای میل سے تلاش کریں…',
+                  hintText: isMobile
+                      ? (languageProvider.isEnglish ? 'Search…' : 'تلاش کریں…')
+                      : (languageProvider.isEnglish ? 'Search by name, contact, email…' : 'نام، رابطہ، ای میل سے تلاش کریں…'),
                   hintStyle: const TextStyle(color: _C.text3, fontSize: 14),
-                  prefixIcon: const Icon(Icons.search, color: _C.text3, size: 19),
+                  prefixIcon: Icon(Icons.search, color: _C.text3, size: isMobile ? 17 : 19),
                   suffixIcon: currentSearch.isNotEmpty
                       ? IconButton(
                     icon: const Icon(Icons.close, size: 17, color: _C.text3),
@@ -587,12 +889,14 @@ class _SearchBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          _FilterPill(
-            label: languageProvider.isEnglish ? 'Active only' : 'صرف فعال',
-            selected: showActiveOnly,
-            onTap: onToggleActive,
-            languageProvider: languageProvider,
-          ),
+          if (!isMobile || isWeb)
+            _FilterPill(
+              label: languageProvider.isEnglish ? 'Active only' : 'صرف فعال',
+              selected: showActiveOnly,
+              onTap: onToggleActive,
+              languageProvider: languageProvider,
+              isMobile: isMobile,
+            ),
         ],
       ),
     );
@@ -604,7 +908,15 @@ class _FilterPill extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   final LanguageProvider languageProvider;
-  const _FilterPill({required this.label, required this.selected, required this.onTap, required this.languageProvider});
+  final bool isMobile;
+
+  const _FilterPill({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    required this.languageProvider,
+    required this.isMobile,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -612,7 +924,10 @@ class _FilterPill extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        padding: EdgeInsets.symmetric(
+          horizontal: isMobile ? 10.0 : 14.0,
+          vertical: isMobile ? 7.0 : 9.0,
+        ),
         decoration: BoxDecoration(
           color: selected ? _C.brand : _C.surface,
           borderRadius: BorderRadius.circular(10),
@@ -622,16 +937,20 @@ class _FilterPill extends StatelessWidget {
           children: [
             Icon(
               selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
-              size: 15,
+              size: isMobile ? 13 : 15,
               color: selected ? Colors.white : _C.text3,
             ),
             const SizedBox(width: 6),
-            Text(label,
+            if (!isMobile)
+              Text(
+                label,
                 style: TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w500,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
                   color: selected ? Colors.white : _C.text2,
                   fontFamily: languageProvider.fontFamily,
-                )),
+                ),
+              ),
           ],
         ),
       ),
@@ -644,7 +963,16 @@ class _TypeChips extends StatelessWidget {
   final String selected;
   final ValueChanged<String> onSelect;
   final LanguageProvider languageProvider;
-  const _TypeChips({required this.selected, required this.onSelect, required this.languageProvider});
+  final bool isMobile;
+  final bool isWeb;
+
+  const _TypeChips({
+    required this.selected,
+    required this.onSelect,
+    required this.languageProvider,
+    required this.isMobile,
+    required this.isWeb,
+  });
 
   List<Map<String, dynamic>> get _types => [
     {'id': 'all',       'label': languageProvider.isEnglish ? 'All' : 'سب',       'color': _C.brand,   'icon': Icons.grid_view_rounded},
@@ -656,7 +984,10 @@ class _TypeChips extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 16.0 : 24.0,
+        vertical: isMobile ? 8.0 : 10.0,
+      ),
       decoration: const BoxDecoration(
         color: _C.surface,
         border: Border(bottom: BorderSide(color: _C.border)),
@@ -671,12 +1002,15 @@ class _TypeChips extends StatelessWidget {
             final icon = t['icon'] as IconData;
             final isSelected = selected == id;
             return Padding(
-              padding: const EdgeInsets.only(right: 8),
+              padding: EdgeInsets.only(right: isMobile ? 6.0 : 8.0),
               child: GestureDetector(
                 onTap: () => onSelect(id),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 160),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isMobile ? 10.0 : 14.0,
+                    vertical: isMobile ? 6.0 : 7.0,
+                  ),
                   decoration: BoxDecoration(
                     color: isSelected ? color : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
@@ -686,15 +1020,18 @@ class _TypeChips extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      Icon(icon, size: 14,
+                      Icon(icon,
+                          size: isMobile ? 12.0 : 14.0,
                           color: isSelected ? Colors.white : color),
                       const SizedBox(width: 6),
-                      Text(label,
-                          style: TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w500,
-                            color: isSelected ? Colors.white : _C.text2,
-                            fontFamily: languageProvider.fontFamily,
-                          )),
+                      if (!isMobile)
+                        Text(label,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: isSelected ? Colors.white : _C.text2,
+                              fontFamily: languageProvider.fontFamily,
+                            )),
                     ],
                   ),
                 ),
@@ -713,22 +1050,43 @@ class _TableHeader extends StatelessWidget {
   final bool sortAscending;
   final void Function(String) onSort;
   final LanguageProvider languageProvider;
-  const _TableHeader({required this.sortColumn, required this.sortAscending, required this.onSort, required this.languageProvider});
+  final bool isWeb;
+
+  const _TableHeader({
+    required this.sortColumn,
+    required this.sortAscending,
+    required this.onSort,
+    required this.languageProvider,
+    required this.isWeb,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth > 800;
+
     final headers = [
-      {'label': languageProvider.isEnglish ? 'Customer' : 'کسٹمر', 'column': 'name', 'flex': 3, 'rightAlign': false},
-      {'label': languageProvider.isEnglish ? 'Contact' : 'رابطہ', 'column': 'contact', 'flex': 2, 'rightAlign': false},
-      {'label': languageProvider.isEnglish ? 'Email' : 'ای میل', 'column': 'email', 'flex': 3, 'rightAlign': false},
-      {'label': languageProvider.isEnglish ? 'Type' : 'قسم', 'column': 'type', 'flex': 2, 'rightAlign': false},
-      {'label': languageProvider.isEnglish ? 'Balance' : 'بیلنس', 'column': 'balance', 'flex': 2, 'rightAlign': true},
-      {'label': languageProvider.isEnglish ? 'Status' : 'حالت', 'column': 'status', 'flex': 2, 'rightAlign': false},
+      {'label': languageProvider.isEnglish ? 'Customer' : 'کسٹمر', 'column': 'name', 'flex': isWide ? 3 : 2, 'rightAlign': false},
+      {'label': languageProvider.isEnglish ? 'Contact' : 'رابطہ', 'column': 'contact', 'flex': isWide ? 2 : 1, 'rightAlign': false},
+      if (isWide)
+        {'label': languageProvider.isEnglish ? 'Email' : 'ای میل', 'column': 'email', 'flex': 3, 'rightAlign': false},
+      {'label': languageProvider.isEnglish ? 'Type' : 'قسم', 'column': 'type', 'flex': isWide ? 2 : 1, 'rightAlign': false},
+      {'label': languageProvider.isEnglish ? 'Balance' : 'بیلنس', 'column': 'balance', 'flex': isWide ? 2 : 1, 'rightAlign': true},
+      {'label': languageProvider.isEnglish ? 'Status' : 'حالت', 'column': 'status', 'flex': isWide ? 2 : 1, 'rightAlign': false},
     ];
 
+    final padding = isWeb
+        ? EdgeInsets.symmetric(horizontal: _getWebPadding(screenWidth), vertical: 10.0)
+        : const EdgeInsets.symmetric(horizontal: 16, vertical: 10);
+
     return Container(
-      margin: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      margin: EdgeInsets.fromLTRB(
+        isWeb ? _getWebPadding(screenWidth) : 16.0,
+        12.0,
+        isWeb ? _getWebPadding(screenWidth) : 16.0,
+        0.0,
+      ),
+      padding: padding,
       decoration: BoxDecoration(
         color: const Color(0xFFF0EDFD),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
@@ -745,8 +1103,10 @@ class _TableHeader extends StatelessWidget {
                 children: [
                   Text(h['label'] as String,
                       style: const TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.w700,
-                        color: _C.text2, letterSpacing: 0.5,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: _C.text2,
+                        letterSpacing: 0.5,
                       )),
                   const SizedBox(width: 3),
                   Icon(
@@ -765,12 +1125,20 @@ class _TableHeader extends StatelessWidget {
       ),
     );
   }
+
+  double _getWebPadding(double screenWidth) {
+    if (screenWidth > 1400) return 48;
+    if (screenWidth > 1200) return 32;
+    return 24;
+  }
 }
 
 // ─── Customer Row ─────────────────────────────────────────────────────────────
 class _CustomerRow extends StatefulWidget {
   final Customer customer;
   final int index;
+  final bool isMobile;
+  final bool isWeb;
   final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onToggle;
@@ -778,9 +1146,14 @@ class _CustomerRow extends StatefulWidget {
   final LanguageProvider languageProvider;
 
   const _CustomerRow({
-    required this.customer, required this.index,
-    required this.onTap, required this.onEdit,
-    required this.onToggle, required this.onDelete,
+    required this.customer,
+    required this.index,
+    required this.isMobile,
+    required this.isWeb,
+    required this.onTap,
+    required this.onEdit,
+    required this.onToggle,
+    required this.onDelete,
     required this.languageProvider,
   });
 
@@ -812,6 +1185,8 @@ class _CustomerRowState extends State<_CustomerRow> {
     final c = widget.customer;
     final isEven = widget.index % 2 == 0;
     final tc = _typeColor(c.customerType);
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth > 800;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -820,146 +1195,244 @@ class _CustomerRowState extends State<_CustomerRow> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
-          margin: const EdgeInsets.only(bottom: 1),
+          margin: EdgeInsets.symmetric(
+            horizontal: widget.isWeb ? _getWebPadding(screenWidth) : 0.0,
+          ),
           decoration: BoxDecoration(
             color: _hovered ? _C.rowHover : (isEven ? Colors.white : const Color(0xFFFBFBFD)),
             border: Border(
               left: BorderSide(
                 color: _hovered ? tc : Colors.transparent,
-                width: 3,
+                width: 3.0,
               ),
               bottom: const BorderSide(color: _C.border, width: 0.5),
             ),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+          child: widget.isMobile
+              ? _buildMobileRow(c, tc)
+              : _buildDesktopRow(c, tc, isWide, screenWidth),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobileRow(Customer c, Color tc) {
+    return Row(
+      children: [
+        Expanded(
           child: Row(
             children: [
+              Container(
+                width: 34.0,
+                height: 34.0,
+                decoration: BoxDecoration(
+                  color: tc.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(_typeIcon(c.customerType), color: tc, size: 16),
+              ),
+              const SizedBox(width: 10),
               Expanded(
-                flex: 3,
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 34, height: 34,
-                      decoration: BoxDecoration(
-                        color: tc.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(9),
+                    Text(c.name,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _C.text1,
+                        fontFamily: widget.languageProvider.fontFamily,
                       ),
-                      child: Icon(_typeIcon(c.customerType), color: tc, size: 16),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(c.name,
-                            style: TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.w600,
-                              color: _C.text1, fontFamily: widget.languageProvider.fontFamily,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (c.address != null && c.address!.isNotEmpty)
-                            Text(c.address!,
-                              style: TextStyle(fontSize: 11, color: _C.text3, fontFamily: widget.languageProvider.fontFamily),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                        ],
+                    Text(c.contact,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: _C.text3,
+                        fontFamily: widget.languageProvider.fontFamily,
                       ),
                     ),
                   ],
                 ),
               ),
-              Expanded(
-                flex: 2,
-                child: Text(c.contact,
-                  style: TextStyle(fontSize: 13, color: _C.text2, fontFamily: widget.languageProvider.fontFamily),
-                  overflow: TextOverflow.ellipsis,
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            _BalanceBadge(
+              balance: c.balance,
+              formatted: c.formattedBalance,
+              languageProvider: widget.languageProvider,
+              isMobile: true,
+            ),
+            const SizedBox(height: 4),
+            _StatusDot(
+              active: c.isActive,
+              languageProvider: widget.languageProvider,
+              isMobile: true,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDesktopRow(Customer c, Color tc, bool isWide, double screenWidth) {
+    return Row(
+      children: [
+        Expanded(
+          flex: isWide ? 3 : 2,
+          child: Row(
+            children: [
+              Container(
+                width: 34.0,
+                height: 34.0,
+                decoration: BoxDecoration(
+                  color: tc.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(9),
                 ),
+                child: Icon(_typeIcon(c.customerType), color: tc, size: 16),
               ),
+              const SizedBox(width: 10),
               Expanded(
-                flex: 3,
-                child: Text(c.email ?? '—',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: c.email != null ? _C.text2 : _C.text3,
-                    fontFamily: widget.languageProvider.fontFamily,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: tc.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(c.typeLabel,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(c.name,
                       style: TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.w600, color: tc,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _C.text1,
                         fontFamily: widget.languageProvider.fontFamily,
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: _BalanceBadge(balance: c.balance, formatted: c.formattedBalance, languageProvider: widget.languageProvider),
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: _StatusDot(
-                  active: c.isActive,
-                  languageProvider: widget.languageProvider,
-                ),
-              ),
-              SizedBox(
-                width: 100,
-                child: AnimatedOpacity(
-                  opacity: _hovered ? 1 : 0.4,
-                  duration: const Duration(milliseconds: 120),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      _ActionBtn(
-                        icon: Icons.edit_outlined,
-                        color: _C.brand,
-                        tooltip: widget.languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں',
-                        onTap: widget.onEdit,
-                        languageProvider: widget.languageProvider,
+                    if (c.address != null && c.address!.isNotEmpty)
+                      Text(c.address!,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _C.text3,
+                          fontFamily: widget.languageProvider.fontFamily,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      _ActionBtn(
-                        icon: c.isActive ? Icons.pause_circle_outline : Icons.play_circle_outline,
-                        color: c.isActive ? _C.orange : _C.green,
-                        tooltip: c.isActive
-                            ? (widget.languageProvider.isEnglish ? 'Deactivate' : 'غیر فعال کریں')
-                            : (widget.languageProvider.isEnglish ? 'Activate' : 'فعال کریں'),
-                        onTap: widget.onToggle,
-                        languageProvider: widget.languageProvider,
-                      ),
-                      _ActionBtn(
-                        icon: Icons.delete_outline,
-                        color: _C.red,
-                        tooltip: widget.languageProvider.isEnglish ? 'Delete' : 'حذف کریں',
-                        onTap: widget.onDelete,
-                        languageProvider: widget.languageProvider,
-                      ),
-                    ],
-                  ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
-      ),
+        Expanded(
+          flex: isWide ? 2 : 1,
+          child: Text(c.contact,
+            style: TextStyle(
+              fontSize: 13,
+              color: _C.text2,
+              fontFamily: widget.languageProvider.fontFamily,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        if (isWide)
+          Expanded(
+            flex: 3,
+            child: Text(c.email ?? '—',
+              style: TextStyle(
+                fontSize: 12,
+                color: c.email != null ? _C.text2 : _C.text3,
+                fontFamily: widget.languageProvider.fontFamily,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        Expanded(
+          flex: isWide ? 2 : 1,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+              decoration: BoxDecoration(
+                color: tc.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(c.typeLabel,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: tc,
+                  fontFamily: widget.languageProvider.fontFamily,
+                ),
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          flex: isWide ? 2 : 1,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: _BalanceBadge(
+              balance: c.balance,
+              formatted: c.formattedBalance,
+              languageProvider: widget.languageProvider,
+              isMobile: false,
+            ),
+          ),
+        ),
+        Expanded(
+          flex: isWide ? 2 : 1,
+          child: _StatusDot(
+            active: c.isActive,
+            languageProvider: widget.languageProvider,
+            isMobile: false,
+          ),
+        ),
+        SizedBox(
+          width: isWide ? 100.0 : 80.0,
+          child: AnimatedOpacity(
+            opacity: _hovered ? 1.0 : 0.4,
+            duration: const Duration(milliseconds: 120),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                _ActionBtn(
+                  icon: Icons.edit_outlined,
+                  color: _C.brand,
+                  tooltip: widget.languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں',
+                  onTap: widget.onEdit,
+                  languageProvider: widget.languageProvider,
+                ),
+                _ActionBtn(
+                  icon: c.isActive ? Icons.pause_circle_outline : Icons.play_circle_outline,
+                  color: c.isActive ? _C.orange : _C.green,
+                  tooltip: c.isActive
+                      ? (widget.languageProvider.isEnglish ? 'Deactivate' : 'غیر فعال کریں')
+                      : (widget.languageProvider.isEnglish ? 'Activate' : 'فعال کریں'),
+                  onTap: widget.onToggle,
+                  languageProvider: widget.languageProvider,
+                ),
+                _ActionBtn(
+                  icon: Icons.delete_outline,
+                  color: _C.red,
+                  tooltip: widget.languageProvider.isEnglish ? 'Delete' : 'حذف کریں',
+                  onTap: widget.onDelete,
+                  languageProvider: widget.languageProvider,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
+  }
+
+  double _getWebPadding(double screenWidth) {
+    if (screenWidth > 1400) return 48;
+    if (screenWidth > 1200) return 32;
+    return 24;
   }
 }
 
@@ -967,13 +1440,23 @@ class _BalanceBadge extends StatelessWidget {
   final double balance;
   final String formatted;
   final LanguageProvider languageProvider;
-  const _BalanceBadge({required this.balance, required this.formatted, required this.languageProvider});
+  final bool isMobile;
+
+  const _BalanceBadge({
+    required this.balance,
+    required this.formatted,
+    required this.languageProvider,
+    required this.isMobile,
+  });
 
   @override
   Widget build(BuildContext context) {
     final owing = balance > 0.01;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 6.0 : 8.0,
+        vertical: isMobile ? 2.0 : 3.0,
+      ),
       decoration: BoxDecoration(
         color: owing ? _C.red.withOpacity(0.08) : _C.green.withOpacity(0.08),
         borderRadius: BorderRadius.circular(6),
@@ -981,7 +1464,8 @@ class _BalanceBadge extends StatelessWidget {
       child: Text(
         formatted,
         style: TextStyle(
-          fontSize: 12, fontWeight: FontWeight.w700,
+          fontSize: isMobile ? 11.0 : 12.0,
+          fontWeight: FontWeight.w700,
           color: owing ? _C.red : _C.green,
           fontFamily: languageProvider.fontFamily,
         ),
@@ -993,30 +1477,43 @@ class _BalanceBadge extends StatelessWidget {
 class _StatusDot extends StatelessWidget {
   final bool active;
   final LanguageProvider languageProvider;
-  const _StatusDot({required this.active, required this.languageProvider});
+  final bool isMobile;
+
+  const _StatusDot({
+    required this.active,
+    required this.languageProvider,
+    required this.isMobile,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final statusText = active
+        ? (languageProvider.isEnglish ? 'Active' : 'فعال')
+        : (languageProvider.isEnglish ? 'Inactive' : 'غیر فعال');
+
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 7, height: 7,
+          width: isMobile ? 6.0 : 7.0,
+          height: isMobile ? 6.0 : 7.0,
           decoration: BoxDecoration(
             color: active ? _C.green : _C.text3,
             shape: BoxShape.circle,
           ),
         ),
-        const SizedBox(width: 6),
-        Text(
-          active
-              ? (languageProvider.isEnglish ? 'Active' : 'فعال')
-              : (languageProvider.isEnglish ? 'Inactive' : 'غیر فعال'),
-          style: TextStyle(
-            fontSize: 12, fontWeight: FontWeight.w500,
-            color: active ? _C.green : _C.text3,
-            fontFamily: languageProvider.fontFamily,
+        if (!isMobile) ...[
+          const SizedBox(width: 6),
+          Text(
+            statusText,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: active ? _C.green : _C.text3,
+              fontFamily: languageProvider.fontFamily,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -1028,7 +1525,14 @@ class _ActionBtn extends StatelessWidget {
   final String tooltip;
   final VoidCallback onTap;
   final LanguageProvider languageProvider;
-  const _ActionBtn({required this.icon, required this.color, required this.tooltip, required this.onTap, required this.languageProvider});
+
+  const _ActionBtn({
+    required this.icon,
+    required this.color,
+    required this.tooltip,
+    required this.onTap,
+    required this.languageProvider,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1051,51 +1555,82 @@ class _EmptyState extends StatelessWidget {
   final bool hasSearch;
   final VoidCallback onAdd;
   final LanguageProvider languageProvider;
-  const _EmptyState({required this.hasSearch, required this.onAdd, required this.languageProvider});
+  final bool isWeb;
+
+  const _EmptyState({
+    required this.hasSearch,
+    required this.onAdd,
+    required this.languageProvider,
+    required this.isWeb,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 80, height: 80,
-            decoration: BoxDecoration(
-              color: _C.brandLight,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Icon(Icons.people_outline_rounded, size: 40, color: _C.brand),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            hasSearch
-                ? (languageProvider.isEnglish ? 'No customers found' : 'کوئی کسٹمر نہیں ملا')
-                : (languageProvider.isEnglish ? 'No customers yet' : 'ابھی تک کوئی کسٹمر نہیں'),
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: _C.text1,
-                fontFamily: languageProvider.fontFamily),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            hasSearch
-                ? (languageProvider.isEnglish ? 'Try a different search term' : 'مختلف تلاش کی اصطلاح آزمائیں')
-                : (languageProvider.isEnglish ? 'Add your first customer to get started' : 'شروع کرنے کے لیے اپنا پہلا کسٹمر شامل کریں'),
-            style: TextStyle(fontSize: 13, color: _C.text3, fontFamily: languageProvider.fontFamily),
-          ),
-          if (!hasSearch) ...[
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: onAdd,
-              icon: const Icon(Icons.person_add_rounded, size: 17),
-              label: Text(languageProvider.isEnglish ? 'Add Customer' : 'کسٹمر شامل کریں'),
-              style: FilledButton.styleFrom(
-                backgroundColor: _C.brand,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: EdgeInsets.all(isWeb ? 48.0 : 24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: isWeb ? 100.0 : 80.0,
+              height: isWeb ? 100.0 : 80.0,
+              decoration: BoxDecoration(
+                color: _C.brandLight,
+                borderRadius: BorderRadius.circular(isWeb ? 24 : 20),
+              ),
+              child: Icon(
+                Icons.people_outline_rounded,
+                size: isWeb ? 50 : 40,
+                color: _C.brand,
               ),
             ),
+            const SizedBox(height: 20),
+            Text(
+              hasSearch
+                  ? (languageProvider.isEnglish ? 'No customers found' : 'کوئی کسٹمر نہیں ملا')
+                  : (languageProvider.isEnglish ? 'No customers yet' : 'ابھی تک کوئی کسٹمر نہیں'),
+              style: TextStyle(
+                fontSize: isWeb ? 20.0 : 17.0,
+                fontWeight: FontWeight.w600,
+                color: _C.text1,
+                fontFamily: languageProvider.fontFamily,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              hasSearch
+                  ? (languageProvider.isEnglish ? 'Try a different search term' : 'مختلف تلاش کی اصطلاح آزمائیں')
+                  : (languageProvider.isEnglish ? 'Add your first customer to get started' : 'شروع کرنے کے لیے اپنا پہلا کسٹمر شامل کریں'),
+              style: TextStyle(
+                fontSize: isWeb ? 14.0 : 13.0,
+                color: _C.text3,
+                fontFamily: languageProvider.fontFamily,
+              ),
+            ),
+            if (!hasSearch) ...[
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: onAdd,
+                icon: Icon(Icons.person_add_rounded, size: isWeb ? 19 : 17),
+                label: Text(
+                  languageProvider.isEnglish ? 'Add Customer' : 'کسٹمر شامل کریں',
+                  style: TextStyle(fontSize: isWeb ? 15.0 : 13.0),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: _C.brand,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isWeb ? 28.0 : 20.0,
+                    vertical: isWeb ? 14.0 : 12.0,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(isWeb ? 12 : 10),
+                  ),
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -1105,17 +1640,35 @@ class _EmptyState extends StatelessWidget {
 class _AddFAB extends StatelessWidget {
   final VoidCallback onPressed;
   final LanguageProvider languageProvider;
-  const _AddFAB({required this.onPressed, required this.languageProvider});
+  final bool isWeb;
+
+  const _AddFAB({
+    required this.onPressed,
+    required this.languageProvider,
+    required this.isWeb,
+  });
 
   @override
   Widget build(BuildContext context) {
+    if (isWeb) {
+      return FloatingActionButton(
+        onPressed: onPressed,
+        backgroundColor: _C.brand,
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.person_add_rounded, size: 24),
+        elevation: 3,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      );
+    }
     return FloatingActionButton.extended(
       onPressed: onPressed,
       backgroundColor: _C.brand,
       foregroundColor: Colors.white,
       icon: const Icon(Icons.person_add_rounded, size: 20),
-      label: Text(languageProvider.isEnglish ? 'Add Customer' : 'کسٹمر شامل کریں',
-          style: const TextStyle(fontWeight: FontWeight.w600)),
+      label: Text(
+        languageProvider.isEnglish ? 'Add Customer' : 'کسٹمر شامل کریں',
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     );
@@ -1126,6 +1679,7 @@ class _AddFAB extends StatelessWidget {
 class CustomerDetailsSheet extends StatelessWidget {
   final Customer customer;
   final LanguageProvider languageProvider;
+  final bool isWeb;
   final VoidCallback onEdit;
   final VoidCallback onToggleStatus;
   final VoidCallback onViewLedger;
@@ -1137,6 +1691,7 @@ class CustomerDetailsSheet extends StatelessWidget {
     Key? key,
     required this.customer,
     required this.languageProvider,
+    required this.isWeb,
     required this.onEdit,
     required this.onToggleStatus,
     required this.onViewLedger,
@@ -1157,28 +1712,37 @@ class CustomerDetailsSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final owing      = customer.balance > 0.01;
     final hasDiscount = customer.discountPercent > 0;
+    final padding = isWeb ? 32.0 : 24.0;
 
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: isWeb
+            ? BorderRadius.circular(20)
+            : const BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      padding: EdgeInsets.fromLTRB(24, 20, 24,
-          MediaQuery.of(context).viewInsets.bottom + 24),
+      padding: EdgeInsets.fromLTRB(
+        padding,
+        isWeb ? 24.0 : 20.0,
+        padding,
+        isWeb ? 24.0 : MediaQuery.of(context).viewInsets.bottom + 24.0,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Center(
-            child: Container(
-              width: 36, height: 4,
-              decoration: BoxDecoration(
-                color: _C.border,
-                borderRadius: BorderRadius.circular(2),
+          if (!isWeb)
+            Center(
+              child: Container(
+                width: 36.0,
+                height: 4.0,
+                decoration: BoxDecoration(
+                  color: _C.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
+          if (!isWeb) const SizedBox(height: 16),
 
           Row(
             children: [
@@ -1191,9 +1755,15 @@ class CustomerDetailsSheet extends StatelessWidget {
                 child: const Icon(Icons.person_outline_rounded, color: _C.brand, size: 19),
               ),
               const SizedBox(width: 12),
-              Text(languageProvider.isEnglish ? 'Customer Details' : 'کسٹمر کی تفصیلات',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _C.text1,
-                      fontFamily: languageProvider.fontFamily)),
+              Text(
+                languageProvider.isEnglish ? 'Customer Details' : 'کسٹمر کی تفصیلات',
+                style: TextStyle(
+                  fontSize: isWeb ? 18.0 : 16.0,
+                  fontWeight: FontWeight.w700,
+                  color: _C.text1,
+                  fontFamily: languageProvider.fontFamily,
+                ),
+              ),
               const Spacer(),
               IconButton(
                 onPressed: () => Navigator.pop(context),
@@ -1219,11 +1789,19 @@ class CustomerDetailsSheet extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(customer.name,
-                          style: const TextStyle(
-                              fontSize: 17, fontWeight: FontWeight.w700, color: _C.text1)),
+                          style: TextStyle(
+                            fontSize: isWeb ? 19.0 : 17.0,
+                            fontWeight: FontWeight.w700,
+                            color: _C.text1,
+                            fontFamily: languageProvider.fontFamily,
+                          )),
                       const SizedBox(height: 3),
                       Text(customer.contact,
-                          style: const TextStyle(fontSize: 13, color: _C.text3)),
+                          style: TextStyle(
+                            fontSize: isWeb ? 14.0 : 13.0,
+                            color: _C.text3,
+                            fontFamily: languageProvider.fontFamily,
+                          )),
                     ],
                   ),
                 ),
@@ -1242,14 +1820,17 @@ class CustomerDetailsSheet extends StatelessWidget {
                           ? (languageProvider.isEnglish ? 'OWING' : 'بقایا')
                           : (languageProvider.isEnglish ? 'CLEAR' : 'صاف'),
                           style: TextStyle(
-                            fontSize: 9, fontWeight: FontWeight.w800,
-                            color: owing ? _C.red : _C.green, letterSpacing: 0.8,
+                            fontSize: 9.0,
+                            fontWeight: FontWeight.w800,
+                            color: owing ? _C.red : _C.green,
+                            letterSpacing: 0.8,
                             fontFamily: languageProvider.fontFamily,
                           )),
                       const SizedBox(height: 3),
                       Text(customer.formattedBalance,
                           style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w700,
+                            fontSize: isWeb ? 17.0 : 15.0,
+                            fontWeight: FontWeight.w700,
                             color: owing ? _C.red : _C.green,
                             fontFamily: languageProvider.fontFamily,
                           )),
@@ -1284,7 +1865,9 @@ class CustomerDetailsSheet extends StatelessWidget {
 
           const SizedBox(height: 22),
 
-          Row(
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
             children: [
               _SheetBtn(
                 icon: Icons.receipt_long_rounded,
@@ -1292,21 +1875,17 @@ class CustomerDetailsSheet extends StatelessWidget {
                 color: _C.brand,
                 onTap: onViewLedger,
                 languageProvider: languageProvider,
+                isWeb: isWeb,
               ),
-              const SizedBox(width: 10),
               _SheetBtn(
                 icon: Icons.history_rounded,
                 label: languageProvider.isEnglish ? 'Payments' : 'ادائیگیاں',
                 color: _C.blue,
                 onTap: onViewPayments,
                 languageProvider: languageProvider,
+                isWeb: isWeb,
               ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (owing)
-            Row(
-              children: [
+              if (owing) ...[
                 _SheetBtn(
                   icon: Icons.payments_rounded,
                   label: languageProvider.isEnglish ? 'Receive Payment' : 'ادائیگی وصول کریں',
@@ -1314,28 +1893,25 @@ class CustomerDetailsSheet extends StatelessWidget {
                   onTap: onReceivePayment,
                   primary: true,
                   languageProvider: languageProvider,
+                  isWeb: isWeb,
                 ),
-                const SizedBox(width: 10),
                 _SheetBtn(
                   icon: Icons.swap_horiz_rounded,
                   label: languageProvider.isEnglish ? 'Adjust' : 'ایڈجسٹ کریں',
                   color: _C.orange,
                   onTap: onAdjustBalance,
                   languageProvider: languageProvider,
+                  isWeb: isWeb,
                 ),
-              ],
-            )
-          else
-            Row(
-              children: [
+              ] else ...[
                 _SheetBtn(
                   icon: Icons.edit_rounded,
                   label: languageProvider.isEnglish ? 'Edit' : 'ترمیم کریں',
                   color: _C.brand,
                   onTap: onEdit,
                   languageProvider: languageProvider,
+                  isWeb: isWeb,
                 ),
-                const SizedBox(width: 10),
                 _SheetBtn(
                   icon: customer.isActive ? Icons.pause_rounded : Icons.play_arrow_rounded,
                   label: customer.isActive
@@ -1344,9 +1920,11 @@ class CustomerDetailsSheet extends StatelessWidget {
                   color: customer.isActive ? _C.red : _C.green,
                   onTap: onToggleStatus,
                   languageProvider: languageProvider,
+                  isWeb: isWeb,
                 ),
               ],
-            ),
+            ],
+          ),
         ],
       ),
     );
@@ -1359,7 +1937,14 @@ class _Info extends StatelessWidget {
   final IconData icon;
   final Color? color;
   final LanguageProvider languageProvider;
-  const _Info(this.label, this.value, this.icon, {this.color, required this.languageProvider});
+
+  const _Info(
+      this.label,
+      this.value,
+      this.icon, {
+        this.color,
+        required this.languageProvider,
+      });
 
   @override
   Widget build(BuildContext context) {
@@ -1374,13 +1959,21 @@ class _Info extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label,
-                    style: TextStyle(fontSize: 10, color: _C.text3,
-                        fontWeight: FontWeight.w600, letterSpacing: 0.3,
-                        fontFamily: languageProvider.fontFamily)),
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: _C.text3,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3,
+                      fontFamily: languageProvider.fontFamily,
+                    )),
                 const SizedBox(height: 1),
                 Text(value,
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500,
-                        color: color ?? _C.text1, fontFamily: languageProvider.fontFamily)),
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: color ?? _C.text1,
+                      fontFamily: languageProvider.fontFamily,
+                    )),
               ],
             ),
           ),
@@ -1397,16 +1990,22 @@ class _SheetBtn extends StatelessWidget {
   final VoidCallback onTap;
   final bool primary;
   final LanguageProvider languageProvider;
+  final bool isWeb;
+
   const _SheetBtn({
-    required this.icon, required this.label,
-    required this.color, required this.onTap,
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
     this.primary = false,
     required this.languageProvider,
+    required this.isWeb,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
+    return SizedBox(
+      width: isWeb ? 160.0 : double.infinity,
       child: GestureDetector(
         onTap: onTap,
         child: Container(
@@ -1426,7 +2025,8 @@ class _SheetBtn extends StatelessWidget {
               const SizedBox(width: 6),
               Text(label,
                   style: TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                     color: primary ? Colors.white : color,
                     fontFamily: languageProvider.fontFamily,
                   )),

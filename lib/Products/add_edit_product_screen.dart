@@ -18,6 +18,10 @@ import 'bom_components_list.dart';
 
 double? parseFractionString(String text) {
   if (text.isEmpty) return null;
+
+  // If text contains letters or dashes, treat as plain text — no parsing
+  if (RegExp(r'[a-zA-Z\-]').hasMatch(text)) return null;
+
   try {
     final mixedNumberPattern =
     RegExp(r'^(\d+)\s*([¼½¾⅓⅔⅕⅖⅗⅘⅙⅚⅐⅛⅜⅝⅞⅑⅒])$');
@@ -169,6 +173,7 @@ class _FractionInputFieldState extends State<FractionInputField> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             TextFormField(
+              textDirection: TextDirection.ltr,  // ← ADD THIS
               controller: widget.controller,
               style: TextStyle(fontSize: widget.fontSize, fontFamily: languageProvider.fontFamily),
               validator: widget.validator,
@@ -560,15 +565,14 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(languageProvider.isEnglish
             ? 'Please enter a length value'
-            : 'براہ کرم لمبائی کی قیمت درج کریں')),
+            : 'براہ کرم لمبائی کی قیمت درج کریں')),//s
       );
       return;
     }
     setState(() {
       _lengthCombinations.add(LengthBodyCombination(
         length: text,
-        lengthDecimal:
-        parseFractionString(text)?.toStringAsFixed(4) ?? '',
+        lengthDecimal: parseFractionString(text)?.toStringAsFixed(4) ?? '',
         id: DateTime.now().millisecondsSinceEpoch.toString(),
       ));
       _lengthController.clear();
@@ -583,7 +587,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
   void _editLength(int index) {
     final combination = _lengthCombinations[index];
     _lengthController.text = combination.length;
-    setState(() => _lengthCombinations.removeAt(index));
+    setState(() => _lengthCombinations.removeAt(index)); // ← UNCOMMENT THIS
     final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(languageProvider.isEnglish
