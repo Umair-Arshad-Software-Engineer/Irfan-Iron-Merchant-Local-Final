@@ -163,68 +163,252 @@ class _SaleScreenState extends State<SaleScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
-    _toggleAnim = AnimationController(vsync: this, duration: const Duration(milliseconds: 280));
+    _toggleAnim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 280));
     _searchController.addListener(_onSearchChanged);
 
-    _discountPercentCtrl = TextEditingController(text: _discountPercent.toStringAsFixed(1));
-    _discountAmountCtrl = TextEditingController(text: _discountAmount.toStringAsFixed(2));
+    _discountPercentCtrl =
+        TextEditingController(text: _discountPercent.toStringAsFixed(1));
+    _discountAmountCtrl =
+        TextEditingController(text: _discountAmount.toStringAsFixed(2));
 
-    _loadAllProducts().then((_) {
-      if (_isEditMode) _prefillFromSale();
+    // Wait for both products AND frame before prefilling
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+// Right after _loadAllProducts() in initState:
+      await _loadAllProducts();
+      debugPrint('Products loaded: ${_allProducts.length}');
+      if (_allProducts.isEmpty) {
+        // Retry once
+        await Future.delayed(const Duration(milliseconds: 300));
+        final provider = Provider.of<ProductProvider>(context, listen: false);
+        if (mounted) setState(() => _allProducts = List<ProductModel>.from(provider.products));
+        debugPrint('Products after retry: ${_allProducts.length}');
+      }
+      if (_isEditMode && mounted) {
+        await _prefillFromSale();
+      }
     });
   }
 
   Future<void> _prefillFromSale() async {
+    if (!mounted) return;
     setState(() => _isPrefilling = true);
-    final sale = widget.existingSale!;
-    _selectedSaleType = sale.saleCategory == 'sarya' ? SaleType.sarya : SaleType.filled;
-    _isPosMode = sale.saleType == 'pos';
-    _isPosMode ? _toggleAnim.reverse() : _toggleAnim.forward();
-    _invoiceDate = sale.saleDate;
-    _dueDate = sale.dueDate;
-    _referenceController.text = sale.reference ?? '';
-    _invoiceNoteController.text = sale.notes ?? '';
 
-    if (sale.discountType == 'percent') {
-      _usePercentDiscount = true;
-      _discountPercent = sale.discountValue;
-    } else {
-      _usePercentDiscount = false;
-      _discountAmount = sale.discountValue;
-    }
-    _syncDiscountControllers();
+    try {
+      // ── CRITICAL: always re-fetch full sale data, never trust list item ──
+      final provider = Provider.of<SaleProvider>(context, listen: false);
+      final result = await provider.getSaleById(widget.existingSale!.id);
 
-    if (sale.customer != null) {
-      final custProvider = Provider.of<CustomerProvider>(context, listen: false);
-      await custProvider.fetchCustomers();
-      final matches = custProvider.customers.where((c) => c.id == sale.customer!.id).toList();
-      if (matches.isNotEmpty && mounted) {
-        setState(() => _selectedCustomer = matches.first);
+      if (!mounted) return;
+
+      if (result['success'] != true || result['data'] == null) {
+        debugPrint('❌ Failed to fetch sale for prefill: ${result['message']}');
+        setState(() => _isPrefilling = false);
+        return;
       }
-    }
 
-    if (sale.items != null) {
-      for (final saleItem in sale.items!) {
-        final matches = _allProducts.where((p) => p.id == saleItem.productId).toList();
-        if (matches.isEmpty) continue;
-        final product = matches.first;
-        final cartItem = SaleItem(
-          product: product,
-          quantity: saleItem.quantity > 0 ? saleItem.quantity : 1,
-          unitPrice: saleItem.unitPrice,
-          weight: saleItem.weight ?? 0.0,
-          selectedLengths: List<String>.from(saleItem.selectedLengths ?? []),
-          lengthQuantities: Map<String, double>.fromEntries(
+      final sale = result['data'] as SaleModel;
+
+      debugPrint('=== PREFILL START ===');
+      debugPrint('All products count: ${_allProducts.length}');
+      debugPrint('Sale items count: ${sale.items?.length ?? 0}');
+      debugPrint('Sale items raw: ${sale.items?.map((i) => 'id=${i.id} productId=${i.productId} name=${i.productName}').toList()}');
+
+      // ── Sale type & mode ──────────────────────────
+      _selectedSaleType =
+      sale.saleCategory == 'sarya' ? SaleType.sarya : SaleType.filled;
+      _isPosMode = sale.saleType == 'pos';
+      _isPosMode ? _toggleAnim.reverse() : _toggleAnim.forward();
+
+      // ── Dates ────────────────────────────────────
+      _invoiceDate = sale.saleDate;
+      _dueDate = sale.dueDate;
+
+      // ── Reference & notes ────────────────────────
+      _referenceController.text = sale.reference ?? '';
+      _invoiceNoteController.text = sale.notes ?? '';
+
+      // ── Discount ─────────────────────────────────
+      if (sale.discountType == 'percent') {
+        _usePercentDiscount = true;
+        _discountPercent = sale.discountValue;
+        _discountAmount = 0;
+      } else {
+        _usePercentDiscount = false;
+        _discountAmount = sale.discountValue;
+        _discountPercent = 0;
+      }
+      _syncDiscountControllers();
+
+      // ── Customer ─────────────────────────────────
+      if (sale.customer != null) {
+        final custProvider =
+        Provider.of<CustomerProvider>(context, listen: false);
+        if (custProvider.customers.isEmpty) {
+          await custProvider.fetchCustomers();
+        }
+        final matches =
+        custProvider.customers.where((c) => c.id == sale.customer!.id).toList();
+        if (matches.isNotEmpty && mounted) {
+          _selectedCustomer = matches.first;
+          if (_selectedCustomer!.discountPercent > 0 && _usePercentDiscount) {
+            _discountPercent = _selectedCustomer!.discountPercent;
+            _syncDiscountControllers();
+          }
+        }
+      }
+
+      debugPrint('Customer loaded: ${_selectedCustomer?.name}');
+
+      // ── Dispose existing controllers ──────────────
+      for (final c in _weightControllers.values) c.dispose();
+      _weightControllers.clear();
+      for (final c in _qtyControllers.values) c.dispose();
+      _qtyControllers.clear();
+      for (final c in _descriptionControllers.values) c.dispose();
+      _descriptionControllers.clear();
+      for (final c in _inlineLengthQtyControllers.values) c.dispose();
+      _inlineLengthQtyControllers.clear();
+      _cartItems.clear();
+
+      if (sale.items != null && sale.items!.isNotEmpty) {
+        final List<SaleItem> builtItems = [];
+
+        for (final saleItem in sale.items!) {
+          debugPrint('Processing item: productId=${saleItem.productId} name=${saleItem.productName}');
+
+          // ── Strategy 1: match by productId ──
+          ProductModel? product;
+          if (saleItem.productId != null) {
+            final byId = _allProducts
+                .where((p) => p.id == saleItem.productId)
+                .toList();
+            if (byId.isNotEmpty) {
+              product = byId.first;
+              debugPrint('  ✅ Found by ID: ${product.itemName}');
+            }
+          }
+
+          // ── Strategy 2: match by product sub-object ──
+          if (product == null && saleItem.product != null) {
+            final bySubId = _allProducts
+                .where((p) => p.id == saleItem.product!.id)
+                .toList();
+            if (bySubId.isNotEmpty) {
+              product = bySubId.first;
+              debugPrint('  ✅ Found by product.id: ${product.itemName}');
+            }
+          }
+
+          // ── Strategy 3: match by name (last resort) ──
+          if (product == null) {
+            final byName = _allProducts
+                .where((p) =>
+            p.itemName.toLowerCase() ==
+                saleItem.productName.toLowerCase())
+                .toList();
+            if (byName.isNotEmpty) {
+              product = byName.first;
+              debugPrint('  ✅ Found by name: ${product.itemName}');
+            }
+          }
+
+          if (product == null) {
+            debugPrint('  ❌ Product NOT FOUND: id=${saleItem.productId} name=${saleItem.productName}');
+            continue;
+          }
+
+          final bool usingCustomerPrice = saleItem.usedCustomerPrice;
+          final double unitPrice = saleItem.unitPrice;
+          final double? customerSpecificPrice =
+          usingCustomerPrice ? unitPrice : null;
+
+          final selectedLengths =
+          List<String>.from(saleItem.selectedLengths ?? []);
+          final lengthQuantities = Map<String, double>.fromEntries(
             (saleItem.lengthQuantities ?? {}).entries.map(
-                  (e) => MapEntry(e.key, e.value is num ? (e.value as num).toDouble() : double.tryParse(e.value.toString()) ?? 1.0),
+                  (e) => MapEntry(
+                e.key,
+                e.value is num
+                    ? (e.value as num).toDouble()
+                    : double.tryParse(e.value.toString()) ?? 1.0,
+              ),
             ),
-          ),
-          lengthsDisplay: saleItem.selectedLengthsDisplay ?? '',
-        );
-        if (mounted) setState(() => _cartItems.add(cartItem));
+          );
+
+          final lengthsDisplay = selectedLengths.isNotEmpty
+              ? selectedLengths.map((l) {
+            final q = lengthQuantities[l] ?? 1.0;
+            return '\u2068$l\u2069 (${q.toStringAsFixed(0)})';
+          }).join(', ')
+              : (saleItem.selectedLengthsDisplay ?? '');
+
+          builtItems.add(SaleItem(
+            product: product,
+            quantity: saleItem.quantity > 0 ? saleItem.quantity : 1,
+            unitPrice: unitPrice,
+            customerSpecificPrice: customerSpecificPrice,
+            usingCustomerPrice: usingCustomerPrice,
+            weight: saleItem.weight ?? 0.0,
+            selectedLengths: selectedLengths,
+            lengthQuantities: lengthQuantities,
+            lengthsDisplay: lengthsDisplay,
+            description: saleItem.description,
+          ));
+        }
+
+        debugPrint('Built ${builtItems.length} cart items');
+
+        // ── Build controllers before setState ────────
+        for (int i = 0; i < builtItems.length; i++) {
+          final item = builtItems[i];
+
+          _weightControllers[i] = TextEditingController(
+            text: item.weight > 0 ? item.weight.toStringAsFixed(2) : '',
+          );
+          _qtyControllers[i] = TextEditingController(
+            text: item.quantity.toString(),
+          );
+          _descriptionControllers[i] = TextEditingController(
+            text: item.description ?? '',
+          );
+
+          final combinations = item.product.lengthCombinations ?? [];
+          for (final combo in combinations) {
+            final key = '${i}_${combo.length}';
+            final isSelected = item.selectedLengths.contains(combo.length);
+            final qty = item.lengthQuantities[combo.length] ?? 1.0;
+            _inlineLengthQtyControllers[key] = TextEditingController(
+              text: isSelected ? qty.toStringAsFixed(0) : '',
+            );
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            _cartItems.addAll(builtItems);
+          });
+        }
+
+        debugPrint('Cart items set: ${_cartItems.length}');
+      } else {
+        debugPrint('⚠️ No items in sale response');
       }
+
+      // ── Customer pricing ──────────────────────────
+      if (_selectedCustomer != null &&
+          sale.items != null &&
+          sale.items!.any((item) => item.usedCustomerPrice == true)) {
+        if (mounted) setState(() => _useCustomerPrices = true);
+        await _fetchAndApplyCustomerPrices();
+      }
+
+      debugPrint('=== PREFILL COMPLETE === Cart: ${_cartItems.length} items');
+    } catch (e, stack) {
+      debugPrint('❌ Prefill error: $e\n$stack');
+    } finally {
+      if (mounted) setState(() => _isPrefilling = false);
     }
-    if (mounted) setState(() => _isPrefilling = false);
   }
 
   @override
@@ -669,8 +853,12 @@ class _SaleScreenState extends State<SaleScreen> with SingleTickerProviderStateM
     try {
       final provider = Provider.of<ProductProvider>(context, listen: false);
       await provider.fetchProducts();
-      if (mounted) setState(() => _allProducts = provider.products);
-    } catch (_) {}
+      if (mounted) {
+        setState(() => _allProducts = List<ProductModel>.from(provider.products));
+      }
+    } catch (e) {
+      debugPrint('Error loading products: $e');
+    }
     if (mounted) setState(() => _isLoadingProducts = false);
   }
 
@@ -1996,35 +2184,311 @@ class _SaleScreenState extends State<SaleScreen> with SingleTickerProviderStateM
     );
   }
 
+  // Widget _buildCartItemCompact(int index, LanguageProvider languageProvider) {
+  //   final item = _cartItems[index];
+  //   final isSaryaType = _selectedSaleType == SaleType.sarya;
+  //
+  //   // Get or create controller for this item
+  //   if (!_weightControllers.containsKey(index)) {
+  //     final controller = TextEditingController(
+  //       text: item.hasWeight ? item.weight.toStringAsFixed(2) : '',
+  //     );
+  //     _weightControllers[index] = controller;
+  //   }
+  //   final weightController = _weightControllers[index]!;
+  //
+  //   return Container(
+  //     margin: const EdgeInsets.only(bottom: 4),
+  //     padding: const EdgeInsets.all(8),
+  //     decoration: BoxDecoration(
+  //       color: item.usingCustomerPrice ? const Color(0xFFF0FDF4) : const Color(0xFFF9FAFB),
+  //       borderRadius: BorderRadius.circular(8),
+  //       border: Border.all(color: const Color(0xFFEEEEF5)),
+  //     ),
+  //     child: Column(
+  //       crossAxisAlignment: CrossAxisAlignment.start,
+  //       mainAxisSize: MainAxisSize.min, // ✅ Add this to prevent overflow
+  //       children: [
+  //         Row(
+  //           crossAxisAlignment: CrossAxisAlignment.start,
+  //           children: [
+  //             // ✅ Wrap in Expanded with constrained width
+  //             Expanded(
+  //               child: Column(
+  //                 crossAxisAlignment: CrossAxisAlignment.start,
+  //                 mainAxisSize: MainAxisSize.min,
+  //                 children: [
+  //                   Text(
+  //                     item.product.itemName,
+  //                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, fontFamily: languageProvider.fontFamily),
+  //                     maxLines: 1,
+  //                     overflow: TextOverflow.ellipsis,
+  //                   ),
+  //                   // ✅ Show description if exists - with constrained height
+  //                   if (item.description != null && item.description!.isNotEmpty)
+  //                     Container(
+  //                       constraints: const BoxConstraints(maxHeight: 32), // ✅ Limit height
+  //                       child: Text(
+  //                         item.description!,
+  //                         style: TextStyle(
+  //                           fontSize: 10,
+  //                           color: Colors.grey[600],
+  //                           fontFamily: languageProvider.fontFamily,
+  //                           fontStyle: FontStyle.italic,
+  //                         ),
+  //                         maxLines: 2,
+  //                         overflow: TextOverflow.ellipsis,
+  //                       ),
+  //                     ),
+  //                 ],
+  //               ),
+  //             ),
+  //             if (item.usingCustomerPrice)
+  //               Container(
+  //                 margin: const EdgeInsets.only(right: 4),
+  //                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+  //                 decoration: BoxDecoration(color: const Color(0xFFECFDF5), borderRadius: BorderRadius.circular(3)),
+  //                 child: Text(
+  //                   languageProvider.isEnglish ? 'Custom' : 'حسب ضرورت',
+  //                   style: const TextStyle(fontSize: 8, color: Color(0xFF065F46), fontWeight: FontWeight.w600),
+  //                 ),
+  //               ),
+  //             IconButton(
+  //               icon: const Icon(Icons.close, size: 14, color: Color(0xFFEF4444)),
+  //               padding: EdgeInsets.zero,
+  //               constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+  //               onPressed: () => _removeFromCart(index),
+  //             ),
+  //           ],
+  //         ),
+  //         Row(
+  //           children: [
+  //             // Price badge
+  //             Container(
+  //               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+  //               decoration: BoxDecoration(
+  //                 color: item.usingCustomerPrice ? const Color(0xFFECFDF5) : const Color(0xFFF3F0FF),
+  //                 borderRadius: BorderRadius.circular(4),
+  //               ),
+  //               child: Text(
+  //                 'Rs ${item.unitPrice.toStringAsFixed(2)}',
+  //                 style: TextStyle(
+  //                   fontSize: 10,
+  //                   fontWeight: FontWeight.w600,
+  //                   color: item.usingCustomerPrice ? const Color(0xFF065F46) : const Color(0xFF7C3AED),
+  //                   fontFamily: languageProvider.fontFamily,
+  //                 ),
+  //               ),
+  //             ),
+  //             const Spacer(),
+  //             // Qty / weight controls
+  //             if (isSaryaType)
+  //               SizedBox(
+  //                 width: 80,
+  //                 child: TextField(
+  //                   controller: weightController,
+  //                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
+  //                   textAlign: TextAlign.center,
+  //                   style: TextStyle(fontSize: 11, fontFamily: languageProvider.fontFamily),
+  //                   decoration: InputDecoration(
+  //                     hintText: languageProvider.isEnglish ? 'Weight' : 'وزن',
+  //                     hintStyle: const TextStyle(fontSize: 8, color: Color(0xFF9CA3AF)),
+  //                     isDense: true,
+  //                     contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+  //                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(4)),
+  //                     suffixText: 'Kg',
+  //                     suffixStyle: const TextStyle(fontSize: 8),
+  //                   ),
+  //                   onChanged: (v) {
+  //                     final w = double.tryParse(v);
+  //                     setState(() {
+  //                       final old = _cartItems[index];
+  //                       _cartItems[index] = SaleItem(
+  //                         product: old.product,
+  //                         quantity: old.quantity,
+  //                         unitPrice: old.unitPrice,
+  //                         customerSpecificPrice: old.customerSpecificPrice,
+  //                         usingCustomerPrice: old.usingCustomerPrice,
+  //                         selectedLengths: old.selectedLengths,
+  //                         lengthQuantities: old.lengthQuantities,
+  //                         lengthsDisplay: old.lengthsDisplay,
+  //                         weight: w ?? 0.0,
+  //                         description: old.description, // ✅ Preserve description
+  //                       );
+  //                     });
+  //                   },
+  //                 ),
+  //               )
+  //             else
+  //               SizedBox(
+  //                 width: 60,
+  //                 child: TextField(
+  //                   controller: _qtyControllers.putIfAbsent(
+  //                     index,
+  //                         () => TextEditingController(text: item.quantity.toString()),
+  //                   ),
+  //                   keyboardType: TextInputType.number,
+  //                   textAlign: TextAlign.center,
+  //                   style: TextStyle(fontSize: 11, fontFamily: languageProvider.fontFamily),
+  //                   decoration: InputDecoration(
+  //                     isDense: true,
+  //                     contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+  //                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(4)),
+  //                   ),
+  //                   onChanged: (v) {
+  //                     final parsed = int.tryParse(v);
+  //                     if (parsed != null && parsed >= 0) setState(() => _cartItems[index].quantity = parsed.clamp(0, 9999));
+  //                   },
+  //                 ),
+  //               ),
+  //             const SizedBox(width: 8),
+  //             Text(
+  //               'Rs ${item.totalForMode(isSaryaType).toStringAsFixed(2)}',
+  //               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF7C3AED)),
+  //             ),
+  //           ],
+  //         ),
+  //         // ── DESCRIPTION FIELD ──────────────────────────
+  //         const SizedBox(height: 6),
+  //         TextField(
+  //           controller: _descriptionControllers.putIfAbsent(
+  //             index,
+  //                 () => TextEditingController(text: item.description ?? ''),
+  //           ),
+  //           style: TextStyle(
+  //             fontSize: 11,
+  //             fontFamily: languageProvider.fontFamily,
+  //             fontStyle: FontStyle.italic,
+  //           ),
+  //           maxLines: 2,
+  //           decoration: InputDecoration(
+  //             hintText: languageProvider.isEnglish ? 'Description (optional)…' : 'تفصیل (اختیاری)…',
+  //             hintStyle: const TextStyle(fontSize: 10, color: Color(0xFFB0B7C3)),
+  //             isDense: true,
+  //             contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+  //             border: OutlineInputBorder(
+  //               borderRadius: BorderRadius.circular(6),
+  //               borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+  //             ),
+  //             focusedBorder: OutlineInputBorder(
+  //               borderRadius: BorderRadius.circular(6),
+  //               borderSide: const BorderSide(color: Color(0xFF7C3AED)),
+  //             ),
+  //           ),
+  //           onChanged: (v) {
+  //             _cartItems[index].description = v.trim().isEmpty ? null : v;
+  //           },
+  //         ),
+  //         // ── LENGTH SELECTION BUTTON ─────────────────
+  //         // ── LENGTH SELECTION (INLINE - NO DIALOG) ──────
+  //         if (item.product.lengthCombinations != null && item.product.lengthCombinations!.isNotEmpty) ...[
+  //           const SizedBox(height: 6),
+  //           _buildInlineLengthSelector(index, item, languageProvider),
+  //         ],
+  //         // if (item.product.lengthCombinations != null && item.product.lengthCombinations!.isNotEmpty) ...[
+  //         //   const SizedBox(height: 6),
+  //         //   Row(
+  //         //     children: [
+  //         //       Expanded(
+  //         //         child: ElevatedButton.icon(
+  //         //           onPressed: () => _showLengthSelectionDialog(index),
+  //         //           icon: const Icon(Icons.straighten, size: 14),
+  //         //           label: Text(
+  //         //             item.hasLengthCombinations
+  //         //                 ? (languageProvider.isEnglish ? 'Edit Lengths' : 'لمبائیاں ترمیم کریں')
+  //         //                 : (languageProvider.isEnglish ? 'Select Lengths' : 'لمبائیاں منتخب کریں'),
+  //         //             style: const TextStyle(fontSize: 11),
+  //         //           ),
+  //         //           style: ElevatedButton.styleFrom(
+  //         //             backgroundColor: item.hasLengthCombinations
+  //         //                 ? const Color(0xFF10B981)
+  //         //                 : const Color(0xFF7C3AED),
+  //         //             foregroundColor: Colors.white,
+  //         //             padding: const EdgeInsets.symmetric(vertical: 6),
+  //         //             minimumSize: const Size(0, 32),
+  //         //             shape: RoundedRectangleBorder(
+  //         //               borderRadius: BorderRadius.circular(6),
+  //         //             ),
+  //         //           ),
+  //         //         ),
+  //         //       ),
+  //         //     ],
+  //         //   ),
+  //         // ],
+  //         // ── LENGTH CHIPS ──────────────────────────
+  //         if (item.hasLengthCombinations)
+  //           Padding(
+  //             padding: const EdgeInsets.only(top: 4),
+  //             child: Wrap(
+  //               spacing: 4,
+  //               runSpacing: 2,
+  //               children: item.selectedLengths.map((length) {
+  //                 final qty = item.lengthQuantities[length] ?? 1.0;
+  //                 return Chip(
+  //                   label: Text(
+  //                     _safeLengthLabel(length, qty),
+  //                     style: const TextStyle(fontSize: 9),
+  //                   ),
+  //                   backgroundColor: const Color(0xFFEDE9FE),
+  //                   side: const BorderSide(color: Color(0xFF7C3AED)),
+  //                   deleteIcon: const Icon(Icons.close, size: 10),
+  //                   onDeleted: () => _removeLengthFromCartItem(index, length),
+  //                   visualDensity: VisualDensity.compact,
+  //                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  //                 );
+  //               }).toList(),
+  //             ),
+  //           ),
+  //       ],
+  //     ),
+  //   );
+  // }
   Widget _buildCartItemCompact(int index, LanguageProvider languageProvider) {
     final item = _cartItems[index];
     final isSaryaType = _selectedSaleType == SaleType.sarya;
+    final hasLengthCombos = item.product.lengthCombinations != null &&
+        item.product.lengthCombinations!.isNotEmpty;
 
-    // Get or create controller for this item
+    // Controllers — create once, reuse (never call putIfAbsent inline in build)
     if (!_weightControllers.containsKey(index)) {
-      final controller = TextEditingController(
+      _weightControllers[index] = TextEditingController(
         text: item.hasWeight ? item.weight.toStringAsFixed(2) : '',
       );
-      _weightControllers[index] = controller;
     }
+    if (!_qtyControllers.containsKey(index)) {
+      _qtyControllers[index] = TextEditingController(
+        text: item.quantity.toString(),
+      );
+    }
+    if (!_descriptionControllers.containsKey(index)) {
+      _descriptionControllers[index] = TextEditingController(
+        text: item.description ?? '',
+      );
+    }
+
     final weightController = _weightControllers[index]!;
+    final qtyController    = _qtyControllers[index]!;
+    final descController   = _descriptionControllers[index]!;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: item.usingCustomerPrice ? const Color(0xFFF0FDF4) : const Color(0xFFF9FAFB),
+        color: item.usingCustomerPrice
+            ? const Color(0xFFF0FDF4)
+            : const Color(0xFFF9FAFB),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xFFEEEEF5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min, // ✅ Add this to prevent overflow
+        mainAxisSize: MainAxisSize.min,
         children: [
+
+          // ── Row 1: product name + custom badge + delete ──────
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ✅ Wrap in Expanded with constrained width
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2032,25 +2496,25 @@ class _SaleScreenState extends State<SaleScreen> with SingleTickerProviderStateM
                   children: [
                     Text(
                       item.product.itemName,
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, fontFamily: languageProvider.fontFamily),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: languageProvider.fontFamily,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    // ✅ Show description if exists - with constrained height
                     if (item.description != null && item.description!.isNotEmpty)
-                      Container(
-                        constraints: const BoxConstraints(maxHeight: 32), // ✅ Limit height
-                        child: Text(
-                          item.description!,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.grey[600],
-                            fontFamily: languageProvider.fontFamily,
-                            fontStyle: FontStyle.italic,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                      Text(
+                        item.description!,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.grey[600],
+                          fontFamily: languageProvider.fontFamily,
+                          fontStyle: FontStyle.italic,
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                   ],
                 ),
@@ -2058,11 +2522,19 @@ class _SaleScreenState extends State<SaleScreen> with SingleTickerProviderStateM
               if (item.usingCustomerPrice)
                 Container(
                   margin: const EdgeInsets.only(right: 4),
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                  decoration: BoxDecoration(color: const Color(0xFFECFDF5), borderRadius: BorderRadius.circular(3)),
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECFDF5),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
                   child: Text(
                     languageProvider.isEnglish ? 'Custom' : 'حسب ضرورت',
-                    style: const TextStyle(fontSize: 8, color: Color(0xFF065F46), fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      fontSize: 8,
+                      color: Color(0xFF065F46),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               IconButton(
@@ -2073,13 +2545,16 @@ class _SaleScreenState extends State<SaleScreen> with SingleTickerProviderStateM
               ),
             ],
           ),
+
+          // ── Row 2: price + qty OR weight (only when no length combos) + total
           Row(
             children: [
-              // Price badge
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: item.usingCustomerPrice ? const Color(0xFFECFDF5) : const Color(0xFFF3F0FF),
+                  color: item.usingCustomerPrice
+                      ? const Color(0xFFECFDF5)
+                      : const Color(0xFFF3F0FF),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -2087,34 +2562,45 @@ class _SaleScreenState extends State<SaleScreen> with SingleTickerProviderStateM
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
-                    color: item.usingCustomerPrice ? const Color(0xFF065F46) : const Color(0xFF7C3AED),
+                    color: item.usingCustomerPrice
+                        ? const Color(0xFF065F46)
+                        : const Color(0xFF7C3AED),
                     fontFamily: languageProvider.fontFamily,
                   ),
                 ),
               ),
               const Spacer(),
-              // Qty / weight controls
-              if (isSaryaType)
+
+              // Weight field — ONLY when sarya mode AND no length combos.
+              // When length combos exist, weight lives inside _buildInlineLengthSelector.
+              // Showing the same controller on two TextFields crashes Flutter.
+              if (isSaryaType && !hasLengthCombos)
                 SizedBox(
                   width: 80,
                   child: TextField(
                     controller: weightController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 11, fontFamily: languageProvider.fontFamily),
+                    style: TextStyle(
+                        fontSize: 11, fontFamily: languageProvider.fontFamily),
                     decoration: InputDecoration(
-                      hintText: languageProvider.isEnglish ? 'Weight' : 'وزن',
-                      hintStyle: const TextStyle(fontSize: 8, color: Color(0xFF9CA3AF)),
+                      hintText:
+                      languageProvider.isEnglish ? 'Weight' : 'وزن',
+                      hintStyle: const TextStyle(
+                          fontSize: 8, color: Color(0xFF9CA3AF)),
                       isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(4)),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 4),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(4)),
                       suffixText: 'Kg',
                       suffixStyle: const TextStyle(fontSize: 8),
                     ),
                     onChanged: (v) {
-                      final w = double.tryParse(v);
+                      final w = double.tryParse(v) ?? 0.0;
+                      final old = _cartItems[index];
                       setState(() {
-                        final old = _cartItems[index];
                         _cartItems[index] = SaleItem(
                           product: old.product,
                           quantity: old.quantity,
@@ -2124,49 +2610,57 @@ class _SaleScreenState extends State<SaleScreen> with SingleTickerProviderStateM
                           selectedLengths: old.selectedLengths,
                           lengthQuantities: old.lengthQuantities,
                           lengthsDisplay: old.lengthsDisplay,
-                          weight: w ?? 0.0,
-                          description: old.description, // ✅ Preserve description
+                          weight: w,
+                          description: old.description,
                         );
                       });
                     },
                   ),
                 )
-              else
+
+              // Qty field — filled mode only
+              else if (!isSaryaType)
                 SizedBox(
                   width: 60,
                   child: TextField(
-                    controller: _qtyControllers.putIfAbsent(
-                      index,
-                          () => TextEditingController(text: item.quantity.toString()),
-                    ),
+                    controller: qtyController,
                     keyboardType: TextInputType.number,
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 11, fontFamily: languageProvider.fontFamily),
+                    style: TextStyle(
+                        fontSize: 11, fontFamily: languageProvider.fontFamily),
                     decoration: InputDecoration(
                       isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(4)),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 4),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(4)),
                     ),
                     onChanged: (v) {
                       final parsed = int.tryParse(v);
-                      if (parsed != null && parsed >= 0) setState(() => _cartItems[index].quantity = parsed.clamp(0, 9999));
+                      if (parsed != null && parsed >= 0) {
+                        setState(() =>
+                        _cartItems[index].quantity = parsed.clamp(0, 9999));
+                      }
                     },
                   ),
                 ),
+
               const SizedBox(width: 8),
               Text(
                 'Rs ${item.totalForMode(isSaryaType).toStringAsFixed(2)}',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF7C3AED)),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF7C3AED),
+                ),
               ),
             ],
           ),
-          // ── DESCRIPTION FIELD ──────────────────────────
+
+          // ── Description field ─────────────────────────────────
           const SizedBox(height: 6),
           TextField(
-            controller: _descriptionControllers.putIfAbsent(
-              index,
-                  () => TextEditingController(text: item.description ?? ''),
-            ),
+            controller: descController,
             style: TextStyle(
               fontSize: 11,
               fontFamily: languageProvider.fontFamily,
@@ -2174,10 +2668,14 @@ class _SaleScreenState extends State<SaleScreen> with SingleTickerProviderStateM
             ),
             maxLines: 2,
             decoration: InputDecoration(
-              hintText: languageProvider.isEnglish ? 'Description (optional)…' : 'تفصیل (اختیاری)…',
-              hintStyle: const TextStyle(fontSize: 10, color: Color(0xFFB0B7C3)),
+              hintText: languageProvider.isEnglish
+                  ? 'Description (optional)…'
+                  : 'تفصیل (اختیاری)…',
+              hintStyle:
+              const TextStyle(fontSize: 10, color: Color(0xFFB0B7C3)),
               isDense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              contentPadding:
+              const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(6),
                 borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
@@ -2188,46 +2686,19 @@ class _SaleScreenState extends State<SaleScreen> with SingleTickerProviderStateM
               ),
             ),
             onChanged: (v) {
-              _cartItems[index].description = v.trim().isEmpty ? null : v;
+              setState(() {
+                _cartItems[index].description = v.trim().isEmpty ? null : v;
+              });
             },
           ),
-          // ── LENGTH SELECTION BUTTON ─────────────────
-          // ── LENGTH SELECTION (INLINE - NO DIALOG) ──────
-          if (item.product.lengthCombinations != null && item.product.lengthCombinations!.isNotEmpty) ...[
+
+          // ── Inline length selector — contains its own weight field ──
+          if (hasLengthCombos) ...[
             const SizedBox(height: 6),
             _buildInlineLengthSelector(index, item, languageProvider),
           ],
-          // if (item.product.lengthCombinations != null && item.product.lengthCombinations!.isNotEmpty) ...[
-          //   const SizedBox(height: 6),
-          //   Row(
-          //     children: [
-          //       Expanded(
-          //         child: ElevatedButton.icon(
-          //           onPressed: () => _showLengthSelectionDialog(index),
-          //           icon: const Icon(Icons.straighten, size: 14),
-          //           label: Text(
-          //             item.hasLengthCombinations
-          //                 ? (languageProvider.isEnglish ? 'Edit Lengths' : 'لمبائیاں ترمیم کریں')
-          //                 : (languageProvider.isEnglish ? 'Select Lengths' : 'لمبائیاں منتخب کریں'),
-          //             style: const TextStyle(fontSize: 11),
-          //           ),
-          //           style: ElevatedButton.styleFrom(
-          //             backgroundColor: item.hasLengthCombinations
-          //                 ? const Color(0xFF10B981)
-          //                 : const Color(0xFF7C3AED),
-          //             foregroundColor: Colors.white,
-          //             padding: const EdgeInsets.symmetric(vertical: 6),
-          //             minimumSize: const Size(0, 32),
-          //             shape: RoundedRectangleBorder(
-          //               borderRadius: BorderRadius.circular(6),
-          //             ),
-          //           ),
-          //         ),
-          //       ),
-          //     ],
-          //   ),
-          // ],
-          // ── LENGTH CHIPS ──────────────────────────
+
+          // ── Selected length chips ─────────────────────────────
           if (item.hasLengthCombinations)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -2255,7 +2726,6 @@ class _SaleScreenState extends State<SaleScreen> with SingleTickerProviderStateM
       ),
     );
   }
-
 
   Widget _buildInlineLengthSelector(int index, SaleItem item, LanguageProvider languageProvider) {
     final combinations = item.product.lengthCombinations ?? [];
@@ -2645,7 +3115,12 @@ class _SaleScreenState extends State<SaleScreen> with SingleTickerProviderStateM
     final isActive = _selectedSaleType == type;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() { _selectedSaleType = type; _clearCart(); }),
+        onTap: () {
+          setState(() {
+            _selectedSaleType = type;
+            _clearCart(); // Clear cart when switching types
+          });
+        },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -2657,8 +3132,11 @@ class _SaleScreenState extends State<SaleScreen> with SingleTickerProviderStateM
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(type == SaleType.sarya ? Icons.scale : Icons.production_quantity_limits,
-                  size: 12, color: isActive ? const Color(0xFF7C3AED) : const Color(0xFF9CA3AF)),
+              Icon(
+                type == SaleType.sarya ? Icons.scale : Icons.production_quantity_limits,
+                size: 12,
+                color: isActive ? const Color(0xFF7C3AED) : const Color(0xFF9CA3AF),
+              ),
               const SizedBox(width: 4),
               Text(
                 type.displayName,
@@ -4550,6 +5028,7 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
     _loadCustomers();
   }
 
+
   Future<void> _loadCustomers([String query = '']) async {
     setState(() => _loading = true);
     try {
@@ -5302,4 +5781,6 @@ extension SaleTypeExtension on SaleType {
         return 'filled';
     }
   }
+  bool get isSarya => this == SaleType.sarya;
+
 }

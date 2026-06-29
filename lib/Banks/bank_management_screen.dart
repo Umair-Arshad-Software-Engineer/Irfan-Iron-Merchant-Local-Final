@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../providers/bank_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/lanprovider.dart';
 import '../../models/bank.dart';
 import '../config/api_config.dart';
 import 'bank_transaction_screen.dart';
@@ -45,7 +46,6 @@ class _BankManagementScreenState extends State<BankManagementScreen> {
     if (mounted) setState(() => _isLoading = false);
   }
 
-
   Future<void> _initializeBanks(BuildContext context) async {
     setState(() => _isLoading = true);
     try {
@@ -76,9 +76,10 @@ class _BankManagementScreenState extends State<BankManagementScreen> {
       final data = json.decode(response.body);
 
       if (context.mounted) {
+        final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(data['message'] ?? 'Done'),
+            content: Text(data['message'] ?? (languageProvider.isEnglish ? 'Done' : 'ہوگیا')),
             backgroundColor: data['success'] == true ? Colors.green : Colors.red,
           ),
         );
@@ -89,9 +90,10 @@ class _BankManagementScreenState extends State<BankManagementScreen> {
     } catch (e) {
       debugPrint('initializeBanks error: $e');
       if (context.mounted) {
+        final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: $e'),
+            content: Text('${languageProvider.isEnglish ? 'Error' : 'خرابی'}: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -103,108 +105,122 @@ class _BankManagementScreenState extends State<BankManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F7),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          'Bank Management',
-          style: TextStyle(color: Color(0xFF1C1C1E), fontWeight: FontWeight.bold),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Color(0xFF7C3AED)),
-            onPressed: _loadBanks,
-          ),
-          IconButton(
-            icon: const Icon(Icons.pie_chart_outline, color: Color(0xFF7C3AED)),
-            onPressed: () => _showSummaryDialog(context),
-          ),
-          PopupMenuButton(
-            icon: const Icon(Icons.more_vert, color: Color(0xFF1C1C1E)),
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'reset',
-                child: Text('Reset All Balances'),
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        return Scaffold(
+          backgroundColor: const Color(0xFFF5F5F7),
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            elevation: 0,
+            title: Text(
+              languageProvider.isEnglish ? 'Bank Management' : 'بینک مینجمنٹ',
+              style: const TextStyle(color: Color(0xFF1C1C1E), fontWeight: FontWeight.bold),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh, color: Color(0xFF7C3AED)),
+                onPressed: _loadBanks,
+                tooltip: languageProvider.isEnglish ? 'Refresh' : 'ریفریش',
+              ),
+              IconButton(
+                icon: const Icon(Icons.pie_chart_outline, color: Color(0xFF7C3AED)),
+                onPressed: () => _showSummaryDialog(context),
+                tooltip: languageProvider.isEnglish ? 'Summary' : 'خلاصہ',
+              ),
+              PopupMenuButton(
+                icon: const Icon(Icons.more_vert, color: Color(0xFF1C1C1E)),
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'reset',
+                    child: Text(languageProvider.isEnglish ? 'Reset All Balances' : 'تمام بیلنس ری سیٹ کریں'),
+                  ),
+                ],
+                onSelected: (value) {
+                  if (value == 'reset') {
+                    _confirmReset(context);
+                  }
+                },
               ),
             ],
-            onSelected: (value) {
-              if (value == 'reset') {
-                _confirmReset(context);
+          ),
+          body: _isLoading
+              ? const Center(child: CircularProgressIndicator(color: Color(0xFF7C3AED)))
+              : Consumer<BankProvider>(
+            builder: (context, provider, _) {
+              // Show error if any
+              if (provider.error != null) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                      const SizedBox(height: 12),
+                      Text(
+                        provider.error!,
+                        style: const TextStyle(color: Colors.red),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _loadBanks,
+                        child: Text(languageProvider.isEnglish ? 'Retry' : 'دوبارہ کوشش کریں'),
+                      ),
+                    ],
+                  ),
+                );
               }
+
+              if (provider.banks.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.account_balance_outlined,
+                          color: Color(0xFF7C3AED), size: 64),
+                      const SizedBox(height: 16),
+                      Text(
+                        languageProvider.isEnglish ? 'No banks found' : 'کوئی بینک نہیں ملا',
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        languageProvider.isEnglish
+                            ? 'Initialize default banks to get started'
+                            : 'شروع کرنے کے لیے ڈیفالٹ بینک انیشیٹ کریں',
+                        style: const TextStyle(color: Colors.grey),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: () => _initializeBanks(context),
+                        icon: const Icon(Icons.add_business),
+                        label: Text(languageProvider.isEnglish
+                            ? 'Initialize Default Banks'
+                            : 'ڈیفالٹ بینک انیشیٹ کریں'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF7C3AED),
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return Column(
+                children: [
+                  _buildSummaryCard(provider, languageProvider),
+                  const SizedBox(height: 8),
+                  Expanded(child: _buildBankList(provider, languageProvider)),
+                ],
+              );
             },
           ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF7C3AED)))
-          : Consumer<BankProvider>(
-        builder: (context, provider, _) {
-          // Show error if any
-          if (provider.error != null) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, color: Colors.red, size: 48),
-                  const SizedBox(height: 12),
-                  Text(
-                    provider.error!,
-                    style: const TextStyle(color: Colors.red),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: _loadBanks,
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          if (provider.banks.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.account_balance_outlined,
-                      color: Color(0xFF7C3AED), size: 64),
-                  const SizedBox(height: 16),
-                  const Text('No banks found',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  const Text('Initialize default banks to get started',
-                      style: TextStyle(color: Colors.grey)),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: () => _initializeBanks(context),
-                    icon: const Icon(Icons.add_business),
-                    label: const Text('Initialize Default Banks'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF7C3AED),
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return Column(
-            children: [
-              _buildSummaryCard(provider),
-              const SizedBox(height: 8),
-              Expanded(child: _buildBankList(provider)),
-            ],
-          );
-        },
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildSummaryCard(BankProvider provider) {
+  Widget _buildSummaryCard(BankProvider provider, LanguageProvider languageProvider) {
     final totalBalance = provider.getTotalBalance();
     final activeBanks = provider.banks.where((b) => b.balance > 0).length;
 
@@ -231,26 +247,26 @@ class _BankManagementScreenState extends State<BankManagementScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Column(
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Total Balance',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                    languageProvider.isEnglish ? 'Total Balance' : 'کل بیلنس',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text(
-                    'All Accounts',
-                    style: TextStyle(color: Colors.white54, fontSize: 10),
+                    languageProvider.isEnglish ? 'All Accounts' : 'تمام اکاؤنٹس',
+                    style: const TextStyle(color: Colors.white54, fontSize: 10),
                   ),
                 ],
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  const Text(
-                    'Active Banks',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  Text(
+                    languageProvider.isEnglish ? 'Active Banks' : 'فعال بینک',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -287,18 +303,18 @@ class _BankManagementScreenState extends State<BankManagementScreen> {
     );
   }
 
-  Widget _buildBankList(BankProvider provider) {
+  Widget _buildBankList(BankProvider provider, LanguageProvider languageProvider) {
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       itemCount: provider.banks.length,
       itemBuilder: (context, index) {
         final bank = provider.banks[index];
-        return _buildBankCard(context, bank);
+        return _buildBankCard(context, bank, languageProvider);
       },
     );
   }
 
-  Widget _buildBankCard(BuildContext context, Bank bank) {
+  Widget _buildBankCard(BuildContext context, Bank bank, LanguageProvider languageProvider) {
     final isBalancePositive = bank.balance > 0;
     final balanceColor = isBalancePositive ? const Color(0xFF10B981) : const Color(0xFFEF4444);
 
@@ -378,7 +394,7 @@ class _BankManagementScreenState extends State<BankManagementScreen> {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            'Balance: ',
+                            languageProvider.isEnglish ? 'Balance: ' : 'بیلنس: ',
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.grey[600],
@@ -397,7 +413,7 @@ class _BankManagementScreenState extends State<BankManagementScreen> {
                       if (bank.accountNumber != null) ...[
                         const SizedBox(height: 2),
                         Text(
-                          'A/C: ${bank.accountNumber}',
+                          '${languageProvider.isEnglish ? 'A/C' : 'اکاؤنٹ'}: ${bank.accountNumber}',
                           style: TextStyle(
                             fontSize: 10,
                             color: Colors.grey[500],
@@ -430,6 +446,7 @@ class _BankManagementScreenState extends State<BankManagementScreen> {
 
   void _showSummaryDialog(BuildContext context) {
     final provider = Provider.of<BankProvider>(context, listen: false);
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
     final activeBanks = provider.banks.where((b) => b.balance > 0).toList();
     final inactiveBanks = provider.banks.where((b) => b.balance == 0).toList().take(10).toList();
 
@@ -460,9 +477,9 @@ class _BankManagementScreenState extends State<BankManagementScreen> {
                   ),
                 ),
               ),
-              const Text(
-                'Bank Summary',
-                style: TextStyle(
+              Text(
+                languageProvider.isEnglish ? 'Bank Summary' : 'بینک کا خلاصہ',
+                style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF1C1C1E),
@@ -474,9 +491,9 @@ class _BankManagementScreenState extends State<BankManagementScreen> {
                   controller: scrollController,
                   children: [
                     if (activeBanks.isNotEmpty) ...[
-                      const Text(
-                        'Active Banks',
-                        style: TextStyle(
+                      Text(
+                        languageProvider.isEnglish ? 'Active Banks' : 'فعال بینک',
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                           color: Color(0xFF7C3AED),
@@ -509,9 +526,9 @@ class _BankManagementScreenState extends State<BankManagementScreen> {
                       const SizedBox(height: 16),
                     ],
                     if (inactiveBanks.isNotEmpty) ...[
-                      const Text(
-                        'Inactive Banks',
-                        style: TextStyle(
+                      Text(
+                        languageProvider.isEnglish ? 'Inactive Banks' : 'غیر فعال بینک',
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                           color: Color(0xFF8E8E93),
@@ -550,19 +567,26 @@ class _BankManagementScreenState extends State<BankManagementScreen> {
   }
 
   void _confirmReset(BuildContext context) {
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Reset All Balances'),
-        content: const Text(
-          'This will reset all bank balances to zero and clear all transaction history. This action cannot be undone.',
-          style: TextStyle(color: Color(0xFF8E8E93)),
+        title: Text(languageProvider.isEnglish ? 'Reset All Balances' : 'تمام بیلنس ری سیٹ کریں'),
+        content: Text(
+          languageProvider.isEnglish
+              ? 'This will reset all bank balances to zero and clear all transaction history. This action cannot be undone.'
+              : 'یہ تمام بینک بیلنس کو صفر پر ری سیٹ کرے گا اور تمام ٹرانزیکشن ہسٹری صاف کر دے گا۔ یہ عمل واپس نہیں کیا جا سکتا۔',
+          style: const TextStyle(color: Color(0xFF8E8E93)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF8E8E93))),
+            child: Text(
+              languageProvider.isEnglish ? 'Cancel' : 'منسوخ کریں',
+              style: const TextStyle(color: Color(0xFF8E8E93)),
+            ),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -572,8 +596,12 @@ class _BankManagementScreenState extends State<BankManagementScreen> {
               if (context.mounted) {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('All bank balances have been reset'),
+                  SnackBar(
+                    content: Text(
+                      languageProvider.isEnglish
+                          ? 'All bank balances have been reset'
+                          : 'تمام بینک بیلنس ری سیٹ کر دیے گئے ہیں',
+                    ),
                     backgroundColor: Colors.orange,
                   ),
                 );
@@ -584,7 +612,7 @@ class _BankManagementScreenState extends State<BankManagementScreen> {
               backgroundColor: Colors.red,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            child: const Text('Reset'),
+            child: Text(languageProvider.isEnglish ? 'Reset' : 'ری سیٹ کریں'),
           ),
         ],
       ),

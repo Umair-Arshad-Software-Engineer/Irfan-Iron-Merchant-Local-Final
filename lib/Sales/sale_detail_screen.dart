@@ -66,10 +66,10 @@ class _SaleDetailScreenState extends State<SaleDetailScreen> {
 
     try {
       final provider = Provider.of<SaleProvider>(context, listen: false);
-      final sale = await provider.getSaleById(widget.saleId);
+      final sale = await provider.fetchSaleById(widget.saleId);  // ← changed
 
       setState(() {
-        _sale = sale;
+        _sale = sale;          // now SaleModel? — matches _sale type
         _isLoading = false;
       });
     } catch (e) {

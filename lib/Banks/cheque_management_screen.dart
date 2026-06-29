@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/bank_provider.dart';
+import '../../providers/lanprovider.dart';
 import '../../models/bank.dart';
 import '../config/api_config.dart';
 
@@ -194,16 +195,19 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
         return true;
       }
       if (mounted) {
+        final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(data['message'] ?? 'Action failed'),
+          content: Text(data['message'] ?? (languageProvider.isEnglish ? 'Action failed' : 'کارروائی ناکام')),
           backgroundColor: Colors.red,
         ));
       }
       return false;
     } catch (e) {
       if (mounted) {
+        final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Error: $e'), backgroundColor: Colors.red,
+          content: Text('${languageProvider.isEnglish ? 'Error' : 'خرابی'}: $e'),
+          backgroundColor: Colors.red,
         ));
       }
       return false;
@@ -257,11 +261,11 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
     _           => Icons.help_outline,
   };
 
-  String _statusLabel(String status) => switch (status) {
-    'cleared'   => 'Cleared',
-    'pending'   => 'Pending',
-    'bounced'   => 'Bounced',
-    'cancelled' => 'Cancelled',
+  String _statusLabel(String status, LanguageProvider languageProvider) => switch (status) {
+    'cleared'   => languageProvider.isEnglish ? 'Cleared' : 'کلئیر',
+    'pending'   => languageProvider.isEnglish ? 'Pending' : 'زیر التواء',
+    'bounced'   => languageProvider.isEnglish ? 'Bounced' : 'واپس آیا',
+    'cancelled' => languageProvider.isEnglish ? 'Cancelled' : 'منسوخ',
     _           => status,
   };
 
@@ -272,6 +276,10 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
   IconData _typeIcon(String type) => type == 'issued'
       ? Icons.arrow_upward
       : Icons.arrow_downward;
+
+  String _typeLabel(String type, LanguageProvider languageProvider) => type == 'issued'
+      ? (languageProvider.isEnglish ? 'ISSUED' : 'جاری کردہ')
+      : (languageProvider.isEnglish ? 'RECEIVED' : 'موصول ہوا');
 
   // ── Summary ──────────────────────────────────────────────────────────────
 
@@ -295,38 +303,45 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F7),
-      appBar: _buildAppBar(),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddChequeSheet(),
-        backgroundColor: const Color(0xFF7C3AED),
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('New Cheque', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF7C3AED)))
-          : _error != null
-          ? _buildError()
-          : Column(
-        children: [
-          _buildSummaryRow(),
-          _buildFilterBar(),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildChequeList('all'),
-                _buildChequeList('pending'),
-              ],
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        return Scaffold(
+          backgroundColor: const Color(0xFFF5F5F7),
+          appBar: _buildAppBar(languageProvider),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => _showAddChequeSheet(languageProvider),
+            backgroundColor: const Color(0xFF7C3AED),
+            icon: const Icon(Icons.add, color: Colors.white),
+            label: Text(
+              languageProvider.isEnglish ? 'New Cheque' : 'نیا چیک',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
             ),
           ),
-        ],
-      ),
+          body: _isLoading
+              ? const Center(child: CircularProgressIndicator(color: Color(0xFF7C3AED)))
+              : _error != null
+              ? _buildError(languageProvider)
+              : Column(
+            children: [
+              _buildSummaryRow(languageProvider),
+              _buildFilterBar(languageProvider),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildChequeList('all', languageProvider),
+                    _buildChequeList('pending', languageProvider),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
+  PreferredSizeWidget _buildAppBar(LanguageProvider languageProvider) {
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 0,
@@ -335,19 +350,24 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
         icon: const Icon(Icons.arrow_back, color: Color(0xFF1C1C1E)),
         onPressed: () => Navigator.pop(context),
       ),
-      title: const Column(
+      title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Cheque Management',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1C1C1E))),
-          Text('Track & update cheque status',
-              style: TextStyle(fontSize: 11, color: Color(0xFF8E8E93))),
+          Text(
+            languageProvider.isEnglish ? 'Cheque Management' : 'چیک مینجمنٹ',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1C1C1E)),
+          ),
+          Text(
+            languageProvider.isEnglish ? 'Track & update cheque status' : 'چیک کی حیثیت ٹریک اور اپ ڈیٹ کریں',
+            style: const TextStyle(fontSize: 11, color: Color(0xFF8E8E93)),
+          ),
         ],
       ),
       actions: [
         IconButton(
           icon: const Icon(Icons.refresh, color: Color(0xFF7C3AED)),
           onPressed: _loadData,
+          tooltip: languageProvider.isEnglish ? 'Refresh' : 'ریفریش',
         ),
       ],
       bottom: TabBar(
@@ -357,11 +377,11 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
         indicatorColor: const Color(0xFF7C3AED),
         tabs: [
           Tab(
-            text: 'ALL (${_cheques.length})',
+            text: '${languageProvider.isEnglish ? 'ALL' : 'تمام'} (${_cheques.length})',
             icon: const Icon(Icons.receipt_long_outlined, size: 18),
           ),
           Tab(
-            text: 'PENDING (${_cheques.where((c) => c.status == 'pending').length})',
+            text: '${languageProvider.isEnglish ? 'PENDING' : 'زیر التواء'} (${_cheques.where((c) => c.status == 'pending').length})',
             icon: const Icon(Icons.hourglass_empty, size: 18),
           ),
         ],
@@ -369,7 +389,7 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
     );
   }
 
-  Widget _buildError() {
+  Widget _buildError(LanguageProvider languageProvider) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -384,7 +404,7 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
               onPressed: _loadData,
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF7C3AED), foregroundColor: Colors.white),
               icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
+              label: Text(languageProvider.isEnglish ? 'Retry' : 'دوبارہ کوشش کریں'),
             ),
           ],
         ),
@@ -392,7 +412,7 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
     );
   }
 
-  Widget _buildSummaryRow() {
+  Widget _buildSummaryRow(LanguageProvider languageProvider) {
     final s = _summary;
     return Container(
       margin: const EdgeInsets.all(12),
@@ -404,11 +424,23 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
       ),
       child: Row(
         children: [
-          _summaryTile('Pending Out', s['pendingIssued']!, const Color(0xFFEF4444)),
+          _summaryTile(
+            languageProvider.isEnglish ? 'Pending Out' : 'زیر التواء اخراج',
+            s['pendingIssued']!,
+            const Color(0xFFEF4444),
+          ),
           _vDivider(),
-          _summaryTile('Pending In', s['pendingReceived']!, const Color(0xFF10B981)),
+          _summaryTile(
+            languageProvider.isEnglish ? 'Pending In' : 'زیر التواء آمد',
+            s['pendingReceived']!,
+            const Color(0xFF10B981),
+          ),
           _vDivider(),
-          _summaryTile('Total Cleared', s['cleared']!, const Color(0xFF7C3AED)),
+          _summaryTile(
+            languageProvider.isEnglish ? 'Total Cleared' : 'کل کلئیر',
+            s['cleared']!,
+            const Color(0xFF7C3AED),
+          ),
         ],
       ),
     );
@@ -436,28 +468,66 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
     margin: const EdgeInsets.symmetric(horizontal: 4),
   );
 
-  Widget _buildFilterBar() {
+  Widget _buildFilterBar(LanguageProvider languageProvider) {
     return Container(
       height: 44,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: ListView(
         scrollDirection: Axis.horizontal,
         children: [
-          _filterChip('All Types',  _filterType == 'all',      () => setState(() { _filterType = 'all';      _loadData(); })),
+          _filterChip(
+            languageProvider.isEnglish ? 'All Types' : 'تمام اقسام',
+            _filterType == 'all',
+                () => setState(() { _filterType = 'all'; _loadData(); }),
+          ),
           const SizedBox(width: 8),
-          _filterChip('Issued',     _filterType == 'issued',   () => setState(() { _filterType = 'issued';   _loadData(); }), color: const Color(0xFFEF4444)),
+          _filterChip(
+            languageProvider.isEnglish ? 'Issued' : 'جاری کردہ',
+            _filterType == 'issued',
+                () => setState(() { _filterType = 'issued'; _loadData(); }),
+            color: const Color(0xFFEF4444),
+          ),
           const SizedBox(width: 8),
-          _filterChip('Received',   _filterType == 'received', () => setState(() { _filterType = 'received'; _loadData(); }), color: const Color(0xFF10B981)),
+          _filterChip(
+            languageProvider.isEnglish ? 'Received' : 'موصول ہوا',
+            _filterType == 'received',
+                () => setState(() { _filterType = 'received'; _loadData(); }),
+            color: const Color(0xFF10B981),
+          ),
           const SizedBox(width: 16),
-          _filterChip('All Status', _filterStatus == 'all',       () => setState(() { _filterStatus = 'all';       _loadData(); })),
+          _filterChip(
+            languageProvider.isEnglish ? 'All Status' : 'تمام حیثیت',
+            _filterStatus == 'all',
+                () => setState(() { _filterStatus = 'all'; _loadData(); }),
+          ),
           const SizedBox(width: 8),
-          _filterChip('Pending',    _filterStatus == 'pending',   () => setState(() { _filterStatus = 'pending';   _loadData(); }), color: const Color(0xFFF59E0B)),
+          _filterChip(
+            languageProvider.isEnglish ? 'Pending' : 'زیر التواء',
+            _filterStatus == 'pending',
+                () => setState(() { _filterStatus = 'pending'; _loadData(); }),
+            color: const Color(0xFFF59E0B),
+          ),
           const SizedBox(width: 8),
-          _filterChip('Cleared',    _filterStatus == 'cleared',   () => setState(() { _filterStatus = 'cleared';   _loadData(); }), color: const Color(0xFF10B981)),
+          _filterChip(
+            languageProvider.isEnglish ? 'Cleared' : 'کلئیر',
+            _filterStatus == 'cleared',
+                () => setState(() { _filterStatus = 'cleared'; _loadData(); }),
+            color: const Color(0xFF10B981),
+          ),
           const SizedBox(width: 8),
-          _filterChip('Bounced',    _filterStatus == 'bounced',   () => setState(() { _filterStatus = 'bounced';   _loadData(); }), color: const Color(0xFFEF4444)),
+          _filterChip(
+            languageProvider.isEnglish ? 'Bounced' : 'واپس آیا',
+            _filterStatus == 'bounced',
+                () => setState(() { _filterStatus = 'bounced'; _loadData(); }),
+            color: const Color(0xFFEF4444),
+          ),
           const SizedBox(width: 8),
-          _filterChip('Cancelled',  _filterStatus == 'cancelled', () => setState(() { _filterStatus = 'cancelled'; _loadData(); }), color: const Color(0xFF8E8E93)),
+          _filterChip(
+            languageProvider.isEnglish ? 'Cancelled' : 'منسوخ',
+            _filterStatus == 'cancelled',
+                () => setState(() { _filterStatus = 'cancelled'; _loadData(); }),
+            color: const Color(0xFF8E8E93),
+          ),
         ],
       ),
     );
@@ -479,7 +549,7 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
     );
   }
 
-  Widget _buildChequeList(String tabFilter) {
+  Widget _buildChequeList(String tabFilter, LanguageProvider languageProvider) {
     final list = tabFilter == 'pending'
         ? _cheques.where((c) => c.status == 'pending').toList()
         : _cheques;
@@ -491,9 +561,15 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
           children: [
             Icon(Icons.receipt_outlined, size: 64, color: Colors.grey[300]),
             const SizedBox(height: 16),
-            Text('No cheques found', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.grey[500])),
+            Text(
+              languageProvider.isEnglish ? 'No cheques found' : 'کوئی چیک نہیں ملا',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.grey[500]),
+            ),
             const SizedBox(height: 8),
-            Text('Tap + to add a new cheque', style: TextStyle(fontSize: 13, color: Colors.grey[400])),
+            Text(
+              languageProvider.isEnglish ? 'Tap + to add a new cheque' : 'نیا چیک شامل کرنے کے لیے + ٹیپ کریں',
+              style: TextStyle(fontSize: 13, color: Colors.grey[400]),
+            ),
           ],
         ),
       );
@@ -502,11 +578,11 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
       itemCount: list.length,
-      itemBuilder: (ctx, i) => _buildChequeCard(list[i]),
+      itemBuilder: (ctx, i) => _buildChequeCard(list[i], languageProvider),
     );
   }
 
-  Widget _buildChequeCard(Cheque cheque) {
+  Widget _buildChequeCard(Cheque cheque, LanguageProvider languageProvider) {
     final statusColor = _statusColor(cheque.status);
     final typeColor   = _typeColor(cheque.chequeType);
     final isPending   = cheque.status == 'pending';
@@ -542,7 +618,7 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
                       Icon(_typeIcon(cheque.chequeType), size: 12, color: typeColor),
                       const SizedBox(width: 4),
                       Text(
-                        cheque.chequeType == 'issued' ? 'ISSUED' : 'RECEIVED',
+                        _typeLabel(cheque.chequeType, languageProvider),
                         style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: typeColor),
                       ),
                     ],
@@ -618,9 +694,11 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
                     const Icon(Icons.info_outline, size: 13, color: Color(0xFFEF4444)),
                     const SizedBox(width: 4),
                     Expanded(
-                      child: Text('Bounce reason: ${cheque.bounceReason}',
-                          style: const TextStyle(fontSize: 11, color: Color(0xFFEF4444)),
-                          maxLines: 2, overflow: TextOverflow.ellipsis),
+                      child: Text(
+                        '${languageProvider.isEnglish ? 'Bounce reason' : 'واپسی کی وجہ'}: ${cheque.bounceReason}',
+                        style: const TextStyle(fontSize: 11, color: Color(0xFFEF4444)),
+                        maxLines: 2, overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),
@@ -634,14 +712,16 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
               children: [
                 const Icon(Icons.calendar_today_outlined, size: 12, color: Color(0xFF8E8E93)),
                 const SizedBox(width: 4),
-                Text('Issued: ${_dateFmt.format(cheque.issueDate)}',
-                    style: const TextStyle(fontSize: 11, color: Color(0xFF8E8E93))),
+                Text(
+                  '${languageProvider.isEnglish ? 'Issued' : 'جاری'}: ${_dateFmt.format(cheque.issueDate)}',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF8E8E93)),
+                ),
                 if (cheque.dueDate != null) ...[
                   const SizedBox(width: 6),
                   Text('•', style: TextStyle(color: Colors.grey[400])),
                   const SizedBox(width: 6),
                   Text(
-                    'Due: ${_dateFmt.format(cheque.dueDate!)}',
+                    '${languageProvider.isEnglish ? 'Due' : 'واجب الادا'}: ${_dateFmt.format(cheque.dueDate!)}',
                     style: TextStyle(
                       fontSize: 11,
                       color: cheque.dueDate!.isBefore(DateTime.now()) && isPending
@@ -663,8 +743,10 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
                     children: [
                       Icon(_statusIcon(cheque.status), size: 12, color: statusColor),
                       const SizedBox(width: 4),
-                      Text(_statusLabel(cheque.status),
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: statusColor)),
+                      Text(
+                        _statusLabel(cheque.status, languageProvider),
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: statusColor),
+                      ),
                     ],
                   ),
                 ),
@@ -678,8 +760,10 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
                 children: [
                   const Icon(Icons.verified_outlined, size: 13, color: Color(0xFF10B981)),
                   const SizedBox(width: 4),
-                  Text('Cleared on ${_dateFmt.format(cheque.clearedDate!)}',
-                      style: const TextStyle(fontSize: 11, color: Color(0xFF10B981), fontWeight: FontWeight.w500)),
+                  Text(
+                    '${languageProvider.isEnglish ? 'Cleared on' : 'کلئیر ہوا'}: ${_dateFmt.format(cheque.clearedDate!)}',
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF10B981), fontWeight: FontWeight.w500),
+                  ),
                 ],
               ),
             ],
@@ -688,7 +772,7 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
             const SizedBox(height: 10),
             const Divider(height: 1, color: Color(0xFFEEEEEE)),
             const SizedBox(height: 10),
-            _buildActionButtons(cheque),
+            _buildActionButtons(cheque, languageProvider),
           ],
         ),
       ),
@@ -697,7 +781,7 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
 
   /// Builds context-aware action buttons depending on current status.
   /// Always shows Delete. Other buttons show only if they'd change state.
-  Widget _buildActionButtons(Cheque cheque) {
+  Widget _buildActionButtons(Cheque cheque, LanguageProvider languageProvider) {
     final status = cheque.status;
 
     return Row(
@@ -706,10 +790,10 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
         if (status != 'cleared') ...[
           Expanded(
             child: _actionBtn(
-              label: 'Clear',
+              label: languageProvider.isEnglish ? 'Clear' : 'کلئیر',
               icon: Icons.check_circle_outline,
               color: const Color(0xFF10B981),
-              onTap: () => _confirmClear(cheque),
+              onTap: () => _confirmClear(cheque, languageProvider),
             ),
           ),
           const SizedBox(width: 6),
@@ -719,10 +803,10 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
         if (status != 'bounced') ...[
           Expanded(
             child: _actionBtn(
-              label: 'Bounce',
+              label: languageProvider.isEnglish ? 'Bounce' : 'واپس',
               icon: Icons.cancel_outlined,
               color: const Color(0xFFEF4444),
-              onTap: () => _confirmBounce(cheque),
+              onTap: () => _confirmBounce(cheque, languageProvider),
             ),
           ),
           const SizedBox(width: 6),
@@ -732,10 +816,10 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
         if (status != 'cancelled') ...[
           Expanded(
             child: _actionBtn(
-              label: 'Cancel',
+              label: languageProvider.isEnglish ? 'Cancel' : 'منسوخ',
               icon: Icons.block_outlined,
               color: const Color(0xFF8E8E93),
-              onTap: () => _confirmCancel(cheque),
+              onTap: () => _confirmCancel(cheque, languageProvider),
             ),
           ),
           const SizedBox(width: 6),
@@ -745,10 +829,10 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
         if (status != 'pending') ...[
           Expanded(
             child: _actionBtn(
-              label: 'Revert',
+              label: languageProvider.isEnglish ? 'Revert' : 'واپس لائیں',
               icon: Icons.undo_outlined,
               color: const Color(0xFF7C3AED),
-              onTap: () => _confirmRevert(cheque),
+              onTap: () => _confirmRevert(cheque, languageProvider),
             ),
           ),
           const SizedBox(width: 6),
@@ -756,7 +840,7 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
 
         // Delete — always visible
         GestureDetector(
-          onTap: () => _confirmDelete(cheque),
+          onTap: () => _confirmDelete(cheque, languageProvider),
           child: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
@@ -799,7 +883,7 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
 
   // ── Dialogs ───────────────────────────────────────────────────────────────
 
-  Future<void> _confirmClear(Cheque cheque) async {
+  Future<void> _confirmClear(Cheque cheque, LanguageProvider languageProvider) async {
     DateTime clearedDate = DateTime.now();
 
     final confirmed = await showDialog<bool>(
@@ -807,12 +891,12 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Clear Cheque'),
+          title: Text(languageProvider.isEnglish ? 'Clear Cheque' : 'چیک کلئیر کریں'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _chequeInfoBox(cheque),
+              _chequeInfoBox(cheque, languageProvider),
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(10),
@@ -827,8 +911,12 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
                     Expanded(
                       child: Text(
                         cheque.chequeType == 'issued'
+                            ? (languageProvider.isEnglish
                             ? 'Rs ${_currencyFmt.format(cheque.amount)} will be DEBITED from ${cheque.bankName}'
-                            : 'Rs ${_currencyFmt.format(cheque.amount)} will be CREDITED to ${cheque.bankName}',
+                            : '${_currencyFmt.format(cheque.amount)} روپے ${cheque.bankName} سے ڈیبٹ ہوں گے')
+                            : (languageProvider.isEnglish
+                            ? 'Rs ${_currencyFmt.format(cheque.amount)} will be CREDITED to ${cheque.bankName}'
+                            : '${_currencyFmt.format(cheque.amount)} روپے ${cheque.bankName} میں کریڈٹ ہوں گے'),
                         style: const TextStyle(fontSize: 12, color: Color(0xFF10B981)),
                       ),
                     ),
@@ -863,8 +951,10 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
                     children: [
                       const Icon(Icons.calendar_today_outlined, size: 16, color: Color(0xFF7C3AED)),
                       const SizedBox(width: 8),
-                      Text('Cleared: ${_dateFmt.format(clearedDate)}',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                      Text(
+                        '${languageProvider.isEnglish ? 'Cleared' : 'کلئیر'}: ${_dateFmt.format(clearedDate)}',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                      ),
                       const Spacer(),
                       const Icon(Icons.edit_outlined, size: 14, color: Color(0xFF8E8E93)),
                     ],
@@ -876,7 +966,10 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel', style: TextStyle(color: Color(0xFF8E8E93))),
+              child: Text(
+                languageProvider.isEnglish ? 'Cancel' : 'منسوخ کریں',
+                style: const TextStyle(color: Color(0xFF8E8E93)),
+              ),
             ),
             ElevatedButton.icon(
               onPressed: () => Navigator.pop(ctx, true),
@@ -885,7 +978,10 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
               icon: const Icon(Icons.check, color: Colors.white, size: 16),
-              label: const Text('Clear Cheque', style: TextStyle(color: Colors.white)),
+              label: Text(
+                languageProvider.isEnglish ? 'Clear Cheque' : 'چیک کلئیر کریں',
+                style: const TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -901,26 +997,30 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(ok
+            ? (languageProvider.isEnglish
             ? 'Cheque #${cheque.chequeNumber} cleared. Bank balance updated.'
-            : 'Failed to clear cheque'),
+            : 'چیک #${cheque.chequeNumber} کلئیر ہوا۔ بینک بیلنس اپ ڈیٹ ہو گیا۔')
+            : (languageProvider.isEnglish ? 'Failed to clear cheque' : 'چیک کلئیر کرنے میں ناکام')),
         backgroundColor: ok ? Colors.green : Colors.red,
       ));
       if (ok) await _loadData();
     }
   }
 
-  Future<void> _confirmBounce(Cheque cheque) async {
-    final reasonCtrl = TextEditingController(text: 'Dishonoured by bank');
+  Future<void> _confirmBounce(Cheque cheque, LanguageProvider languageProvider) async {
+    final reasonCtrl = TextEditingController(
+      text: languageProvider.isEnglish ? 'Dishonoured by bank' : 'بینک کی طرف سے نامنظور',
+    );
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Mark as Bounced'),
+        title: Text(languageProvider.isEnglish ? 'Mark as Bounced' : 'واپسی کے طور پر نشان زد کریں'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _chequeInfoBox(cheque),
+            _chequeInfoBox(cheque, languageProvider),
             const SizedBox(height: 12),
             // Show reversal warning if was cleared
             if (cheque.status == 'cleared')
@@ -930,14 +1030,16 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
                   color: const Color(0xFFF59E0B).withOpacity(0.08),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.warning_amber_outlined, size: 16, color: Color(0xFFF59E0B)),
-                    SizedBox(width: 8),
+                    const Icon(Icons.warning_amber_outlined, size: 16, color: Color(0xFFF59E0B)),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'This cheque was cleared. Bank balance will be REVERSED.',
-                        style: TextStyle(fontSize: 12, color: Color(0xFFF59E0B)),
+                        languageProvider.isEnglish
+                            ? 'This cheque was cleared. Bank balance will be REVERSED.'
+                            : 'یہ چیک کلئیر ہو چکا تھا۔ بینک بیلنس واپس کر دیا جائے گا۔',
+                        style: const TextStyle(fontSize: 12, color: Color(0xFFF59E0B)),
                       ),
                     ),
                   ],
@@ -950,14 +1052,16 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
                   color: const Color(0xFFEF4444).withOpacity(0.08),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.info_outline, size: 16, color: Color(0xFFEF4444)),
-                    SizedBox(width: 8),
+                    const Icon(Icons.info_outline, size: 16, color: Color(0xFFEF4444)),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'No bank balance change. Cheque will be marked as dishonoured.',
-                        style: TextStyle(fontSize: 12, color: Color(0xFFEF4444)),
+                        languageProvider.isEnglish
+                            ? 'No bank balance change. Cheque will be marked as dishonoured.'
+                            : 'بینک بیلنس میں کوئی تبدیلی نہیں۔ چیک کو نامنظور کے طور پر نشان زد کیا جائے گا۔',
+                        style: const TextStyle(fontSize: 12, color: Color(0xFFEF4444)),
                       ),
                     ),
                   ],
@@ -967,7 +1071,7 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
             TextField(
               controller: reasonCtrl,
               decoration: InputDecoration(
-                labelText: 'Bounce Reason',
+                labelText: languageProvider.isEnglish ? 'Bounce Reason' : 'واپسی کی وجہ',
                 filled: true,
                 fillColor: const Color(0xFFF5F5F7),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
@@ -982,7 +1086,10 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF8E8E93))),
+            child: Text(
+              languageProvider.isEnglish ? 'Cancel' : 'منسوخ کریں',
+              style: const TextStyle(color: Color(0xFF8E8E93)),
+            ),
           ),
           ElevatedButton.icon(
             onPressed: () => Navigator.pop(ctx, true),
@@ -991,7 +1098,10 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             icon: const Icon(Icons.cancel_outlined, color: Colors.white, size: 16),
-            label: const Text('Mark Bounced', style: TextStyle(color: Colors.white)),
+            label: Text(
+              languageProvider.isEnglish ? 'Mark Bounced' : 'واپسی نشان زد کریں',
+              style: const TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -1000,28 +1110,34 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
     if (confirmed != true) return;
 
     final ok = await _patchStatus(cheque.id, 'bounce', body: {
-      'bounce_reason': reasonCtrl.text.trim().isEmpty ? 'Dishonoured by bank' : reasonCtrl.text.trim(),
+      'bounce_reason': reasonCtrl.text.trim().isEmpty
+          ? (languageProvider.isEnglish ? 'Dishonoured by bank' : 'بینک کی طرف سے نامنظور')
+          : reasonCtrl.text.trim(),
     });
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(ok ? 'Cheque #${cheque.chequeNumber} marked as bounced' : 'Failed'),
+        content: Text(ok
+            ? (languageProvider.isEnglish
+            ? 'Cheque #${cheque.chequeNumber} marked as bounced'
+            : 'چیک #${cheque.chequeNumber} واپسی کے طور پر نشان زد')
+            : (languageProvider.isEnglish ? 'Failed' : 'ناکام')),
         backgroundColor: ok ? Colors.orange : Colors.red,
       ));
       if (ok) await _loadData();
     }
   }
 
-  Future<void> _confirmCancel(Cheque cheque) async {
+  Future<void> _confirmCancel(Cheque cheque, LanguageProvider languageProvider) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Cancel Cheque'),
+        title: Text(languageProvider.isEnglish ? 'Cancel Cheque' : 'چیک منسوخ کریں'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _chequeInfoBox(cheque),
+            _chequeInfoBox(cheque, languageProvider),
             const SizedBox(height: 12),
             if (cheque.status == 'cleared')
               Container(
@@ -1030,30 +1146,37 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
                   color: const Color(0xFFF59E0B).withOpacity(0.08),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.warning_amber_outlined, size: 16, color: Color(0xFFF59E0B)),
-                    SizedBox(width: 8),
+                    const Icon(Icons.warning_amber_outlined, size: 16, color: Color(0xFFF59E0B)),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'This cheque was cleared. Bank balance will be REVERSED.',
-                        style: TextStyle(fontSize: 12, color: Color(0xFFF59E0B)),
+                        languageProvider.isEnglish
+                            ? 'This cheque was cleared. Bank balance will be REVERSED.'
+                            : 'یہ چیک کلئیر ہو چکا تھا۔ بینک بیلنس واپس کر دیا جائے گا۔',
+                        style: const TextStyle(fontSize: 12, color: Color(0xFFF59E0B)),
                       ),
                     ),
                   ],
                 ),
               )
             else
-              const Text(
-                'This will void the cheque. No bank balance change.',
-                style: TextStyle(fontSize: 13, color: Color(0xFF8E8E93)),
+              Text(
+                languageProvider.isEnglish
+                    ? 'This will void the cheque. No bank balance change.'
+                    : 'یہ چیک کو منسوخ کر دے گا۔ بینک بیلنس میں کوئی تبدیلی نہیں۔',
+                style: const TextStyle(fontSize: 13, color: Color(0xFF8E8E93)),
               ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('No', style: TextStyle(color: Color(0xFF8E8E93))),
+            child: Text(
+              languageProvider.isEnglish ? 'No' : 'نہیں',
+              style: const TextStyle(color: Color(0xFF8E8E93)),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -1061,7 +1184,10 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
               backgroundColor: const Color(0xFF8E8E93),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            child: const Text('Yes, Cancel', style: TextStyle(color: Colors.white)),
+            child: Text(
+              languageProvider.isEnglish ? 'Yes, Cancel' : 'ہاں، منسوخ کریں',
+              style: const TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -1072,23 +1198,27 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
     final ok = await _patchStatus(cheque.id, 'cancel');
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(ok ? 'Cheque #${cheque.chequeNumber} cancelled' : 'Failed'),
+        content: Text(ok
+            ? (languageProvider.isEnglish
+            ? 'Cheque #${cheque.chequeNumber} cancelled'
+            : 'چیک #${cheque.chequeNumber} منسوخ')
+            : (languageProvider.isEnglish ? 'Failed' : 'ناکام')),
         backgroundColor: ok ? Colors.orange : Colors.red,
       ));
       if (ok) await _loadData();
     }
   }
 
-  Future<void> _confirmRevert(Cheque cheque) async {
+  Future<void> _confirmRevert(Cheque cheque, LanguageProvider languageProvider) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Revert to Pending'),
+        title: Text(languageProvider.isEnglish ? 'Revert to Pending' : 'زیر التواء پر واپس لائیں'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _chequeInfoBox(cheque),
+            _chequeInfoBox(cheque, languageProvider),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(10),
@@ -1103,8 +1233,12 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
                   Expanded(
                     child: Text(
                       cheque.status == 'cleared'
+                          ? (languageProvider.isEnglish
                           ? 'Status will change to Pending. Bank balance will be REVERSED.'
-                          : 'Cheque #${cheque.chequeNumber} will be reset to Pending.',
+                          : 'حیثیت زیر التواء ہو جائے گی۔ بینک بیلنس واپس کر دیا جائے گا۔')
+                          : (languageProvider.isEnglish
+                          ? 'Cheque #${cheque.chequeNumber} will be reset to Pending.'
+                          : 'چیک #${cheque.chequeNumber} زیر التواء پر ری سیٹ ہو جائے گا۔'),
                       style: const TextStyle(fontSize: 12, color: Color(0xFF7C3AED)),
                     ),
                   ),
@@ -1116,7 +1250,10 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF8E8E93))),
+            child: Text(
+              languageProvider.isEnglish ? 'Cancel' : 'منسوخ کریں',
+              style: const TextStyle(color: Color(0xFF8E8E93)),
+            ),
           ),
           ElevatedButton.icon(
             onPressed: () => Navigator.pop(ctx, true),
@@ -1125,7 +1262,10 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             icon: const Icon(Icons.undo_outlined, color: Colors.white, size: 16),
-            label: const Text('Revert to Pending', style: TextStyle(color: Colors.white)),
+            label: Text(
+              languageProvider.isEnglish ? 'Revert to Pending' : 'زیر التواء پر واپس لائیں',
+              style: const TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -1136,23 +1276,27 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
     final ok = await _patchStatus(cheque.id, 'revert');
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(ok ? 'Cheque #${cheque.chequeNumber} reverted to pending' : 'Failed'),
+        content: Text(ok
+            ? (languageProvider.isEnglish
+            ? 'Cheque #${cheque.chequeNumber} reverted to pending'
+            : 'چیک #${cheque.chequeNumber} زیر التواء پر واپس')
+            : (languageProvider.isEnglish ? 'Failed' : 'ناکام')),
         backgroundColor: ok ? const Color(0xFF7C3AED) : Colors.red,
       ));
       if (ok) await _loadData();
     }
   }
 
-  Future<void> _confirmDelete(Cheque cheque) async {
+  Future<void> _confirmDelete(Cheque cheque, LanguageProvider languageProvider) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Delete Cheque'),
+        title: Text(languageProvider.isEnglish ? 'Delete Cheque' : 'چیک حذف کریں'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _chequeInfoBox(cheque),
+            _chequeInfoBox(cheque, languageProvider),
             const SizedBox(height: 12),
             if (cheque.status == 'cleared')
               Container(
@@ -1161,30 +1305,37 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
                   color: const Color(0xFFEF4444).withOpacity(0.08),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.warning_amber_outlined, size: 16, color: Color(0xFFEF4444)),
-                    SizedBox(width: 8),
+                    const Icon(Icons.warning_amber_outlined, size: 16, color: Color(0xFFEF4444)),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'This cheque was cleared. Deleting it will REVERSE the bank balance. This cannot be undone.',
-                        style: TextStyle(fontSize: 12, color: Color(0xFFEF4444)),
+                        languageProvider.isEnglish
+                            ? 'This cheque was cleared. Deleting it will REVERSE the bank balance. This cannot be undone.'
+                            : 'یہ چیک کلئیر ہو چکا تھا۔ اسے حذف کرنے سے بینک بیلنس واپس ہو جائے گا۔ یہ واپس نہیں کیا جا سکتا۔',
+                        style: const TextStyle(fontSize: 12, color: Color(0xFFEF4444)),
                       ),
                     ),
                   ],
                 ),
               )
             else
-              const Text(
-                'This action cannot be undone.',
-                style: TextStyle(fontSize: 13, color: Color(0xFF8E8E93)),
+              Text(
+                languageProvider.isEnglish
+                    ? 'This action cannot be undone.'
+                    : 'یہ عمل واپس نہیں کیا جا سکتا۔',
+                style: const TextStyle(fontSize: 13, color: Color(0xFF8E8E93)),
               ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF8E8E93))),
+            child: Text(
+              languageProvider.isEnglish ? 'Cancel' : 'منسوخ کریں',
+              style: const TextStyle(color: Color(0xFF8E8E93)),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -1192,7 +1343,10 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
               backgroundColor: const Color(0xFFEF4444),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+            child: Text(
+              languageProvider.isEnglish ? 'Delete' : 'حذف کریں',
+              style: const TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -1203,14 +1357,16 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
     final ok = await _deleteCheque(cheque.id);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(ok ? 'Cheque deleted successfully' : 'Failed to delete cheque'),
+        content: Text(ok
+            ? (languageProvider.isEnglish ? 'Cheque deleted successfully' : 'چیک کامیابی سے حذف')
+            : (languageProvider.isEnglish ? 'Failed to delete cheque' : 'چیک حذف کرنے میں ناکام')),
         backgroundColor: ok ? Colors.green : Colors.red,
       ));
       if (ok) await _loadData();
     }
   }
 
-  Widget _chequeInfoBox(Cheque cheque) {
+  Widget _chequeInfoBox(Cheque cheque, LanguageProvider languageProvider) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1234,7 +1390,10 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
           const SizedBox(height: 4),
           Text(cheque.payeePayerName, style: const TextStyle(fontSize: 13, color: Color(0xFF8E8E93))),
           const SizedBox(height: 2),
-          Text('Bank: ${cheque.bankName}', style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E93))),
+          Text(
+            '${languageProvider.isEnglish ? 'Bank' : 'بینک'}: ${cheque.bankName}',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E93)),
+          ),
         ],
       ),
     );
@@ -1242,7 +1401,7 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
 
   // ── Add Cheque Bottom Sheet ───────────────────────────────────────────────
 
-  void _showAddChequeSheet() {
+  void _showAddChequeSheet(LanguageProvider languageProvider) {
     final formKey = GlobalKey<FormState>();
     final chequeNumCtrl = TextEditingController();
     final amountCtrl    = TextEditingController();
@@ -1278,42 +1437,70 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
                         decoration: BoxDecoration(color: const Color(0xFFE5E5EA), borderRadius: BorderRadius.circular(2)),
                       ),
                     ),
-                    const Text('New Cheque',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1C1C1E))),
+                    Text(
+                      languageProvider.isEnglish ? 'New Cheque' : 'نیا چیک',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1C1C1E)),
+                    ),
                     const SizedBox(height: 16),
 
                     Row(
                       children: [
-                        Expanded(child: _typeToggle('issued',   'Issued',   chequeType, (v) => setS(() => chequeType = v))),
+                        Expanded(
+                          child: _typeToggle(
+                            'issued',
+                            languageProvider.isEnglish ? 'Issued' : 'جاری کردہ',
+                            chequeType,
+                                (v) => setS(() => chequeType = v),
+                          ),
+                        ),
                         const SizedBox(width: 10),
-                        Expanded(child: _typeToggle('received', 'Received', chequeType, (v) => setS(() => chequeType = v))),
+                        Expanded(
+                          child: _typeToggle(
+                            'received',
+                            languageProvider.isEnglish ? 'Received' : 'موصول ہوا',
+                            chequeType,
+                                (v) => setS(() => chequeType = v),
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 14),
 
                     DropdownButtonFormField<int>(
                       value: selectedBankId,
-                      decoration: _inputDec('Bank', Icons.account_balance_outlined),
+                      decoration: _inputDec(
+                        languageProvider.isEnglish ? 'Bank' : 'بینک',
+                        Icons.account_balance_outlined,
+                      ),
                       items: _banks.map((b) => DropdownMenuItem<int>(value: b.id, child: Text(b.name))).toList(),
                       onChanged: (v) => setS(() => selectedBankId = v),
-                      validator: (v) => v == null ? 'Select a bank' : null,
+                      validator: (v) => v == null ? (languageProvider.isEnglish ? 'Select a bank' : 'بینک منتخب کریں') : null,
                     ),
                     const SizedBox(height: 12),
 
                     TextFormField(
                       controller: chequeNumCtrl,
-                      decoration: _inputDec('Cheque Number', Icons.tag),
-                      validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                      decoration: _inputDec(
+                        languageProvider.isEnglish ? 'Cheque Number' : 'چیک نمبر',
+                        Icons.tag,
+                      ),
+                      validator: (v) => v == null || v.isEmpty
+                          ? (languageProvider.isEnglish ? 'Required' : 'درکار ہے')
+                          : null,
                     ),
                     const SizedBox(height: 12),
 
                     TextFormField(
                       controller: payeeCtrl,
                       decoration: _inputDec(
-                        chequeType == 'issued' ? 'Payee Name' : 'Payer Name',
+                        chequeType == 'issued'
+                            ? (languageProvider.isEnglish ? 'Payee Name' : 'وصول کنندہ کا نام')
+                            : (languageProvider.isEnglish ? 'Payer Name' : 'ادا کرنے والے کا نام'),
                         Icons.person_outline,
                       ),
-                      validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                      validator: (v) => v == null || v.isEmpty
+                          ? (languageProvider.isEnglish ? 'Required' : 'درکار ہے')
+                          : null,
                     ),
                     const SizedBox(height: 12),
 
@@ -1321,10 +1508,17 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
                       controller: amountCtrl,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
-                      decoration: _inputDec('Amount', Icons.currency_exchange),
+                      decoration: _inputDec(
+                        languageProvider.isEnglish ? 'Amount' : 'رقم',
+                        Icons.currency_exchange,
+                      ),
                       validator: (v) {
-                        if (v == null || v.isEmpty) return 'Required';
-                        if ((double.tryParse(v) ?? 0) <= 0) return 'Enter valid amount';
+                        if (v == null || v.isEmpty) {
+                          return languageProvider.isEnglish ? 'Required' : 'درکار ہے';
+                        }
+                        if ((double.tryParse(v) ?? 0) <= 0) {
+                          return languageProvider.isEnglish ? 'Enter valid amount' : 'درست رقم درج کریں';
+                        }
                         return null;
                       },
                     ),
@@ -1332,13 +1526,17 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
 
                     TextFormField(
                       controller: descCtrl,
-                      decoration: _inputDec('Description (optional)', Icons.notes),
+                      decoration: _inputDec(
+                        languageProvider.isEnglish ? 'Description (optional)' : 'تفصیل (اختیاری)',
+                        Icons.notes,
+                      ),
                     ),
                     const SizedBox(height: 12),
 
                     _dateTile(
-                      label: 'Issue Date',
+                      label: languageProvider.isEnglish ? 'Issue Date' : 'جاری کرنے کی تاریخ',
                       date: issueDate,
+                      languageProvider: languageProvider,
                       onTap: () async {
                         final d = await _pickDate(ctx, issueDate);
                         if (d != null) setS(() => issueDate = d);
@@ -1347,9 +1545,12 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
                     const SizedBox(height: 10),
 
                     _dateTile(
-                      label: dueDate != null ? 'Due Date: ${_dateFmt.format(dueDate!)}' : 'Due Date (optional)',
+                      label: dueDate != null
+                          ? '${languageProvider.isEnglish ? 'Due Date' : 'واجب الادا تاریخ'}: ${_dateFmt.format(dueDate!)}'
+                          : (languageProvider.isEnglish ? 'Due Date (optional)' : 'واجب الادا تاریخ (اختیاری)'),
                       date: dueDate,
                       optional: true,
+                      languageProvider: languageProvider,
                       onTap: () async {
                         final d = await _pickDate(ctx, dueDate ?? DateTime.now().add(const Duration(days: 30)));
                         if (d != null) setS(() => dueDate = d);
@@ -1407,13 +1608,17 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
                             if (mounted) {
                               if (data['success'] == true) {
                                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                  content: Text('Cheque #${chequeNumCtrl.text.trim()} created successfully'),
+                                  content: Text(
+                                    languageProvider.isEnglish
+                                        ? 'Cheque #${chequeNumCtrl.text.trim()} created successfully'
+                                        : 'چیک #${chequeNumCtrl.text.trim()} کامیابی سے بن گیا',
+                                  ),
                                   backgroundColor: Colors.green,
                                 ));
                                 await _loadData();
                               } else {
                                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                  content: Text(data['message'] ?? 'Failed to create cheque'),
+                                  content: Text(data['message'] ?? (languageProvider.isEnglish ? 'Failed to create cheque' : 'چیک بنانے میں ناکام')),
                                   backgroundColor: Colors.red,
                                 ));
                               }
@@ -1422,7 +1627,7 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
                             if (ctx.mounted) Navigator.pop(ctx);
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                content: Text('Error: $e'),
+                                content: Text('${languageProvider.isEnglish ? 'Error' : 'خرابی'}: $e'),
                                 backgroundColor: Colors.red,
                                 duration: const Duration(seconds: 5),
                               ));
@@ -1437,7 +1642,10 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
                         ),
                         child: isSubmitting
                             ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                            : const Text('Create Cheque', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
+                            : Text(
+                          languageProvider.isEnglish ? 'Create Cheque' : 'چیک بنائیں',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -1497,6 +1705,7 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
     required VoidCallback onTap,
     bool optional = false,
     VoidCallback? onClear,
+    required LanguageProvider languageProvider,
   }) {
     return GestureDetector(
       onTap: onTap,
@@ -1513,7 +1722,9 @@ class _ChequeManagementScreenState extends State<ChequeManagementScreen>
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                date != null ? 'Issue Date: ${_dateFmt.format(date)}' : label,
+                date != null
+                    ? '${languageProvider.isEnglish ? 'Issue Date' : 'جاری کرنے کی تاریخ'}: ${_dateFmt.format(date)}'
+                    : label,
                 style: TextStyle(
                   fontSize: 13,
                   color: date != null ? const Color(0xFF1C1C1E) : const Color(0xFF8E8E93),

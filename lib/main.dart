@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:irfan_iron_merchant_local/providers/bank_provider.dart';
 import 'package:irfan_iron_merchant_local/providers/employee_provider.dart';
 import 'package:irfan_iron_merchant_local/providers/lanprovider.dart';
+import 'package:irfan_iron_merchant_local/providers/sale_image_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:irfan_iron_merchant_local/providers/CustomerPriceProvider.dart';
 import 'package:irfan_iron_merchant_local/providers/customer_ledger_provider.dart';
@@ -56,6 +57,9 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => BankProvider()),
         ChangeNotifierProvider(create: (_) => LanguageProvider()),
         ChangeNotifierProvider(create: (_) => EmployeeProvider()),
+        ChangeNotifierProvider(create: (_) => SaleImageProvider()),
+
+
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -156,7 +160,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
     });
 
     try {
-       // await ApiConfig.init(); // ← yahan discovery hoti hai
+           // await ApiConfig.init(); // ← yahan discovery hoti hai
       setState(() {
         _serverFound = true;
         _discovering = false;

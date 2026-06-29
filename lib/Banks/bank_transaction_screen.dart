@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../providers/bank_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/lanprovider.dart';
 import '../../models/bank.dart';
 import '../../models/bank_transaction.dart';
 
@@ -71,6 +72,8 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
   }
 
   Future<void> _pickDateTime() async {
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+
     final date = await showDatePicker(
       context: context,
       initialDate: _selectedDateTime,
@@ -122,43 +125,46 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
     super.dispose();
   }
 
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F7),
-      appBar: _buildAppBar(),
-      body: Consumer<BankProvider>(
-        builder: (context, provider, _) {
-          final transactions = provider.transactions
-              .where((t) => t.bankId == widget.bank.id)
-              .toList();
-          final currentBalance = provider.getBankBalanceById(widget.bank.id);
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, _) {
+        return Scaffold(
+          backgroundColor: const Color(0xFFF5F5F7),
+          appBar: _buildAppBar(languageProvider),
+          body: Consumer<BankProvider>(
+            builder: (context, provider, _) {
+              final transactions = provider.transactions
+                  .where((t) => t.bankId == widget.bank.id)
+                  .toList();
+              final currentBalance = provider.getBankBalanceById(widget.bank.id);
 
-          return TabBarView(
-            controller: _tabController,
-            children: [
-              // ── Tab 1: Record ──
-              SingleChildScrollView(
-                child: Column(
-                  children: [
-                    _buildBalanceCard(currentBalance),
-                    _buildTransactionForm(),
-                    _buildDateTimePicker(),
-                    const SizedBox(height: 16),
-                  ],
-                ),
-              ),
-              // ── Tab 2: History ──
-              _buildHistoryTab(transactions),
-            ],
-          );
-        },
-      ),
+              return TabBarView(
+                controller: _tabController,
+                children: [
+                  // ── Tab 1: Record ──
+                  SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        _buildBalanceCard(currentBalance, languageProvider),
+                        _buildTransactionForm(languageProvider),
+                        _buildDateTimePicker(languageProvider),
+                        const SizedBox(height: 16),
+                      ],
+                    ),
+                  ),
+                  // ── Tab 2: History ──
+                  _buildHistoryTab(transactions, languageProvider),
+                ],
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
+  PreferredSizeWidget _buildAppBar(LanguageProvider languageProvider) {
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 0,
@@ -204,9 +210,9 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
                     color: Color(0xFF1C1C1E),
                   ),
                 ),
-                const Text(
-                  'Bank Transactions',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF8E8E93)),
+                Text(
+                  languageProvider.isEnglish ? 'Bank Transactions' : 'بینک ٹرانزیکشنز',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF8E8E93)),
                 ),
               ],
             ),
@@ -218,15 +224,21 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
         labelColor: const Color(0xFF7C3AED),
         unselectedLabelColor: const Color(0xFF8E8E93),
         indicatorColor: const Color(0xFF7C3AED),
-        tabs: const [
-          Tab(text: 'RECORD', icon: Icon(Icons.add_circle_outline, size: 18)),
-          Tab(text: 'HISTORY', icon: Icon(Icons.history, size: 18)),
+        tabs: [
+          Tab(
+            text: languageProvider.isEnglish ? 'RECORD' : 'ریکارڈ',
+            icon: const Icon(Icons.add_circle_outline, size: 18),
+          ),
+          Tab(
+            text: languageProvider.isEnglish ? 'HISTORY' : 'تاریخ',
+            icon: const Icon(Icons.history, size: 18),
+          ),
         ],
       ),
     );
   }
 
-  Future<void> _submitTransaction() async {
+  Future<void> _submitTransaction(LanguageProvider languageProvider) async {
     if (!_formKey.currentState!.validate()) return;
 
     final amount = double.parse(_amountCtrl.text.trim());
@@ -252,8 +264,10 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
         authProvider: authProvider,
       );
       message = success
+          ? (languageProvider.isEnglish
           ? 'Transferred Rs ${_currencyFormat.format(amount)} to ${_otherBanks.firstWhere((b) => b.id == _selectedTransferBankId).name}'
-          : 'Transfer failed!';
+          : '${_currencyFormat.format(amount)} روپے ${_otherBanks.firstWhere((b) => b.id == _selectedTransferBankId).name} کو منتقل کر دیے گئے')
+          : (languageProvider.isEnglish ? 'Transfer failed!' : 'منتقلی ناکام!');
     } else {
       // Handle regular transaction
       success = await provider.addTransaction(
@@ -266,8 +280,10 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
         authProvider: authProvider,
       );
       message = success
+          ? (languageProvider.isEnglish
           ? '${_transactionType == 'in' ? 'Added' : 'Withdrawn'} Rs ${_currencyFormat.format(amount)}'
-          : 'Transaction failed!';
+          : '${_currencyFormat.format(amount)} روپے ${_transactionType == 'in' ? 'شامل کیے گئے' : 'نکالے گئے'}')
+          : (languageProvider.isEnglish ? 'Transaction failed!' : 'ٹرانزیکشن ناکام!');
     }
 
     setState(() => _isLoading = false);
@@ -334,7 +350,7 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
         _isTransfer(description);
   }
 
-  Widget _buildBalanceCard(double balance) {
+  Widget _buildBalanceCard(double balance, LanguageProvider languageProvider) {
     final isPositive = balance > 0;
     return Container(
       margin: const EdgeInsets.all(16),
@@ -361,8 +377,10 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
       ),
       child: Column(
         children: [
-          const Text('Current Balance',
-              style: TextStyle(color: Colors.white70, fontSize: 12)),
+          Text(
+            languageProvider.isEnglish ? 'Current Balance' : 'موجودہ بیلنس',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -385,7 +403,7 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
     );
   }
 
-  Widget _buildTransactionForm() {
+  Widget _buildTransactionForm(LanguageProvider languageProvider) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
@@ -432,7 +450,7 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
                                 : const Color(0xFF8E8E93)),
                         const SizedBox(width: 6),
                         Text(
-                          'Normal',
+                          languageProvider.isEnglish ? 'Normal' : 'معمول',
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             color: !_isTransferMode
@@ -473,7 +491,7 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
                                 : const Color(0xFF8E8E93)),
                         const SizedBox(width: 6),
                         Text(
-                          'Transfer',
+                          languageProvider.isEnglish ? 'Transfer' : 'منتقلی',
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             color: _isTransferMode
@@ -502,7 +520,9 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<int>(
                   value: _selectedTransferBankId,
-                  hint: const Text('Select target bank'),
+                  hint: Text(
+                    languageProvider.isEnglish ? 'Select target bank' : 'ٹارگٹ بینک منتخب کریں',
+                  ),
                   isExpanded: true,
                   icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF7C3AED)),
                   items: _otherBanks.map((bank) {
@@ -579,7 +599,7 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
                                   : const Color(0xFF8E8E93)),
                           const SizedBox(width: 6),
                           Text(
-                            'Add Money',
+                            languageProvider.isEnglish ? 'Add Money' : 'رقم شامل کریں',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
                               color: _transactionType == 'in'
@@ -620,7 +640,7 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
                                   : const Color(0xFF8E8E93)),
                           const SizedBox(width: 6),
                           Text(
-                            'Withdraw',
+                            languageProvider.isEnglish ? 'Withdraw' : 'رقم نکالیں',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
                               color: _transactionType == 'out'
@@ -650,7 +670,9 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
                   ],
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.currency_exchange, size: 20),
-                    hintText: _isTransferMode ? 'Enter amount to transfer' : 'Enter amount',
+                    hintText: _isTransferMode
+                        ? (languageProvider.isEnglish ? 'Enter amount to transfer' : 'منتقلی کی رقم درج کریں')
+                        : (languageProvider.isEnglish ? 'Enter amount' : 'رقم درج کریں'),
                     filled: true,
                     fillColor: const Color(0xFFF5F5F7),
                     border: OutlineInputBorder(
@@ -664,9 +686,12 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
                     ),
                   ),
                   validator: (v) {
-                    if (v == null || v.isEmpty) return 'Amount required';
-                    if ((double.tryParse(v) ?? 0) <= 0)
-                      return 'Enter valid amount';
+                    if (v == null || v.isEmpty) {
+                      return languageProvider.isEnglish ? 'Amount required' : 'رقم درکار ہے';
+                    }
+                    if ((double.tryParse(v) ?? 0) <= 0) {
+                      return languageProvider.isEnglish ? 'Enter valid amount' : 'درست رقم درج کریں';
+                    }
                     return null;
                   },
                 ),
@@ -675,7 +700,9 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
                   controller: _descCtrl,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.description_outlined, size: 20),
-                    hintText: _isTransferMode ? 'Transfer description' : 'Description',
+                    hintText: _isTransferMode
+                        ? (languageProvider.isEnglish ? 'Transfer description' : 'منتقلی کی تفصیل')
+                        : (languageProvider.isEnglish ? 'Description' : 'تفصیل'),
                     filled: true,
                     fillColor: const Color(0xFFF5F5F7),
                     border: OutlineInputBorder(
@@ -689,7 +716,9 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
                     ),
                   ),
                   validator: (v) {
-                    if (v == null || v.isEmpty) return 'Description required';
+                    if (v == null || v.isEmpty) {
+                      return languageProvider.isEnglish ? 'Description required' : 'تفصیل درکار ہے';
+                    }
                     return null;
                   },
                 ),
@@ -698,7 +727,9 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
                   controller: _refCtrl,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.numbers_outlined, size: 20),
-                    hintText: 'Reference Number (optional)',
+                    hintText: languageProvider.isEnglish
+                        ? 'Reference Number (optional)'
+                        : 'حوالہ نمبر (اختیاری)',
                     filled: true,
                     fillColor: const Color(0xFFF5F5F7),
                     border: OutlineInputBorder(
@@ -719,7 +750,7 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
                   child: ElevatedButton(
                     onPressed: _isLoading || (_isTransferMode && _selectedTransferBankId == null)
                         ? null
-                        : _submitTransaction,
+                        : () => _submitTransaction(languageProvider),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _isTransferMode
                           ? const Color(0xFF7C3AED)
@@ -739,8 +770,10 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
                     )
                         : Text(
                       _isTransferMode
-                          ? 'Transfer Money'
-                          : (_transactionType == 'in' ? 'Add Money' : 'Withdraw Money'),
+                          ? (languageProvider.isEnglish ? 'Transfer Money' : 'رقم منتقل کریں')
+                          : (_transactionType == 'in'
+                          ? (languageProvider.isEnglish ? 'Add Money' : 'رقم شامل کریں')
+                          : (languageProvider.isEnglish ? 'Withdraw Money' : 'رقم نکالیں')),
                       style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w600),
@@ -755,7 +788,7 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
     );
   }
 
-  Widget _buildDateTimePicker() {
+  Widget _buildDateTimePicker(LanguageProvider languageProvider) {
     return GestureDetector(
       onTap: _pickDateTime,
       child: Container(
@@ -775,9 +808,11 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Transaction Date & Time',
-                    style: TextStyle(
+                  Text(
+                    languageProvider.isEnglish
+                        ? 'Transaction Date & Time'
+                        : 'ٹرانزیکشن کی تاریخ اور وقت',
+                    style: const TextStyle(
                       fontSize: 11,
                       color: Color(0xFF8E8E93),
                       fontWeight: FontWeight.w500,
@@ -820,7 +855,7 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
 
   // ── History Tab ───────────────────────────────────────────────────────────
 
-  Widget _buildHistoryTab(List<BankTransaction> transactions) {
+  Widget _buildHistoryTab(List<BankTransaction> transactions, LanguageProvider languageProvider) {
     if (transactions.isEmpty) {
       return Center(
         child: Column(
@@ -828,11 +863,17 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
           children: [
             Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey[300]),
             const SizedBox(height: 16),
-            Text('No transactions yet',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.grey[500])),
+            Text(
+              languageProvider.isEnglish ? 'No transactions yet' : 'ابھی کوئی ٹرانزیکشن نہیں',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.grey[500]),
+            ),
             const SizedBox(height: 8),
-            Text('Switch to Record tab to add one',
-                style: TextStyle(fontSize: 13, color: Colors.grey[400])),
+            Text(
+              languageProvider.isEnglish
+                  ? 'Switch to Record tab to add one'
+                  : 'شامل کرنے کے لیے ریکارڈ ٹیب پر جائیں',
+              style: TextStyle(fontSize: 13, color: Colors.grey[400]),
+            ),
           ],
         ),
       );
@@ -877,7 +918,7 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
             children: [
               Expanded(
                 child: _summaryChip(
-                  label: 'Total In',
+                  label: languageProvider.isEnglish ? 'Total In' : 'کل اندر',
                   value: 'Rs ${_currencyFormat.format(totalIn)}',
                   color: const Color(0xFF10B981),
                   icon: Icons.arrow_downward,
@@ -886,7 +927,7 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
               Container(width: 1, height: 36, color: const Color(0xFFE5E5EA)),
               Expanded(
                 child: _summaryChip(
-                  label: 'Total Out',
+                  label: languageProvider.isEnglish ? 'Total Out' : 'کل باہر',
                   value: 'Rs ${_currencyFormat.format(totalOut)}',
                   color: const Color(0xFFEF4444),
                   icon: Icons.arrow_upward,
@@ -895,7 +936,7 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
               Container(width: 1, height: 36, color: const Color(0xFFE5E5EA)),
               Expanded(
                 child: _summaryChip(
-                  label: 'Txns',
+                  label: languageProvider.isEnglish ? 'Txns' : 'ٹرانزیکشنز',
                   value: '${sorted.length}',
                   color: const Color(0xFF7C3AED),
                   icon: Icons.receipt_long,
@@ -927,13 +968,13 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
                       : 700,
                   child: Column(
                     children: [
-                      _buildTableHeader(),
+                      _buildTableHeader(languageProvider),
                       Expanded(
                         child: ListView.builder(
                           controller: _historyScrollController,
                           itemCount: displayRows.length,
                           itemBuilder: (context, index) {
-                            return _buildTableRow(displayRows[index], index);
+                            return _buildTableRow(displayRows[index], index, languageProvider);
                           },
                         ),
                       ),
@@ -978,7 +1019,7 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
     );
   }
 
-  Widget _buildTableHeader() {
+  Widget _buildTableHeader(LanguageProvider languageProvider) {
     const headerStyle = TextStyle(
       fontSize: 11,
       fontWeight: FontWeight.w700,
@@ -995,15 +1036,38 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
       ),
       child: Row(
         children: [
-          _headerCell('DATE / TIME', flex: 18, style: headerStyle),
+          _headerCell(
+            languageProvider.isEnglish ? 'DATE / TIME' : 'تاریخ / وقت',
+            flex: 18,
+            style: headerStyle,
+          ),
           _vDivider(),
-          _headerCell('DESCRIPTION', flex: 28, style: headerStyle),
+          _headerCell(
+            languageProvider.isEnglish ? 'DESCRIPTION' : 'تفصیل',
+            flex: 28,
+            style: headerStyle,
+          ),
           _vDivider(),
-          _headerCell('CASH IN', flex: 18, style: headerStyle, align: TextAlign.right),
+          _headerCell(
+            languageProvider.isEnglish ? 'CASH IN' : 'نقد آمد',
+            flex: 18,
+            style: headerStyle,
+            align: TextAlign.right,
+          ),
           _vDivider(),
-          _headerCell('CASH OUT', flex: 18, style: headerStyle, align: TextAlign.right),
+          _headerCell(
+            languageProvider.isEnglish ? 'CASH OUT' : 'نقد اخراج',
+            flex: 18,
+            style: headerStyle,
+            align: TextAlign.right,
+          ),
           _vDivider(),
-          _headerCell('BALANCE', flex: 18, style: headerStyle, align: TextAlign.right),
+          _headerCell(
+            languageProvider.isEnglish ? 'BALANCE' : 'بیلنس',
+            flex: 18,
+            style: headerStyle,
+            align: TextAlign.right,
+          ),
           _vDivider(),
           _headerCell('', flex: 9, style: headerStyle),
         ],
@@ -1011,31 +1075,36 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
     );
   }
 
-  Future<void> _confirmDelete(BankTransaction txn) async {
+  Future<void> _confirmDelete(BankTransaction txn, LanguageProvider languageProvider) async {
     // Check if transaction is protected (cannot be deleted)
     if (_isProtectedTransaction(txn.description)) {
       String type = '';
       if (_isSupplierPayment(txn.description)) {
-        type = 'supplier payment';
+        type = languageProvider.isEnglish ? 'supplier payment' : 'سپلائر کی ادائیگی';
       } else if (_isCustomerPayment(txn.description)) {
-        type = 'customer payment';
+        type = languageProvider.isEnglish ? 'customer payment' : 'گاہک کی ادائیگی';
       } else if (_isTransfer(txn.description)) {
-        type = 'bank transfer';
+        type = languageProvider.isEnglish ? 'bank transfer' : 'بینک منتقلی';
       }
 
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Cannot Delete'),
+          title: Text(languageProvider.isEnglish ? 'Cannot Delete' : 'حذف نہیں کیا جا سکتا'),
           content: Text(
-            'This transaction is from a $type. To reverse it, please use the original transaction source (Sale/Purchase screen).',
+            languageProvider.isEnglish
+                ? 'This transaction is from a $type. To reverse it, please use the original transaction source (Sale/Purchase screen).'
+                : 'یہ ٹرانزیکشن $type سے ہے۔ اسے واپس کرنے کے لیے، براہ کرم اصل ٹرانزیکشن سورس (سیل/پرچیز اسکرین) استعمال کریں۔',
             style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 13),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('OK', style: TextStyle(color: Color(0xFF7C3AED))),
+              child: Text(
+                languageProvider.isEnglish ? 'OK' : 'ٹھیک ہے',
+                style: const TextStyle(color: Color(0xFF7C3AED)),
+              ),
             ),
           ],
         ),
@@ -1047,14 +1116,16 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Delete Transaction'),
+        title: Text(languageProvider.isEnglish ? 'Delete Transaction' : 'ٹرانزیکشن حذف کریں'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'This will permanently delete this transaction and reverse its effect on the bank balance.',
-              style: TextStyle(color: Color(0xFF8E8E93), fontSize: 13),
+            Text(
+              languageProvider.isEnglish
+                  ? 'This will permanently delete this transaction and reverse its effect on the bank balance.'
+                  : 'یہ اس ٹرانزیکشن کو مستقل طور پر حذف کر دے گا اور بینک بیلنس پر اس کے اثر کو واپس کر دے گا۔',
+              style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 13),
             ),
             const SizedBox(height: 12),
             Container(
@@ -1070,7 +1141,7 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
                       style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                   const SizedBox(height: 4),
                   Text(
-                    '${txn.type == 'in' ? 'Cash In' : 'Cash Out'}: Rs ${_currencyFormat.format(txn.amount)}',
+                    '${txn.type == 'in' ? (languageProvider.isEnglish ? 'Cash In' : 'نقد آمد') : (languageProvider.isEnglish ? 'Cash Out' : 'نقد اخراج')}: Rs ${_currencyFormat.format(txn.amount)}',
                     style: TextStyle(
                       color: txn.type == 'in'
                           ? const Color(0xFF10B981)
@@ -1092,7 +1163,10 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF8E8E93))),
+            child: Text(
+              languageProvider.isEnglish ? 'Cancel' : 'منسوخ کریں',
+              style: const TextStyle(color: Color(0xFF8E8E93)),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -1100,7 +1174,10 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
               backgroundColor: const Color(0xFFEF4444),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+            child: Text(
+              languageProvider.isEnglish ? 'Delete' : 'حذف کریں',
+              style: const TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -1121,8 +1198,10 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(success
+              ? (languageProvider.isEnglish
               ? 'Transaction deleted and balance updated'
-              : bankProvider.error ?? 'Failed to delete'),
+              : 'ٹرانزیکشن حذف اور بیلنس اپ ڈیٹ')
+              : bankProvider.error ?? (languageProvider.isEnglish ? 'Failed to delete' : 'حذف کرنے میں ناکام')),
           backgroundColor: success ? Colors.green : Colors.red,
         ),
       );
@@ -1130,7 +1209,7 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
     }
   }
 
-  Widget _buildTableRow(_TxnRow row, int index) {
+  Widget _buildTableRow(_TxnRow row, int index, LanguageProvider languageProvider) {
     final txn = row.txn;
     final isIn = txn.type == 'in';
     final isEven = index % 2 == 0;
@@ -1141,10 +1220,10 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
     // Hide delete button for supplier payments AND customer payments
     final isProtected = isTransfer || isSupplierPayment || isCustomerPayment;
 
-    String? getTransactionTag() {  // ✅ Changed return type to String?
-      if (isTransfer) return 'TRF';
-      if (isSupplierPayment) return 'SUPPLIER';
-      if (isCustomerPayment) return 'CUSTOMER';
+    String? getTransactionTag() {
+      if (isTransfer) return languageProvider.isEnglish ? 'TRF' : 'منتقلی';
+      if (isSupplierPayment) return languageProvider.isEnglish ? 'SUPPLIER' : 'سپلائر';
+      if (isCustomerPayment) return languageProvider.isEnglish ? 'CUSTOMER' : 'گاہک';
       return null;
     }
 
@@ -1217,8 +1296,10 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
                 ),
                 if (txn.referenceNumber != null) ...[
                   const SizedBox(height: 2),
-                  Text('Ref: ${txn.referenceNumber}',
-                      style: const TextStyle(fontSize: 10, color: Color(0xFF7C3AED))),
+                  Text(
+                    '${languageProvider.isEnglish ? 'Ref' : 'حوالہ'}: ${txn.referenceNumber}',
+                    style: const TextStyle(fontSize: 10, color: Color(0xFF7C3AED)),
+                  ),
                 ],
               ],
             ),
@@ -1266,7 +1347,7 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
               child: isProtected
                   ? const SizedBox.shrink()
                   : GestureDetector(
-                onTap: () => _confirmDelete(txn),
+                onTap: () => _confirmDelete(txn, languageProvider),
                 child: Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
@@ -1324,7 +1405,6 @@ class _BankTransactionScreenState extends State<BankTransactionScreen>
     color: const Color(0xFFE5E7EB),
   );
 }
-
 
 class _TxnRow {
   final BankTransaction txn;
